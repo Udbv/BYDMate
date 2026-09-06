@@ -25,12 +25,17 @@ object VehicleDialogDismisser {
     const val PREFS_NAME = "vehicle_dialog"
     const val KEY_ENABLED = "auto_dismiss_export_warning"
     const val TITLE_TOKEN = "vehicledialog"
-    /** Re-scan floor: window events burst while the dialog animates in. */
-    private const val MIN_INTERVAL_MS = 1_000L
+    /** The window-state event fires before the new window shows up in getWindows(): scan a
+     *  little later, and coalesce the burst of events a dialog produces into one scan. */
+    private const val SCAN_DELAY_MS = 350L
+    /** After a click, ignore the events the dialog's own dismissal produces. */
+    private const val COOLDOWN_MS = 1_500L
     private const val MAX_NODES = 400
 
     @Volatile private var enabled = false
-    @Volatile private var lastScanMs = 0L
+    @Volatile private var lastDismissMs = 0L
+    @Volatile private var scanPending = false
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     @Volatile var dismissals: Long = 0L
         private set
 
@@ -46,6 +51,7 @@ object VehicleDialogDismisser {
     /** Called when the accessibility service connects: picks up the persisted switch. */
     fun refresh(context: Context) {
         enabled = isEnabled(context)
+        Log.i(TAG, "a11y service connected, auto-dismiss ${if (enabled) "enabled" else "disabled"}")
     }
 
     fun onEvent(service: AccessibilityService, event: AccessibilityEvent?) {
@@ -54,10 +60,13 @@ object VehicleDialogDismisser {
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             type != AccessibilityEvent.TYPE_WINDOWS_CHANGED
         ) return
-        val now = System.currentTimeMillis()
-        if (now - lastScanMs < MIN_INTERVAL_MS) return
-        lastScanMs = now
-        runCatching { scan(service) }.onFailure { Log.w(TAG, "scan failed: ${it.message}") }
+        if (System.currentTimeMillis() - lastDismissMs < COOLDOWN_MS) return
+        if (scanPending) return
+        scanPending = true
+        handler.postDelayed({
+            scanPending = false
+            if (enabled) runCatching { scan(service) }.onFailure { Log.w(TAG, "scan failed: ${it.message}") }
+        }, SCAN_DELAY_MS)
     }
 
     private fun scan(service: AccessibilityService) {
@@ -68,6 +77,7 @@ object VehicleDialogDismisser {
         for (window in windows) {
             val title = runCatching { window.title?.toString() }.getOrNull()
             if (!matchesTitle(title)) continue
+            lastDismissMs = System.currentTimeMillis()
             val root = runCatching { window.root }.getOrNull()
             val clicked = root != null && try {
                 clickFirstButton(root)
@@ -77,6 +87,9 @@ object VehicleDialogDismisser {
             val done = clicked || service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
             if (done) dismissals++
             Log.i(TAG, "export warning window '$title' -> ${if (clicked) "button clicked" else if (done) "back key" else "no action"} (#$dismissals)")
+            // A re-shown or stacked instance produces no fresh event once the cooldown passes:
+            // look once more on our own.
+            handler.postDelayed({ if (enabled) runCatching { scan(service) } }, COOLDOWN_MS + 100)
             return
         }
     }
