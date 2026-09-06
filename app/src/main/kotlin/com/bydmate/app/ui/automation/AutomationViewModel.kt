@@ -479,7 +479,7 @@ class AutomationViewModel @Inject constructor(
         if (prefs.getBoolean("templates_inserted", false)) return
 
         val lang = currentLang(context)
-        fun tName(zh: String, en: String, ru: String): String = when (lang) { "zh" -> zh; "ru", "be" -> ru; else -> en }
+        fun tName(zh: String, en: String, ru: String): String = when (lang) { "zh" -> zh; "ru", "be", "uk" -> ru; else -> en }
 
         val templates = listOf(
             RuleEntity(

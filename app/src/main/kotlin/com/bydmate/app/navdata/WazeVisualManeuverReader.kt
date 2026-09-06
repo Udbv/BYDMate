@@ -86,6 +86,13 @@ object WazeVisualManeuverReader {
             completed = latestCounters.completed + 1,
             lastCompleted = result,
         )
+        // Field diagnostics only: shape metrics and a failure token, never pixels or text.
+        android.util.Log.i(
+            "WazeVisualManeuver",
+            "attempt #${latestCounters.completed} display=${result.displayId} target=${result.targetSource} " +
+                "${result.targetWidth}x${result.targetHeight} gaode=${result.maneuverGaode} " +
+                "shift=${result.horizontalShift} fg=${result.foregroundRatio} failure=${result.failure}",
+        )
     }
 
     /** Schedules at most one bounded screenshot per second. Returns false when no safe crop exists. */

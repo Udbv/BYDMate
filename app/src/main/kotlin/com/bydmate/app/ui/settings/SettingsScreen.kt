@@ -2899,10 +2899,10 @@ private fun LanguageBlock(
     // No Activity.recreate(): MainActivity listens to LocalePreferences,
     // mutates Resources.configuration in place, and re-provides
     // LocalConfiguration so every stringResource recomposes on next frame.
-    val langCodes = listOf("ru", "en", "zh", "pt", "pl", "be")
+    val langCodes = listOf("ru", "en", "zh", "pt", "pl", "be", "uk")
     val langLabels = listOf(
         stringResource(R.string.settings_lang_russian), "English", "简体中文", "Português",
-        "Polski", "Беларуская",
+        "Polski", "Беларуская", "Українська",
     )
     SectionHeader(text = stringResource(R.string.settings_language_title))
     Card(
