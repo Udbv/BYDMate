@@ -33,7 +33,13 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        ndk { abiFilters += listOf("arm64-v8a") }  // DiLink is arm64-only; single ABI keeps sherpa-onnx native libs small
+        // DiLink is arm64-only; single ABI keeps sherpa-onnx native libs small. The AAOS
+        // emulator testbed (dilink5-sim) is x86_64: `-Pbydmate.emulatorAbi=true` adds it for
+        // emulator-only builds (never for releases; the APK grows by ~25 MB).
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+            if (project.findProperty("bydmate.emulatorAbi") == "true") abiFilters += "x86_64"
+        }
     }
 
     signingConfigs {
