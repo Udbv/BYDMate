@@ -6,7 +6,7 @@
 
 Полные релизы с APK: <https://github.com/AndyShaman/BYDMate/releases>.
 
-## [3.15.0] - 2026-09-06 (Udbv/BYDMate, сборка «BYDMate Waze»)
+## [3.15.0-dev.1] - 2026-09-06 (Udbv/BYDMate, сборка «BYDMate Waze», канал «Разработка»)
 
 ### Added
 - Вариант сборки `waze` (applicationId `com.bydmate.app.waze`, имя «BYDMate Waze»): ставится рядом с официальным BYDMate как отдельное приложение со своими данными, службами и именами helper-демона. Обновления приходят из релизов github.com/Udbv/BYDMate прямо в машину, как раньше из AndyShaman/BYDMate

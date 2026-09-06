@@ -37,7 +37,8 @@ class UpdateChecker @Inject constructor(
         /** Stable = latest non-prerelease GitHub release; dev = newest release including prereleases. */
         fun getChannel(context: Context): String =
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .getString(KEY_CHANNEL, CHANNEL_STABLE) ?: CHANNEL_STABLE
+                .getString(KEY_CHANNEL, com.bydmate.app.BuildConfig.DEFAULT_UPDATE_CHANNEL)
+                ?: com.bydmate.app.BuildConfig.DEFAULT_UPDATE_CHANNEL
 
         fun setChannel(context: Context, channel: String) {
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

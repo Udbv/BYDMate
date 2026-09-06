@@ -29,7 +29,7 @@ android {
         // targetSdk 30+ would break listFiles() on /storage/emulated/0/energydata/
         targetSdk = 29
         versionCode = 438
-        versionName = "3.15.0"
+        versionName = "3.15.0-dev.1"   // development pre-release; stable X.Y.Z only after a real-car test
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -51,6 +51,7 @@ android {
             dimension = "dist"
             isDefault = true
             buildConfigField("String", "UPDATE_REPO", "\"AndyShaman/BYDMate\"")
+            buildConfigField("String", "DEFAULT_UPDATE_CHANNEL", "\"stable\"")
             buildConfigField("String", "HELPER_SERVICE", "\"bydmate_helper\"")
             buildConfigField("String", "HELPER_PROCESS", "\"bydmate_helper\"")
         }
@@ -58,6 +59,7 @@ android {
             dimension = "dist"
             applicationIdSuffix = ".waze"
             buildConfigField("String", "UPDATE_REPO", "\"Udbv/BYDMate\"")
+            buildConfigField("String", "DEFAULT_UPDATE_CHANNEL", "\"dev\"")   // no stable releases until the real-car test
             buildConfigField("String", "HELPER_SERVICE", "\"bydmate_helper_waze\"")
             buildConfigField("String", "HELPER_PROCESS", "\"bydmate_waze\"")
         }
