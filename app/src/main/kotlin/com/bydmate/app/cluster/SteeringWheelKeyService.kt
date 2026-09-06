@@ -37,7 +37,7 @@ class SteeringWheelKeyService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        VehicleDialogDismisser.refresh(this)
+        VehicleDialogDismisser.refresh(this, this)
         val info = serviceInfo ?: AccessibilityServiceInfo()
         info.flags = info.flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS  // 32
         info.flags = info.flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
