@@ -1667,6 +1667,7 @@ class SettingsViewModel @Inject constructor(
                 val diag = hudController.diag()
                 appendLine("frames_sent=${diag?.framesSent ?: 0} last_frame_ts=${diag?.lastFrameTs ?: 0}")
                 appendLine("last_fire_rc=${diag?.lastRc ?: "n/a"} nonzero_rc_count=${diag?.nonZeroRcCount ?: 0}")
+                appendLine("dialect=${diag?.dialect ?: hudController.dialect().toString()}")
                 appendLine("amap_capable=${diag?.amapCapable ?: false} amap_frames=${diag?.amapFramesSent ?: 0} amap_stops=${diag?.amapStopsSent ?: 0}")
                 appendLine("hub_snapshot=${com.bydmate.app.navdata.NavGuidanceHub.snapshot()}")
                 // What each channel actually carried at every maneuver change (#94): the

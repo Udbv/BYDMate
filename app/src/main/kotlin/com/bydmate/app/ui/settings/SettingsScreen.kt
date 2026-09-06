@@ -1301,6 +1301,35 @@ private fun DisplaySection() {
                 },
             )
             SettingDivider()
+            // Glass family: which frame layout and gateway service key the car's HUD reads.
+            var hudDialectPref by remember { mutableStateOf(hudController.dialectPref()) }
+            val dialectPrefValues = listOf(
+                com.bydmate.app.hud.HudDialect.PREF_AUTO,
+                com.bydmate.app.hud.HudDialect.CLASSIC.prefValue,
+                com.bydmate.app.hud.HudDialect.AR_HUD.prefValue,
+            )
+            val detectedName = stringResource(
+                if (com.bydmate.app.hud.HudDialect.detect() == com.bydmate.app.hud.HudDialect.AR_HUD)
+                    R.string.settings_hud_dialect_arhud else R.string.settings_hud_dialect_classic
+            )
+            SettingChipRow(
+                title = stringResource(R.string.settings_hud_dialect_title),
+                description = stringResource(R.string.settings_hud_dialect_desc, detectedName),
+                options = listOf(
+                    stringResource(R.string.settings_hud_dialect_auto),
+                    stringResource(R.string.settings_hud_dialect_classic),
+                    stringResource(R.string.settings_hud_dialect_arhud),
+                ),
+                selectedIndex = dialectPrefValues.indexOf(hudDialectPref).coerceAtLeast(0),
+                onSelect = { index ->
+                    val value = dialectPrefValues[index]
+                    if (value != hudDialectPref) {
+                        hudDialectPref = value
+                        hudController.setDialectPref(value)
+                    }
+                },
+            )
+            SettingDivider()
             SettingStatusRow(
                 title = when (hudStatus) {
                     HudController.Status.ON -> stringResource(R.string.settings_hud_status_on)

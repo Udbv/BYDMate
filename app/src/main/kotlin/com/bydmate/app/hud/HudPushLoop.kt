@@ -22,11 +22,17 @@ class HudPushLoop(
     internal val amap: HudAmapBroadcaster? = null,
     /** Maneuver-change journal for the diagnostic dump; null = no journalling (tests). */
     private val maneuvers: HudManeuverJournal? = null,
+    /** Frame layout for the connected glass; read every tick (settings switch, no restart). */
+    private val dialect: () -> HudDialect = { HudDialect.CLASSIC },
+    /** Remaining minutes -> localized "9 min" for the AR-HUD f27 slot; null = omit. */
+    private val remainFormatter: (Int) -> String? = { null },
 ) {
     companion object {
         private const val TAG = "HudPushLoop"
         const val PERIOD_MS = 300L
         private const val NO_MANEUVER = Int.MIN_VALUE
+        /** Field-diagnostics cadence: one info line per ~10 s of frames (release keeps Log.i). */
+        private const val LOG_EVERY_FRAMES = 33L
     }
 
     private var job: Job? = null
@@ -63,16 +69,18 @@ class HudPushLoop(
     /** One tick; returns whether guidance was active (input for the next tick). */
     internal fun tick(wasActive: Boolean): Boolean {
         val s = NavGuidanceHub.snapshot(nowMsProvider())
+        val d = dialect()
         if (!s.active) {
             if (wasActive) {
-                sink.fireEvent(HudSomeIpBridge.TOPIC_NAVI, HudProtobufBuilder.buildClearFrame(counter++))
-                Log.i(TAG, "guidance ended, clear frame sent")
+                val rc = sink.fireEvent(HudSomeIpBridge.TOPIC_NAVI, HudProtobufBuilder.buildClearFrame(counter++, d))
+                Log.i(TAG, "guidance ended, clear frame sent rc=$rc dialect=$d after $framesSent frames")
             }
             amap?.onSnapshot(null)
             journalledGaode = NO_MANEUVER
             return false
         }
-        val signPng = if (speedSignEnabled() && s.speedLimit > 0) HudSpeedSign.render(s.speedLimit) else null
+        // The classic glass gets the sign as a PNG in f7; the AR-HUD draws its own from f11/f15.
+        val signPng = if (d == HudDialect.CLASSIC && speedSignEnabled() && s.speedLimit > 0) HudSpeedSign.render(s.speedLimit) else null
         // Camera takeover (donor LoopRunner): while a camera alert is active the icon
         // slot (f8) shows the camera, f9 counts down to the camera, and the reference
         // arrow (f28) is suppressed so the HUD doesn't draw a stale maneuver arrow.
@@ -88,12 +96,21 @@ class HudPushLoop(
             maneuverIconPng = if (cameraActive) s.cameraIconPng ?: baseIcon else baseIcon,
             speedSignPng = signPng,
             suppressArrow = cameraActive,
+            dialect = d,
+            etaSeconds = s.etaSeconds,
+            remainString = if (s.etaSeconds > 0) remainFormatter((s.etaSeconds + 59) / 60) else null,
         )
         val rc = sink.fireEvent(HudSomeIpBridge.TOPIC_NAVI, frame)
         framesSent++
         lastFrameTs = System.currentTimeMillis()
         lastRc = rc
         if (rc != 0) nonZeroRcCount++
+        if (!wasActive || framesSent % LOG_EVERY_FRAMES == 0L) {
+            Log.i(TAG, "frame #$framesSent rc=$rc dialect=$d bytes=${frame.size} gaode=${s.maneuverGaode} " +
+                "f28=${if (d == HudDialect.AR_HUD) HudProtobufBuilder.gaodeToArHudId(s.maneuverGaode) else HudProtobufBuilder.gaodeToF28(s.maneuverGaode)} " +
+                "dist=${s.distanceMeters} total=${s.totalDistMeters} eta=${s.etaSeconds}s limit=${s.speedLimit} " +
+                "icon=${(if (cameraActive) s.cameraIconPng ?: baseIcon else baseIcon)?.size ?: 0} road='${runningLine(s)}'")
+        }
         amap?.onSnapshot(s)
         journalManeuver(s, cameraActive)
         return true

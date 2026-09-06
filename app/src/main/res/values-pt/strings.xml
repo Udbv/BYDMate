@@ -1163,6 +1163,12 @@
     <string name="settings_hud_status_on">Transmissão para o HUD ativa</string>
     <string name="settings_hud_status_bind_failed">Falha ao conectar ao barramento SOME/IP</string>
     <string name="settings_hud_hint">Requer versão com head-up display. Os dados vêm da janela do Yandex Navigator</string>
+    <string name="settings_hud_dialect_title">Tipo de HUD</string>
+    <string name="settings_hud_dialect_desc">Clássico: Atto 3, Seal, Sea Lion. AR-HUD: DiLink 150 (Tang L 2025). Auto segue o firmware: %1$s</string>
+    <string name="settings_hud_dialect_auto">Auto</string>
+    <string name="settings_hud_dialect_classic">Clássico</string>
+    <string name="settings_hud_dialect_arhud">AR-HUD (Tang L)</string>
+    <string name="hud_eta_remaining_minutes">%1$d min</string>
     <string name="settings_display_card_export_dialog_title">Fechar automaticamente a janela “not official export”</string>
     <string name="settings_display_card_export_dialog_sub">O aviso de exportação da BYD fecha sozinho. %1$s</string>
     <string name="settings_export_dialog_hint">A janela “This car is not from official export” é fechada premindo o seu único botão através do serviço de acessibilidade: sem coordenadas fixas, em qualquer idioma. A janela é reconhecida pelo título vehicledialog</string>

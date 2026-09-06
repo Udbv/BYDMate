@@ -1281,6 +1281,12 @@
     <string name="settings_hud_status_on">正在向 HUD 传输</string>
     <string name="settings_hud_status_bind_failed">无法连接 SOME/IP 总线</string>
     <string name="settings_hud_hint">需要配备抬头显示的车型。数据来自 Yandex 导航窗口</string>
+    <string name="settings_hud_dialect_title">HUD 类型</string>
+    <string name="settings_hud_dialect_desc">经典：Atto 3、Seal、Sea Lion。AR-HUD：DiLink 150（唐 L 2025）。自动按固件判断：%1$s</string>
+    <string name="settings_hud_dialect_auto">自动</string>
+    <string name="settings_hud_dialect_classic">经典</string>
+    <string name="settings_hud_dialect_arhud">AR-HUD (Tang L)</string>
+    <string name="hud_eta_remaining_minutes">%1$d 分钟</string>
     <string name="settings_display_card_export_dialog_title">自动关闭“非官方出口”窗口</string>
     <string name="settings_display_card_export_dialog_sub">BYD 出口警告窗口会自动关闭。%1$s</string>
     <string name="settings_export_dialog_hint">通过无障碍服务点击“This car is not from official export”窗口的唯一按钮来关闭它：不依赖固定坐标，与语言无关。该窗口按标题 vehicledialog 识别</string>

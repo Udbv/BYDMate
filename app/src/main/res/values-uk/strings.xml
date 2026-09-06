@@ -1321,6 +1321,12 @@
     <string name="settings_hud_status_on">Передача на HUD активна</string>
     <string name="settings_hud_status_bind_failed">Не вдалося підключитися до шини SOME/IP</string>
     <string name="settings_hud_hint">Потрібна комплектація з проєкційним дисплеєм. Дані беруться з вікна навігатора (Яндекс Навігатор, Яндекс Карти або Waze)</string>
+    <string name="settings_hud_dialect_title">Тип HUD</string>
+    <string name="settings_hud_dialect_desc">Класичний: Atto 3, Seal, Sea Lion. AR-HUD: DiLink 150 (Tang L 2025). Авто за прошивкою: %1$s</string>
+    <string name="settings_hud_dialect_auto">Авто</string>
+    <string name="settings_hud_dialect_classic">Класичний</string>
+    <string name="settings_hud_dialect_arhud">AR-HUD (Tang L)</string>
+    <string name="hud_eta_remaining_minutes">%1$d хв</string>
     <string name="settings_display_card_export_dialog_title">Автозакриття вікна «не офіційний експорт»</string>
     <string name="settings_display_card_export_dialog_sub">Попередження BYD про експорт закривається саме. %1$s</string>
     <string name="settings_export_dialog_hint">Вікно «This car is not from official export» закривається натисканням його єдиної кнопки через службу спеціальних можливостей: без фіксованих координат і незалежно від мови. Вікно розпізнається за заголовком vehicledialog</string>

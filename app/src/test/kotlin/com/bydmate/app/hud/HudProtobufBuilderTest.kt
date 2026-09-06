@@ -268,4 +268,80 @@ class HudProtobufBuilderTest {
         val progress = Double.fromBits(f[33]!![0] as Long)
         assertEquals(0.0, progress, 1e-9)
     }
+
+    // ---- DiLink 150 AR-HUD dialect (Tang L 2025) ----
+
+    @Test fun `ar-hud frame carries the Tang L map field set and no speed-sign trick`() {
+        val f = unwrap(HudProtobufBuilder.buildFrameSafe(
+            maneuverGaode = 7, distanceMeters = 250, road = "Садова",
+            etaString = "23:34", totalDistMeters = 6500, speedLimit = 50,
+            maneuverIconPng = byteArrayOf(0x01, 0x02), speedSignPng = byteArrayOf(0x09),
+            dialect = HudDialect.AR_HUD, etaSeconds = 540, remainString = "9 хв",
+        ))
+        assertEquals(2L, f[2]!![0] as Long)          // constant counter, like PlatformHudImpl
+        assertEquals(6500L, f[3]!![0] as Long)       // car2Dest
+        assertEquals(540L, f[4]!![0] as Long)        // timeOfCar2Dest
+        assertNull(f[6]); assertNull(f[7])           // no render class / sign PNG on this glass
+        assertArrayEquals(byteArrayOf(0x01, 0x02), f[8]!![0] as ByteArray)
+        assertEquals(250L, f[9]!![0] as Long)
+        assertEquals("Садова", String(f[10]!![0] as ByteArray, Charsets.UTF_8))
+        assertEquals(50L, f[11]!![0] as Long)
+        assertEquals(50L, f[15]!![0] as Long)
+        assertEquals(2L, f[16]!![0] as Long)
+        assertEquals("23:34", String(f[26]!![0] as ByteArray, Charsets.UTF_8))
+        assertEquals("9 хв", String(f[27]!![0] as ByteArray, Charsets.UTF_8))
+        assertEquals(7L, f[28]!![0] as Long)         // raw Gaode code: sharp left stays 7
+        assertTrue(f.containsKey(33))
+    }
+
+    @Test fun `ar-hud clear frame is status 1 with counter 2`() {
+        val payload = HudProtobufBuilder.buildClearFrame(42, HudDialect.AR_HUD)
+        assertEquals("0a051002800101", payload.hex())
+        val f = unwrap(payload)
+        assertEquals(2L, f[2]!![0] as Long)
+        assertEquals(1L, f[16]!![0] as Long)
+        assertNull(f[6])
+    }
+
+    @Test fun `ar-hud direction ids follow the Tang L map table`() {
+        assertEquals(1, HudProtobufBuilder.gaodeToArHudId(1))
+        assertEquals(2, HudProtobufBuilder.gaodeToArHudId(2))
+        assertEquals(3, HudProtobufBuilder.gaodeToArHudId(3))
+        assertEquals(5, HudProtobufBuilder.gaodeToArHudId(4))    // slight right is 5 on the glass
+        assertEquals(7, HudProtobufBuilder.gaodeToArHudId(7))
+        assertEquals(8, HudProtobufBuilder.gaodeToArHudId(8))
+        assertEquals(9, HudProtobufBuilder.gaodeToArHudId(9))
+        assertEquals(9, HudProtobufBuilder.gaodeToArHudId(10))   // no right U-turn id in the table
+        assertEquals(11, HudProtobufBuilder.gaodeToArHudId(11))
+        assertEquals(11, HudProtobufBuilder.gaodeToArHudId(12))
+        assertEquals(13, HudProtobufBuilder.gaodeToArHudId(13))
+        assertEquals(24, HudProtobufBuilder.gaodeToArHudId(24))
+        assertEquals(24, HudProtobufBuilder.gaodeToArHudId(27))  // 3rd exit -> exit roundabout
+        assertEquals(48, HudProtobufBuilder.gaodeToArHudId(48))  // destination has a glyph here
+        assertEquals(0, HudProtobufBuilder.gaodeToArHudId(0))
+        assertEquals(0, HudProtobufBuilder.gaodeToArHudId(999))
+    }
+
+    @Test fun `default dialect is byte-identical to the classic frame`() {
+        val classic = HudProtobufBuilder.buildFrameSafe(
+            maneuverGaode = 2, distanceMeters = 250, road = "A",
+            etaString = "10:10", totalDistMeters = 1000, speedLimit = 60,
+            maneuverIconPng = byteArrayOf(0x01), speedSignPng = null,
+        )
+        val explicit = HudProtobufBuilder.buildFrameSafe(
+            maneuverGaode = 2, distanceMeters = 250, road = "A",
+            etaString = "10:10", totalDistMeters = 1000, speedLimit = 60,
+            maneuverIconPng = byteArrayOf(0x01), speedSignPng = null,
+            dialect = HudDialect.CLASSIC, etaSeconds = 600, remainString = "10 min",
+        )
+        assertArrayEquals(classic, explicit)   // classic ignores the AR-HUD-only inputs
+    }
+
+    @Test fun `dialect detection keys off the DiLink 150 vehicle type`() {
+        assertEquals(HudDialect.AR_HUD, HudDialect.detect("DiLink150_7.0UI"))
+        assertEquals(HudDialect.CLASSIC, HudDialect.detect("DiLink5.0_XXX"))
+        assertEquals(HudDialect.CLASSIC, HudDialect.detect(""))
+        assertEquals(HudDialect.AR_HUD, HudDialect.fromPref("arhud"))
+        assertNull(HudDialect.fromPref("auto"))
+    }
 }

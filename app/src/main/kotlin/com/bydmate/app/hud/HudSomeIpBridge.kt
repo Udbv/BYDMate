@@ -51,6 +51,9 @@ class HudSomeIpBridge(
 
         const val TOPIC_NAVI = 0x4010a00018001L
         const val SERVICE_ID_NAVI = 0xB010A00010000L
+        /** Service key the DiLink 150 map app (Tang L) opens before it fires on [TOPIC_NAVI]:
+         *  same service 0x010A, low word 2 instead of 1 (docs/investigations/tang-l-hud-someip.md). */
+        const val SERVICE_ID_NAVI_ARHUD = 0xB010A00020000L
 
         /** Cheap capability probe - MUST run before any binding or helper-daemon work:
          *  cars without the SOME/IP gateway (no factory HUD) take this exit (Codex fix 1). */
@@ -75,7 +78,8 @@ class HudSomeIpBridge(
     private val bindMutex = Mutex()
 
     /** Service id to re-open when the framework reconnects after a gateway crash. */
-    @Volatile private var activeServiceId: Long? = null
+    /** Service keys opened on the gateway; re-opened after a reconnect, in insertion order. */
+    private val activeServiceIds = LinkedHashSet<Long>()
 
     // The gateway pings callbacks; the reply must follow the AIDL stub contract or the
     // gateway drops our registration (donor SomeIpBridge shape): INTERFACE_TRANSACTION
@@ -117,7 +121,7 @@ class HudSomeIpBridge(
             }
             // Reconnect path: the gateway lost our registration when it died.
             registerCallback(service)
-            activeServiceId?.let { id ->
+            synchronized(activeServiceIds) { activeServiceIds.toList() }.forEach { id ->
                 val rc = transact(service, TX_START_SERVICE) { it.writeLong(id) }
                 Log.i(TAG, "re-startService(0x${id.toString(16)}) rc=$rc")
             }
@@ -234,7 +238,7 @@ class HudSomeIpBridge(
     }
 
     fun startService(serviceId: Long): Int {
-        activeServiceId = serviceId
+        synchronized(activeServiceIds) { activeServiceIds.add(serviceId) }
         val binder = serverBinder ?: return -1
         val rc = transact(binder, TX_START_SERVICE) { it.writeLong(serviceId) }
         Log.i(TAG, "startService(0x${serviceId.toString(16)}) rc=$rc")
@@ -242,7 +246,7 @@ class HudSomeIpBridge(
     }
 
     fun stopService(serviceId: Long): Int {
-        activeServiceId = null
+        synchronized(activeServiceIds) { activeServiceIds.remove(serviceId) }
         val binder = serverBinder ?: return -1
         val rc = transact(binder, TX_STOP_SERVICE) { it.writeLong(serviceId) }
         Log.i(TAG, "stopService(0x${serviceId.toString(16)}) rc=$rc")

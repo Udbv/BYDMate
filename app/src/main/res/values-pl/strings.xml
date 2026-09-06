@@ -1319,6 +1319,12 @@
     <string name="settings_hud_status_on">Przesyłanie na HUD aktywne</string>
     <string name="settings_hud_status_bind_failed">Nie udało się połączyć z magistralą SOME/IP</string>
     <string name="settings_hud_hint">Potrzebna wersja wyposażenia z wyświetlaczem przeziernym. Dane brane są z okna Yandex Nawigatora</string>
+    <string name="settings_hud_dialect_title">Typ HUD</string>
+    <string name="settings_hud_dialect_desc">Klasyczny: Atto 3, Seal, Sea Lion. AR-HUD: DiLink 150 (Tang L 2025). Auto według oprogramowania: %1$s</string>
+    <string name="settings_hud_dialect_auto">Auto</string>
+    <string name="settings_hud_dialect_classic">Klasyczny</string>
+    <string name="settings_hud_dialect_arhud">AR-HUD (Tang L)</string>
+    <string name="hud_eta_remaining_minutes">%1$d min</string>
     <string name="settings_display_card_export_dialog_title">Automatyczne zamykanie okna „nieoficjalny eksport”</string>
     <string name="settings_display_card_export_dialog_sub">Ostrzeżenie BYD o eksporcie zamyka się samo. %1$s</string>
     <string name="settings_export_dialog_hint">Okno „This car is not from official export” jest zamykane naciśnięciem jego jedynego przycisku przez usługę ułatwień dostępu: bez stałych współrzędnych, w dowolnym języku. Okno rozpoznawane po tytule vehicledialog</string>

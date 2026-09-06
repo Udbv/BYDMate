@@ -1,0 +1,46 @@
+== build
+TP1A.220624.014 release-keys
+DiLink150_7.0UI
+DiLink5.1
+IVI
+13
+33
+1
+== user
+0
+== packages
+package:com.example.amapservice
+package:cmgyunting.vehicleplayer.cnr
+package:com.byd.someipsystemservice
+package:com.waze
+package:com.byd.clusterdebug
+package:com.byd.vehicleconfig
+package:com.bydmate.app.waze
+package:com.byd.launchermap
+package:com.byd.cluster
+package:com.byd.vehicledialog
+package:com.ts.car.someip.service
+== someip service resolve
+Service Resolver Table:
+      com.ts.car.someip.SomeIpClientService:
+        c6def28 com.ts.car.someip.service/.manager.SomeIpClientService filter a9d3441
+          Action: "com.ts.car.someip.SomeIpClientService"
+      com.ts.car.someip.SomeIpServerService:
+        6213de6 com.ts.car.someip.service/.manager.SomeIpServerService filter 2e79f27
+          Action: "com.ts.car.someip.SomeIpServerService"
+    codePath=/system/app/SomeIpService
+    resourcePath=/system/app/SomeIpService
+    legacyNativeLibraryDir=/system/app/SomeIpService/lib
+    versionName=13
+    [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+== a11y
+     attributes:{id=0, touchExplorationEnabled=false, serviceHandlesDoubleTap=false, requestMultiFingerGestures=false, requestTwoFingerPassthrough=false, sendMotionEventsEnabledfalse, displayMagnificationEnabled=false, autoclickEnabled=fals
+     Bound services:{Service[label=.custom.StatusBarAccessibilityService, feedbackType[FEEDBACK_SPOKEN, FEEDBACK_HAPTIC, FEEDBACK_AUDIBLE, FEEDBACK_VISUAL, FEEDBACK_GENERIC, FEEDBACK_BRAILLE], capabilities=1, eventTypes=[TYPE_WINDOW_STATE_C
+     Enabled services:{{com.bydmate.app.waze/com.bydmate.app.cluster.SteeringWheelKeyService}, {com.android.systemui/com.android.systemui.custom.StatusBarAccessibilityService}, {com.sr.openbyd/com.sr.openbyd.services.BydAccessibilityService
+== windows vehicledialog
+== activities top
+      topResumedActivity=ActivityRecord{e150437 u0 com.byd.carsettings/.MainActivity} t18}
+    topResumedActivity=ActivityRecord{8673348 u0 com.byd.launchermap/com.byd.automap.meter.MeterActivity} t16}
+== bydmate waze prefs
+run-as: package not debuggable: com.bydmate.app.waze
+== bydmate logs

@@ -1,0 +1,1020 @@
+Activity Resolver Table:
+  Non-Data Actions:
+      android.intent.action.VIEW:
+        815998e com.byd.vehicledialog/.ui.DebugActivity filter 7cfd5af
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+
+Receiver Resolver Table:
+  Non-Data Actions:
+      android.intent.action.BOOT_COMPLETED:
+        af37dbc com.byd.vehicledialog/.ui.SensorPrivacyExpiryReminderManager$BootReceiver filter 5640145
+          Action: "android.intent.action.BOOT_COMPLETED"
+
+Domain verification status:
+
+Registered ContentProviders:
+  com.byd.vehicledialog/androidx.startup.InitializationProvider:
+    Provider{5c429c1 com.byd.vehicledialog/androidx.startup.InitializationProvider}
+
+ContentProvider Authorities:
+  [com.byd.vehicledialog.androidx-startup]:
+    Provider{5c429c1 com.byd.vehicledialog/androidx.startup.InitializationProvider}
+      applicationInfo=ApplicationInfo{b643d20 com.byd.vehicledialog}
+
+Key Set Manager:
+  [com.byd.vehicledialog]
+      Signing KeySets: 2
+
+Packages:
+  Package [com.byd.vehicledialog] (259ac46):
+    userId=1000
+    sharedUser=SharedUserSetting{e46d17f android.uid.system/1000}
+    pkg=Package{9150a7 com.byd.vehicledialog}
+    codePath=/system/priv-app/VehicleDialog
+    resourcePath=/system/priv-app/VehicleDialog
+    legacyNativeLibraryDir=/system/priv-app/VehicleDialog/lib
+    extractNativeLibs=false
+    primaryCpuAbi=arm64-v8a
+    secondaryCpuAbi=null
+    cpuAbiOverride=null
+    versionCode=10500003 minSdk=28 targetSdk=32
+    minExtensionVersions=[]
+    versionName=1.5.0.3.78f17f0
+    usesNonSdkApi=false
+    splits=[base]
+    apkSigningVersion=3
+    flags=[ SYSTEM HAS_CODE PERSISTENT ALLOW_CLEAR_USER_DATA ]
+    privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVILEGED PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    forceQueryable=false
+    dataDir=/data/user/0/com.byd.vehicledialog
+    supportsScreens=[small, medium, large, xlarge, resizeable, anyDensity]
+    timeStamp=2009-01-01 02:00:00
+    lastUpdateTime=2009-01-01 02:00:00
+    packageSource=0
+    signatures=PackageSignatures{c9c6954 version:3, signatures:[22216e4d], past signatures:[]}
+    installPermissionsFixed=false
+    pkgFlags=[ SYSTEM HAS_CODE PERSISTENT ALLOW_CLEAR_USER_DATA ]
+    requested permissions:
+      android.permission.BYDAUTO_BODYWORK_GET
+      android.permission.BYDAUTO_SETTING_SET
+      android.permission.BYDAUTO_SETTING_GET
+      android.permission.BYDAUTO_INSTRUMENT_GET
+      android.permission.BYDAUTO_INSTRUMENT_SET
+      android.permission.BYDAUTO_ADAS_GET
+      android.permission.BYDAUTO_ADAS_SET
+      android.permission.GEARBOX_GET_PERM
+      android.permission.BYDAUTO_AC_GET
+      android.permission.BYDAUTO_AC_SET
+      android.permission.BYDAUTO_CHARGING_GET
+      android.permission.BYDAUTO_CHARGING_SET
+      android.permission.BYDAUTO_ENERGY_GET
+      android.permission.BYDAUTO_ENGINE_SET
+      android.permission.BYDAUTO_PANORAMA_GET
+      android.permission.BYDAUTO_ENGINE_GET
+      android.permission.BYDAUTO_GEARBOX_GET
+      android.permission.BYDAUTO_PM2P5_GET
+      android.permission.BYDAUTO_STATISTIC_GET
+      android.permission.BYDAUTO_AUDIO_GET
+      android.permission.BYDAUTO_AUDIO_SET
+      android.permission.BYDACQUISITION_SEND_BUFFER
+      android.permission.BYDAUTO_REMINDER_GET
+      android.permission.BYDAUTO_RSE_GET
+      android.permission.BYDAUTO_BODYWORK_COMMON
+      android.permission.MANAGE_SENSOR_PRIVACY
+      android.permission.RECEIVE_BOOT_COMPLETED
+      android.permission.BLUETOOTH_CONNECT
+      android.permission.INTERACT_ACROSS_USERS_FULL
+      android.permission.OBSERVE_SENSOR_PRIVACY
+      android.permission.SYSTEM_ALERT_WINDOW
+      android.permission.SYSTEM_OVERLAY_WINDOW
+      android.permission.POST_NOTIFICATIONS
+    install permissions:
+      android.permission.REAL_GET_TASKS: granted=true
+      android.permission.ACCESS_CACHE_FILESYSTEM: granted=true
+      android.permission.DOWNLOAD_WITHOUT_NOTIFICATION: granted=true
+      android.permission.BIND_INCALL_SERVICE: granted=true
+      android.permission.BYDAUTO_PANORAMA_GET: granted=true
+      android.permission.BYDAUTO_PANORAMA_SET: granted=true
+      android.permission.WRITE_SETTINGS: granted=true
+      android.permission.BYDAUTO_LIGHT_GET: granted=true
+      android.permission.BYDAUTO_LIGHT_SET: granted=true
+      android.permission.BYD_SAFEKEY_COMMON: granted=true
+      com.hihonor.permission.HISIGHT_ACCESS: granted=true
+      android.permission.CONFIGURE_WIFI_DISPLAY: granted=true
+      android.permission.RECOVERY: granted=true
+      android.permission.DEVICE_ACC: granted=true
+      com.android.keychain.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.LOCATION_BYPASS: granted=true
+      android.permission.BIND_ATTENTION_SERVICE: granted=true
+      com.byd.SilentInstaller.FINISH_PERMISSION: granted=true
+      android.permission.BYDAUTO_POWER_GET: granted=true
+      android.permission.BYDAUTO_POWER_SET: granted=true
+      android.permission.BYDAUTO_ENGINE_GET: granted=true
+      android.permission.BYDAUTO_ENGINE_SET: granted=true
+      android.permission.USE_CREDENTIALS: granted=true
+      android.permission.BYDAUTO_ENERGY_GET: granted=true
+      android.permission.BYDAUTO_ENERGY_SET: granted=true
+      android.permission.MODIFY_AUDIO_SETTINGS: granted=true
+      com.byd.softwareservice.permission.VEHICLE_SOTA_MASTER: granted=true
+      android.permission.BYDAUTO_SAFETY_BELT_COMMON: granted=true
+      android.permission.MANAGE_EXTERNAL_STORAGE: granted=true
+      android.permission.BYDAUTO_OTA_GET: granted=true
+      android.permission.BYDAUTO_OTA_SET: granted=true
+      com.byd.appstore.SERVICE_PERMISSION: granted=true
+      android.permission.MODIFY_AUDIO_ROUTING: granted=true
+      android.permission.BYDAUTO_AUDIO_COMMON: granted=true
+      android.permission.BYDAUTO_BODYWORK_COMMON: granted=true
+      android.permission.BYDAUTO_SECURITY_GET: granted=true
+      android.permission.BYDAUTO_SECURITY_SET: granted=true
+      android.permission.INSTALL_LOCATION_PROVIDER: granted=true
+      com.byd.wallpaper.permission.READ_SETTINGS: granted=true
+      com.byd.autoiot.service.BROADCAST_PERMISSION: granted=true
+      androidx.appcompat.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.SYSTEM_ALERT_WINDOW: granted=true
+      android.permission.BYDAUTO_AC_COMMON: granted=true
+      android.permission.BROADCAST_PHONE_ACCOUNT_REGISTRATION: granted=true
+      android.permission.BYDAUTO_TIME_COMMON: granted=true
+      android.permission.GET_TOP_ACTIVITY_INFO: granted=true
+      android.permission.BYDAUTO_YUN_GET: granted=true
+      com.android.launcher3.home.permission.WRITE_HOME: granted=true
+      android.permission.CLEAR_APP_USER_DATA: granted=true
+      com.huawei.permission.NEARBY_OPERATOR_FUNCTION: granted=true
+      android.permission.MONITOR_INPUT: granted=true
+      android.permission.BROADCAST_CALLLOG_INFO: granted=true
+      android.permission.INSTALL_PACKAGES: granted=true
+      android.permission.RECV_CLEAN_APN2_DATA: granted=true
+      android.permission.BYDAUTO_VIDEO_GET: granted=true
+      android.permission.BYDAUTO_VIDEO_SET: granted=true
+      android.permission.SHUTDOWN: granted=true
+      android.permission.BYDAUTO_GEARBOX_GET: granted=true
+      android.permission.BYDAUTO_GEARBOX_SET: granted=true
+      com.byd.auto.screensaver.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BYDAUTO_CPUTEMPRATURE_SET: granted=true
+      android.permission.BIND_ROTATION_RESOLVER_SERVICE: granted=true
+      com.byd.card.permission.READ_CARD: granted=true
+      androidx.constraintlayout.widget.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.NETWORK_SETTINGS: granted=true
+      android.permission.CHANGE_OVERLAY_PACKAGES: granted=true
+      com.google.android.material.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BYDAUTO_PM2P5_COMMON: granted=true
+      androidx.core.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BYDAUTO_CHARGING_GET: granted=true
+      android.permission.BYDAUTO_CHARGING_SET: granted=true
+      android.permission.CALL_PRIVILEGED: granted=true
+      com.byd.permission.carsettings.READ_CARSETTINGS_PROVIDER: granted=true
+      android.permission.CHANGE_NETWORK_STATE: granted=true
+      android.permission.MASTER_CLEAR: granted=true
+      android.permission.FOREGROUND_SERVICE: granted=true
+      android.permission.BYDAUTO_SPECIAL_GET: granted=true
+      android.permission.BYDAUTO_SPECIAL_SET: granted=true
+      com.byd.wallpaperhome.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.MANAGE_ACTIVITY_TASKS: granted=true
+      android.permission.RECEIVE_BOOT_COMPLETED: granted=true
+      android.permission.MANAGE_ROLE_HOLDERS: granted=true
+      com.byd.server.adasagent.permission.VOICE_BROADCAST: granted=true
+      android.permission.DEVICE_POWER: granted=true
+      android.permission.SET_TIME_ZONE: granted=true
+      android.permission.REMOVE_TASKS: granted=true
+      android.permission.BYDAUTO_CHARGING_COMMON: granted=true
+      android.permission.EXPAND_STATUS_BAR: granted=true
+      dilink.permission.PRIVACY_MODE_STATE_READ: granted=true
+      android.permission.BYDAUTO_TYRE_COMMON: granted=true
+      android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS: granted=true
+      com.byd.cmgamecenter.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.READ_PROFILE: granted=true
+      android.permission.BYDACQUISITION_SEND_EVENT_BUFFER: granted=true
+      android.permission.BYDAUTO_INSTRUMENT_COMMON: granted=true
+      com.multimodal.bydai.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BLUETOOTH: granted=true
+      android.permission.BYDAUTO_AC_GET: granted=true
+      android.permission.BYDAUTO_AC_SET: granted=true
+      android.permission.CHANGE_WIFI_MULTICAST_STATE: granted=true
+      android.permission.BYDAUTO_ENERGY_COMMON: granted=true
+      android.permission.WRITE_MEDIA_STORAGE: granted=true
+      android.permission.WRITE_BLOCKED_NUMBERS: granted=true
+      android.permission.GET_TASKS: granted=true
+      android.permission.BYDAUTO_SAFETY_BELT_GET: granted=true
+      android.permission.BYDAUTO_SAFETY_BELT_SET: granted=true
+      android.permission.INTERNET: granted=true
+      android.permission.BYDAUTO_GB_GET: granted=true
+      android.permission.REORDER_TASKS: granted=true
+      com.byd.yqzx.vehiclesystem.shared.vehicle.data: granted=true
+      android.permission.BYDACQUISITION_SEND_BUFFER: granted=true
+      android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION: granted=true
+      android.permission.BLUETOOTH_ADMIN: granted=true
+      android.permission.CONTROL_VPN: granted=true
+      android.permission.BYDAUTO_TIME_GET: granted=true
+      android.permission.BYDAUTO_TIME_SET: granted=true
+      android.permission.UPDATE_DEVICE_STATS: granted=true
+      android.permission.BLUETOOTH_STACK: granted=true
+      android.permission.BLUETOOTH_MAP: granted=true
+      android.permission.READ_PRECISE_PHONE_STATE: granted=true
+      com.codeaurora.permission.SUBSIDYLOCK: granted=true
+      android.permission.READ_PROJECTION_STATE: granted=true
+      android.permission.BIND_CONNECTION_SERVICE: granted=true
+      com.byd.autovoice.permission.thirdapp: granted=true
+      com.byd.customkey.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.ACCESS_INSTANT_APPS: granted=true
+      android.permission.BYDAUTO_SETTING_GET: granted=true
+      android.permission.BYDAUTO_SETTING_SET: granted=true
+      android.permission.CONTROL_REMOTE_APP_TRANSITION_ANIMATIONS: granted=true
+      android.permission.GET_PACKAGE_SIZE: granted=true
+      com.byd.softwareactivation.permission.VEHICLE_SOTA_MASTER: granted=true
+      android.permission.ACCESS_CONTEXT_HUB: granted=true
+      android.permission.INTERACT_ACROSS_USERS_FULL: granted=true
+      android.permission.BYDAUTO_MULTIMEDIA_COMMON: granted=true
+      android.permission.STOP_APP_SWITCHES: granted=true
+      com.byd.mediacenter.STARTSERVER: granted=true
+      android.permission.PACKAGE_USAGE_STATS: granted=true
+      android.permission.BYDAUTO_PANORAMA_COMMON: granted=true
+      android.permission.WRITE_PROFILE: granted=true
+      android.permission.MOUNT_UNMOUNT_FILESYSTEMS: granted=true
+      android.permission.TETHER_PRIVILEGED: granted=true
+      android.permission.WRITE_SECURE_SETTINGS: granted=true
+      android.permission.BIND_NOTIFICATION_LISTENER_SERVICE: granted=true
+      android.permission.BYDAUTO_SPEED_GET: granted=true
+      android.permission.BYDAUTO_SPEED_SET: granted=true
+      androidx.recyclerview.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.SET_ACTIVITY_WATCHER: granted=true
+      android.permission.READ_BLOCKED_NUMBERS: granted=true
+      android.permission.STATUS_BAR_SERVICE: granted=true
+      com.byd.autoiot.service.storage.AutoiotProvider.READWRITE: granted=true
+      android.permission.USE_FULL_SCREEN_INTENT: granted=true
+      com.byd.otaupdate.permission.VEHICLE_OTA_UPDATE: granted=true
+      android.permission.ACCESS_LOCATION_EXTRA_COMMANDS: granted=true
+      android.permission.READ_PRIVILEGED_PHONE_STATE: granted=true
+      android.permission.TRIGGER_TIME_ZONE_RULES_CHECK: granted=true
+      android.permission.ACCESS_DOWNLOAD_MANAGER: granted=true
+      com.idd.hidps.permission.MODULE_RECEIVER: granted=true
+      android.permission.BYDAUTO_SETTING_COMMON: granted=true
+      android.permission.NETWORK_FACTORY: granted=true
+      android.permission.BLUETOOTH_PRIVILEGED: granted=true
+      android.permission.NETWORK_STACK: granted=true
+      android.permission.OBSERVE_SENSOR_PRIVACY: granted=true
+      android.permission.CONTROL_DISPLAY_BRIGHTNESS: granted=true
+      android.permission.SUBSTITUTE_NOTIFICATION_APP_NAME: granted=true
+      android.intent.category.MASTER_CLEAR.permission.C2D_MESSAGE: granted=true
+      android.permission.BIND_JOB_SERVICE: granted=true
+      android.permission.OBSERVE_ROLE_HOLDERS: granted=true
+      android.permission.CONFIRM_FULL_BACKUP: granted=true
+      android.permission.CAPTURE_SECURE_VIDEO_OUTPUT: granted=true
+      android.permission.SET_TIME: granted=true
+      android.permission.BYDAUTO_RADAR_COMMON: granted=true
+      com.android.SEND_DES_RESULT: granted=true
+      android.permission.BYDAUTO_ADAS_GET: granted=true
+      android.permission.BYDAUTO_ADAS_SET: granted=true
+      android.permission.CHANGE_WIFI_STATE: granted=true
+      android.permission.BYDAUTO_DOOR_LOCK_GET: granted=true
+      android.permission.BYDAUTO_DOOR_LOCK_SET: granted=true
+      android.permission.GPS_ALTITUDE_CHANGE: granted=true
+      android.permission.BYDAUTO_RADAR_GET: granted=true
+      android.permission.BYDAUTO_RADAR_SET: granted=true
+      android.permission.MANAGE_USERS: granted=true
+      android.permission.SET_PREFERRED_APPLICATIONS: granted=true
+      android.permission.DELETE_CACHE_FILES: granted=true
+      android.permission.ACCESS_NETWORK_STATE: granted=true
+      com.byd.screensaver.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.DISABLE_KEYGUARD: granted=true
+      android.permission.BYDAUTO_TEST_GET: granted=true
+      android.permission.BYDAUTO_TEST_SET: granted=true
+      android.permission.CHANGE_CONFIGURATION: granted=true
+      android.permission.BYDAUTO_VERSION_GET: granted=true
+      android.permission.BYDAUTO_VERSION_SET: granted=true
+      android.permission.LOCAL_MAC_ADDRESS: granted=true
+      android.permission.READ_LOGS: granted=true
+      android.permission.INTERACT_ACROSS_USERS: granted=true
+      android.permission.SET_WALLPAPER: granted=true
+      android.permission.BYDAUTO_STATISTIC_GET: granted=true
+      android.permission.BYDAUTO_STATISTIC_SET: granted=true
+      com.byd.appServer.PROVIDER: granted=true
+      android.permission.BYDAUTO_RADIO_GET: granted=true
+      android.permission.BYDAUTO_RADIO_SET: granted=true
+      android.permission.START_XCALL: granted=true
+      android.permission.BROADCAST_CLOSE_SYSTEM_DIALOGS: granted=true
+      android.permission.READ_NETWORK_USAGE_HISTORY: granted=true
+      com.byd.synclink.permissions.MAP_RELAY: granted=true
+      android.permission.BYDAUTO_PM2P5_GET: granted=true
+      android.permission.KILL_BACKGROUND_PROCESSES: granted=true
+      com.android.phone.permission.ACCESS_LAST_KNOWN_CELL_ID: granted=true
+      android.permission.MANAGE_SENSOR_PRIVACY: granted=true
+      android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS: granted=true
+      android.permission.BYDAUTO_RSE_GET: granted=true
+      android.permission.BYDAUTO_RSE_SET: granted=true
+      android.permission.MANAGE_OWN_CALLS: granted=true
+      com.byd.appstore.permission.BYDSTORE_INNER_INSTALL: granted=true
+      com.byd.wallpaper.permission.WRITE_SETTINGS: granted=true
+      com.byd.mediacenter.READ_PROVIDER: granted=true
+      android.permission.REBOOT: granted=true
+      android.permission.MOUNT_FORMAT_FILESYSTEMS: granted=true
+      com.byd.wallpaperhome.fse.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.SCHEDULE_EXACT_ALARM: granted=true
+      android.permission.REQUEST_DELETE_PACKAGES: granted=true
+      android.permission.RECV_CLEAN_XCALL_DATA: granted=true
+      com.hihonor.hwddmp.service.permission.ALARM_RECEIVER_PERMISSION_SELF_FINDING: granted=true
+      com.byd.permission.ACCOUNT_SERVICE_LINK: granted=true
+      android.permission.TEST_MANAGE_ROLLBACKS: granted=true
+      android.permission.MANAGE_NETWORK_POLICY: granted=true
+      android.permission.BYDAUTO_STATISTIC_COMMON: granted=true
+      android.permission.MANAGE_NOTIFICATION_LISTENERS: granted=true
+      android.permission.BYDAUTO_LIGHT_COMMON: granted=true
+      android.permission.BYDAUTO_MOTOR_GET: granted=true
+      android.permission.BYDAUTO_MOTOR_SET: granted=true
+      android.permission.SEND_SHOW_SUSPENDED_APP_DETAILS: granted=true
+      android.permission.CONNECTIVITY_INTERNAL: granted=true
+      android.permission.READ_SYNC_SETTINGS: granted=true
+      com.byd.mirror.permission.MIRROR_CLIENT_SERVICE: granted=true
+      android.permission.SEND_CLEAN_XCALL_DATA: granted=true
+      android.permission.LOADER_USAGE_STATS: granted=true
+      android.permission.OVERRIDE_WIFI_CONFIG: granted=true
+      android.permission.FORCE_STOP_PACKAGES: granted=true
+      android.permission.HIDE_NON_SYSTEM_OVERLAY_WINDOWS: granted=true
+      android.permission.CAPTURE_VIDEO_OUTPUT: granted=true
+      android.permission.HANDLE_CALL_INTENT: granted=true
+      android.permission.MEDIA_RESOURCE_OVERRIDE_PID: granted=true
+      com.android.bluetoothcall.permission.READ_CONTENTPROVIDER: granted=true
+      android.permission.VIBRATE: granted=true
+      com.android.certinstaller.INSTALL_AS_USER: granted=true
+      com.byd.card.permission.WRITE_CARD: granted=true
+      android.permission.BYDAUTO_INSTRUMENT_GET: granted=true
+      android.permission.BYDAUTO_INSTRUMENT_SET: granted=true
+      android.permission.HANDLE_CAR_MODE_CHANGES: granted=true
+      com.huawei.permission.HISIGHT_ACCESS: granted=true
+      android.permission.INTERACT_ACROSS_PROFILES: granted=true
+      androidx.legacy.v4.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BYDAUTO_ENGINE_COMMON: granted=true
+      com.byd.scenemodes.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.SEND_CLEAN_APN2_DATA: granted=true
+      android.permission.ACCESS_LOG_SERVICE: granted=true
+      android.permission.BYDAUTO_DOOR_LOCK_COMMON: granted=true
+      android.permission.MODIFY_NETWORK_ACCOUNTING: granted=true
+      android.permission.TRAFFIC_ICALL_NOTIFY: granted=true
+      com.android.launcher3.home.permission.READ_HOME: granted=true
+      android.permission.ACCESS_WIFI_STATE: granted=true
+      android.permission.BYDDIAGNOSTIC_SEND_BUFFER: granted=true
+      com.huawei.hiviewlite.permission.USE_SERVICE: granted=true
+      com.byd.spotinspection.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BYDAUTO_SPEED_COMMON: granted=true
+      com.android.launcher3.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BYDAUTO_AUDIO_GET: granted=true
+      android.permission.BYDAUTO_AUDIO_SET: granted=true
+      android.permission.BYDAUTO_LOCATION_GET: granted=true
+      android.permission.BYDAUTO_LOCATION_SET: granted=true
+      android.permission.REQUEST_INSTALL_PACKAGES: granted=true
+      android.permission.MODIFY_PHONE_STATE: granted=true
+      android.permission.BYDAUTO_REMINDER_GET: granted=true
+      android.permission.BYDAUTO_REMINDER_SET: granted=true
+      android.permission.STATUS_BAR: granted=true
+      android.permission.QUERY_ALL_PACKAGES: granted=true
+      android.permission.BYDAUTO_RESCUE_GET: granted=true
+      android.permission.BYDAUTO_RESCUE_SET: granted=true
+      android.permission.READ_DEVICE_CONFIG: granted=true
+      android.permission.BYDAUTO_BODYWORK_GET: granted=true
+      android.permission.BYDAUTO_BODYWORK_SET: granted=true
+      android.permission.LOCATION_HARDWARE: granted=true
+      android.permission.BYDAUTO_REAR_VIEW_MIRROR_GET: granted=true
+      android.permission.BYDAUTO_REAR_VIEW_MIRROR_SET: granted=true
+      android.permission.UNLIMITED_TOASTS: granted=true
+      com.byd.permission.carsettings.WRITE_CARSETTINGS_PROVIDER: granted=true
+      android.permission.BYDAUTO_MULTIMEDIA_GET: granted=true
+      com.byd.updated.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.WAKE_LOCK: granted=true
+      android.permission.INJECT_EVENTS: granted=true
+      android.permission.BIND_NETWORK_RECOMMENDATION_SERVICE: granted=true
+      android.permission.UPDATE_APP_OPS_STATS: granted=true
+      android.permission.BYDAUTO_GEARBOX_COMMON: granted=true
+      android.permission.MEDIA_CONTENT_CONTROL: granted=true
+      android.permission.DELETE_PACKAGES: granted=true
+    User 0: ceDataInode=1305 installed=true hidden=false suspended=false distractionFlags=0 stopped=false notLaunched=false enabled=0 instant=false virtual=false
+      installReason=0
+      firstInstallTime=2009-01-01 02:00:00
+      uninstallReason=0
+
+Queries:
+  system apps queryable: false
+  queries via forceQueryable:
+  forceQueryable:
+    [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+  queries via package name:
+  queries via component:
+    [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]:
+      com.byd.auto.permission
+      com.android.cts.priv.ctsshim
+      com.byd.iotmanager
+      com.android.cts.ctsshim
+      com.alipay.arome.app
+      cmgyunting.vehicleplayer.cnr
+      com.byd.videoplay.youku
+      com.byd.videoplay
+      com.byd.car.icebox
+      com.apkpure.aegon
+      com.google.android.inputmethod.latin
+      com.waze
+      com.iternio.abrpapp
+      com.google.android.googlequicksearchbox
+      com.autonavi.minimap
+      com.google.android.apps.maps
+      com.kramskyi.byd_ev_pro
+      org.mozilla.firefox
+      cloud.speedcn.speedcnx
+      dev.abodnya.evua
+      com.sr.openbyd
+      com.microsoft.office.outlook
+      com.spotify.music
+      com.UCMobile.intl
+      com.bydmate.app.waze
+      com.huawei.hwid
+      com.revanced.net.revancedmanager
+      app.morphe.android.apps.youtube.music
+      app.revanced.android.gms
+      app.morphe.android.youtube
+  queryable via interaction:
+    User 0:
+      [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]:
+        [com.mediatek.ims,com.byd.vsimservice,com.xinsheng.videntityserver,com.android.ons,com.android.phone,com.android.providers.telephony,com.mediatek.telephony]
+        com.android.bluetooth
+        [com.android.networkstack,com.android.networkstack.tethering]
+        [com.android.providers.downloads.ui,com.android.providers.downloads,com.android.mtp]
+        [com.android.providers.userdictionary,com.android.providers.contacts]
+        com.android.providers.calendar
+        com.android.externalstorage
+        com.android.statementservice
+        com.byd.cluster
+        com.android.permissioncontroller
+        com.byd.server.adasagent
+        com.baidu.map.location
+        com.byd.iotmanager
+        com.byd.nfvc
+        com.byd.pushservice
+        com.byd.bacd
+        com.alipay.arome.app
+        com.byd.safeservice
+        com.byd.etc
+        cmgyunting.vehicleplayer.cnr
+        com.byd.yunnian.service
+        com.byd.launchermap
+        com.byd.videoplay.youku
+        com.byd.bydbootguide
+        com.byd.auto_photo
+        com.byd.mediacenter
+        com.android.carrierdefaultapp
+        com.byd.auto_camera
+        com.byd.cameraautostudy
+        com.byd.diLinkAccount
+        com.byd.videoplay
+        com.byd.droneclient
+        com.byd.sr
+        [com.android.systemui,com.byd.recents]
+        com.android.traceur
+        com.android.webview
+        com.android.remoteprovisioner
+        com.android.providers.media.module
+        android.ext.services
+        com.byd.maphelper
+        com.byd.weatherdata
+        com.byd.multipletheme
+        com.google.android.inputmethod.latin
+        com.waze
+        com.google.android.googlequicksearchbox
+        com.google.android.apps.maps
+        com.kramskyi.byd_ev_pro
+        com.sr.openbyd
+        com.spotify.music
+        com.bydmate.app.waze
+        com.huawei.hwid
+        app.morphe.android.apps.youtube.music
+        app.revanced.android.gms
+        app.morphe.android.youtube
+      com.android.bluetooth:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      [com.android.networkstack,com.android.networkstack.tethering]:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      [com.android.providers.downloads.ui,com.android.providers.downloads,com.android.mtp]:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      [com.android.providers.userdictionary,com.android.providers.contacts]:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.android.providers.calendar:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.android.statementservice:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.android.permissioncontroller:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.baidu.map.location:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.mediatek.mtkgnssdiagnosis:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.byd.messagecenter:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.byd.etc:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      cmgyunting.vehicleplayer.cnr:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.byd.launchermap:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.byd.bydbootguide:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.byd.mediacenter:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.byd.caraudioaosp:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.byd.diLinkAccount:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.byd.car.icebox:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.byd.sr:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      [com.android.systemui,com.byd.recents]:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.android.remoteprovisioner:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.android.providers.media.module:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      android.ext.services:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.byd.multipletheme:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.google.android.inputmethod.latin:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.waze:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.google.android.googlequicksearchbox:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.google.android.apps.maps:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.sr.openbyd:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.spotify.music:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.bydmate.app.waze:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      com.huawei.hwid:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      app.morphe.android.apps.youtube.music:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+      app.morphe.android.youtube:
+        [com.byd.autovoice,com.byd.logswitch,com.android.launcher3,com.byd.productlineota,com.byd.clientconfigurationservice,com.idd.hidps,com.android.wallpaperbackup,com.byd.cpdwarn,com.byd.accountservice,com.byd.vehicledialog,com.byd.xcall,com.byd.ambientlight,com.byd.sdcardservice,com.byd.CanDataCollect,com.byd.byddatachecktool,com.byd.desservice,com.byd.smarttravel,com.byd.usertutorial,com.byd.cmgamecenter,com.multimodal.bydai,com.byd.otaupdate2,com.byd.diagnosticinfo,com.byd.acquisitioncontrol,com.android.location.fused,com.byd.networktetheringmanager,com.byd.upgradeserver,com.byd.crosscontrol,com.byd.wfd.client,com.byd.widget.mediacenter,com.xdja.containerservice,com.byd.phonelink,com.android.rsecenter,com.byd.appserver,com.byd.auto.screensaver,com.byd.wallpaperhome,com.mediatek,com.byd.trafficmonitor,com.byd.gesture.global,com.byd.providers.carsettings,com.android.server.telecom,com.byd.byddevelopmenttools,com.byd.rsemonitor.ivi,com.byd.cameramanager,com.byd.cipService,com.byd.wallpaperhome.fse,com.byd.eventcenter,com.huawei.nearby,com.byd.dicore,com.byd.providers.appstartup,com.android.keychain,com.byd.vehicleconfig,com.byd.mediapreview,com.byd.someipsystemservice,com.byd.autoiot.service,com.byd.acservice,com.byd.avc,com.ts.car.someip.service,com.byd.mediacontroller,com.byd.dishare,com.byd.wirelesstools,com.byd.resmgr,com.byd.bluetoothleservice,com.byd.bluetoothprovider,com.byd.autovoice.engine,com.byd.bydcamera,com.example.amapservice,com.byd.authservice,com.byd.softwareactivation,com.byd.btlogtool,com.byd.gpsinfo,com.android.providers.settings,com.byd.camera.remotectrl,com.byd.screensaver,com.mediatek.location.lppe.main,com.byd.spotinspection,com.byd.miniprogram,com.byd.minikaraoke,com.byd.newotgupdate,com.byd.idclogcollect,com.byd.musicwidget,com.byd.bluetoothcall,com.byd.checkandkill,com.byd.cota,com.byd.silentinstaller,com.byd.mediatesttool,com.byd.btsetting,com.byd.synclink,com.byd.pixellight,com.byd.oms,com.byd.dipilot.dms,com.byd.otgupdate,com.byd.WifiHotspotConnect,com.byd.cdr,com.byd.customkey,com.byd.car.server,com.byd.updated,com.android.voicereminder,com.byd.wlan,com.huawei.dmsdpdevice,com.byd.providers.carstatus,com.byd.bydlogtool,com.byd.carsettings,com.byd.customserver,android,com.byd.otaupdate,com.byd.autovoice.tts,com.wapi.wapicertmanager,com.byd.CloudServiceApp,com.byd.sentrymode,com.byd.scenemodes,com.byd.mycar]
+  queryable via uses-library:
+
+Shared users:
+  SharedUser [android.uid.system] (e46d17f):
+    userId=1000
+    Packages
+      PackageSetting{f4382 com.byd.autovoice/1000}
+      PackageSetting{3ec2e6 com.byd.logswitch/1000}
+      PackageSetting{afdbf4 com.android.launcher3/1000}
+      PackageSetting{1015e88 com.byd.productlineota/1000}
+      PackageSetting{10bb2f6 com.byd.clientconfigurationservice/1000}
+      PackageSetting{1181139 com.idd.hidps/1000}
+      PackageSetting{1c15ccc com.android.wallpaperbackup/1000}
+      PackageSetting{206b58c com.byd.cpdwarn/1000}
+      PackageSetting{23219eb com.byd.accountservice/1000}
+      PackageSetting{259ac46 com.byd.vehicledialog/1000}
+      PackageSetting{283312c com.byd.xcall/1000}
+      PackageSetting{284ebe7 com.byd.ambientlight/1000}
+      PackageSetting{29bf8de com.byd.sdcardservice/1000}
+      PackageSetting{29d2f1d com.byd.CanDataCollect/1000}
+      PackageSetting{2a42772 com.byd.byddatachecktool/1000}
+      PackageSetting{2c656f7 com.byd.desservice/1000}
+      PackageSetting{2e3e9ec com.byd.smarttravel/1000}
+      PackageSetting{2f6c500 com.byd.usertutorial/1000}
+      PackageSetting{2f971c0 com.byd.cmgamecenter/1000}
+      PackageSetting{30b76a0 com.multimodal.bydai/1000}
+      PackageSetting{30ed840 com.byd.otaupdate2/1000}
+      PackageSetting{34b3d5c com.byd.diagnosticinfo/1000}
+      PackageSetting{3545c3b com.byd.acquisitioncontrol/1000}
+      PackageSetting{4322f73 com.android.location.fused/1000}
+      PackageSetting{47c941b com.byd.networktetheringmanager/1000}
+      PackageSetting{47f282e com.byd.upgradeserver/1000}
+      PackageSetting{4b5c379 com.byd.crosscontrol/1000}
+      PackageSetting{4d2dc7d com.byd.wfd.client/1000}
+      PackageSetting{4d46353 com.byd.widget.mediacenter/1000}
+      PackageSetting{4e35865 com.xdja.containerservice/1000}
+      PackageSetting{5461e35 com.byd.phonelink/1000}
+      PackageSetting{55c86ff com.android.rsecenter/1000}
+      PackageSetting{57a25da com.byd.appserver/1000}
+      PackageSetting{5883418 com.byd.auto.screensaver/1000}
+      PackageSetting{59f0301 com.byd.wallpaperhome/1000}
+      PackageSetting{5aec0e8 com.mediatek/1000}
+      PackageSetting{60d79b8 com.byd.trafficmonitor/1000}
+      PackageSetting{6193e3e com.byd.gesture.global/1000}
+      PackageSetting{62f9e78 com.byd.providers.carsettings/1000}
+      PackageSetting{64a9cd7 com.android.server.telecom/1000}
+      PackageSetting{67f6b93 com.byd.byddevelopmenttools/1000}
+      PackageSetting{6cfde07 com.byd.rsemonitor.ivi/1000}
+      PackageSetting{6fc7964 com.byd.cameramanager/1000}
+      PackageSetting{7380f06 com.byd.cipService/1000}
+      PackageSetting{794e37e com.byd.wallpaperhome.fse/1000}
+      PackageSetting{80cc743 com.byd.eventcenter/1000}
+      PackageSetting{815b7c3 com.huawei.nearby/1000}
+      PackageSetting{85e3bfb com.byd.dicore/1000}
+      PackageSetting{87153db com.byd.providers.appstartup/1000}
+      PackageSetting{87446d2 com.android.keychain/1000}
+      PackageSetting{877ce3d com.byd.vehicleconfig/1000}
+      PackageSetting{8bb90fc com.byd.mediapreview/1000}
+      PackageSetting{8ddc0ad com.byd.someipsystemservice/1000}
+      PackageSetting{8e22ace com.byd.autoiot.service/1000}
+      PackageSetting{91c5d5d com.byd.acservice/1000}
+      PackageSetting{92970df com.byd.avc/1000}
+      PackageSetting{9c2baa9 com.ts.car.someip.service/1000}
+      PackageSetting{9c56e30 com.byd.mediacontroller/1000}
+      PackageSetting{9c67259 com.byd.dishare/1000}
+      PackageSetting{9e3c490 com.byd.wirelesstools/1000}
+      PackageSetting{9edefe2 com.byd.resmgr/1000}
+      PackageSetting{9f64fcf com.byd.bluetoothleservice/1000}
+      PackageSetting{9fcd348 com.byd.bluetoothprovider/1000}
+      PackageSetting{a1ae648 com.byd.autovoice.engine/1000}
+      PackageSetting{a2bfe1e com.byd.bydcamera/1000}
+      PackageSetting{a2ddbbb com.example.amapservice/1000}
+      PackageSetting{aa845b6 com.byd.authservice/1000}
+      PackageSetting{aaae9cb com.byd.softwareactivation/1000}
+      PackageSetting{aab2def com.byd.btlogtool/1000}
+      PackageSetting{ab615e1 com.byd.gpsinfo/1000}
+      PackageSetting{b231391 com.android.providers.settings/1000}
+      PackageSetting{b62db15 com.byd.camera.remotectrl/1000}
+      PackageSetting{b64c5a6 com.byd.screensaver/1000}
+      PackageSetting{b8948be com.mediatek.location.lppe.main/1000}
+      PackageSetting{baa5f83 com.byd.spotinspection/1000}
+      PackageSetting{bb80882 com.byd.miniprogram/1000}
+      PackageSetting{bf0cabf com.byd.minikaraoke/1000}
+      PackageSetting{c079632 com.byd.newotgupdate/1000}
+      PackageSetting{c1669c7 com.byd.idclogcollect/1000}
+      PackageSetting{c6ac4ea com.byd.musicwidget/1000}
+      PackageSetting{c6b0742 com.byd.bluetoothcall/1000}
+      PackageSetting{c91db34 com.byd.checkandkill/1000}
+      PackageSetting{cd02904 com.byd.cota/1000}
+      PackageSetting{cd9993a com.byd.silentinstaller/1000}
+      PackageSetting{cf1b385 com.byd.mediatesttool/1000}
+      PackageSetting{d0d198d com.byd.btsetting/1000}
+      PackageSetting{d17b98a com.byd.synclink/1000}
+      PackageSetting{d26ba0b com.byd.pixellight/1000}
+      PackageSetting{d5f3951 com.byd.oms/1000}
+      PackageSetting{d6dae71 com.byd.dipilot.dms/1000}
+      PackageSetting{d92e021 com.byd.otgupdate/1000}
+      PackageSetting{db9c7d0 com.byd.WifiHotspotConnect/1000}
+      PackageSetting{dd457cd com.byd.cdr/1000}
+      PackageSetting{ddba3c9 com.byd.customkey/1000}
+      PackageSetting{de2a019 com.byd.car.server/1000}
+      PackageSetting{e0d32ca com.byd.updated/1000}
+      PackageSetting{e230394 com.android.voicereminder/1000}
+      PackageSetting{e38deed com.byd.wlan/1000}
+      PackageSetting{e59ad41 com.huawei.dmsdpdevice/1000}
+      PackageSetting{e7424d5 com.byd.providers.carstatus/1000}
+      PackageSetting{eb61592 com.byd.bydlogtool/1000}
+      PackageSetting{ed879c4 com.byd.carsettings/1000}
+      PackageSetting{edf87f5 com.byd.customserver/1000}
+      PackageSetting{f15de2a android/1000}
+      PackageSetting{f3fe456 com.byd.otaupdate/1000}
+      PackageSetting{f3ff0af com.byd.autovoice.tts/1000}
+      PackageSetting{f5e1ef9 com.wapi.wapicertmanager/1000}
+      PackageSetting{f8253a3 com.byd.CloudServiceApp/1000}
+      PackageSetting{fa752b7 com.byd.sentrymode/1000}
+      PackageSetting{fa76f58 com.byd.scenemodes/1000}
+      PackageSetting{fe8c360 com.byd.mycar/1000}
+    install permissions:
+      android.permission.REAL_GET_TASKS: granted=true
+      android.permission.ACCESS_CACHE_FILESYSTEM: granted=true
+      android.permission.DOWNLOAD_WITHOUT_NOTIFICATION: granted=true
+      android.permission.BIND_INCALL_SERVICE: granted=true
+      android.permission.BYDAUTO_PANORAMA_GET: granted=true
+      android.permission.BYDAUTO_PANORAMA_SET: granted=true
+      android.permission.WRITE_SETTINGS: granted=true
+      android.permission.BYDAUTO_LIGHT_GET: granted=true
+      android.permission.BYDAUTO_LIGHT_SET: granted=true
+      android.permission.BYD_SAFEKEY_COMMON: granted=true
+      com.hihonor.permission.HISIGHT_ACCESS: granted=true
+      android.permission.CONFIGURE_WIFI_DISPLAY: granted=true
+      android.permission.RECOVERY: granted=true
+      android.permission.DEVICE_ACC: granted=true
+      com.android.keychain.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.LOCATION_BYPASS: granted=true
+      android.permission.BIND_ATTENTION_SERVICE: granted=true
+      com.byd.SilentInstaller.FINISH_PERMISSION: granted=true
+      android.permission.BYDAUTO_POWER_GET: granted=true
+      android.permission.BYDAUTO_POWER_SET: granted=true
+      android.permission.BYDAUTO_ENGINE_GET: granted=true
+      android.permission.BYDAUTO_ENGINE_SET: granted=true
+      android.permission.USE_CREDENTIALS: granted=true
+      android.permission.BYDAUTO_ENERGY_GET: granted=true
+      android.permission.BYDAUTO_ENERGY_SET: granted=true
+      android.permission.MODIFY_AUDIO_SETTINGS: granted=true
+      com.byd.softwareservice.permission.VEHICLE_SOTA_MASTER: granted=true
+      android.permission.BYDAUTO_SAFETY_BELT_COMMON: granted=true
+      android.permission.MANAGE_EXTERNAL_STORAGE: granted=true
+      android.permission.BYDAUTO_OTA_GET: granted=true
+      android.permission.BYDAUTO_OTA_SET: granted=true
+      com.byd.appstore.SERVICE_PERMISSION: granted=true
+      android.permission.MODIFY_AUDIO_ROUTING: granted=true
+      android.permission.BYDAUTO_AUDIO_COMMON: granted=true
+      android.permission.BYDAUTO_BODYWORK_COMMON: granted=true
+      android.permission.BYDAUTO_SECURITY_GET: granted=true
+      android.permission.BYDAUTO_SECURITY_SET: granted=true
+      android.permission.INSTALL_LOCATION_PROVIDER: granted=true
+      com.byd.wallpaper.permission.READ_SETTINGS: granted=true
+      com.byd.autoiot.service.BROADCAST_PERMISSION: granted=true
+      androidx.appcompat.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.SYSTEM_ALERT_WINDOW: granted=true
+      android.permission.BYDAUTO_AC_COMMON: granted=true
+      android.permission.BROADCAST_PHONE_ACCOUNT_REGISTRATION: granted=true
+      android.permission.BYDAUTO_TIME_COMMON: granted=true
+      android.permission.GET_TOP_ACTIVITY_INFO: granted=true
+      android.permission.BYDAUTO_YUN_GET: granted=true
+      com.android.launcher3.home.permission.WRITE_HOME: granted=true
+      android.permission.CLEAR_APP_USER_DATA: granted=true
+      com.huawei.permission.NEARBY_OPERATOR_FUNCTION: granted=true
+      android.permission.MONITOR_INPUT: granted=true
+      android.permission.BROADCAST_CALLLOG_INFO: granted=true
+      android.permission.INSTALL_PACKAGES: granted=true
+      android.permission.RECV_CLEAN_APN2_DATA: granted=true
+      android.permission.BYDAUTO_VIDEO_GET: granted=true
+      android.permission.BYDAUTO_VIDEO_SET: granted=true
+      android.permission.SHUTDOWN: granted=true
+      android.permission.BYDAUTO_GEARBOX_GET: granted=true
+      android.permission.BYDAUTO_GEARBOX_SET: granted=true
+      com.byd.auto.screensaver.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BYDAUTO_CPUTEMPRATURE_SET: granted=true
+      android.permission.BIND_ROTATION_RESOLVER_SERVICE: granted=true
+      com.byd.card.permission.READ_CARD: granted=true
+      androidx.constraintlayout.widget.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.NETWORK_SETTINGS: granted=true
+      android.permission.CHANGE_OVERLAY_PACKAGES: granted=true
+      com.google.android.material.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BYDAUTO_PM2P5_COMMON: granted=true
+      androidx.core.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BYDAUTO_CHARGING_GET: granted=true
+      android.permission.BYDAUTO_CHARGING_SET: granted=true
+      android.permission.CALL_PRIVILEGED: granted=true
+      com.byd.permission.carsettings.READ_CARSETTINGS_PROVIDER: granted=true
+      android.permission.CHANGE_NETWORK_STATE: granted=true
+      android.permission.MASTER_CLEAR: granted=true
+      android.permission.FOREGROUND_SERVICE: granted=true
+      android.permission.BYDAUTO_SPECIAL_GET: granted=true
+      android.permission.BYDAUTO_SPECIAL_SET: granted=true
+      com.byd.wallpaperhome.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.MANAGE_ACTIVITY_TASKS: granted=true
+      android.permission.RECEIVE_BOOT_COMPLETED: granted=true
+      android.permission.MANAGE_ROLE_HOLDERS: granted=true
+      com.byd.server.adasagent.permission.VOICE_BROADCAST: granted=true
+      android.permission.DEVICE_POWER: granted=true
+      android.permission.SET_TIME_ZONE: granted=true
+      android.permission.REMOVE_TASKS: granted=true
+      android.permission.BYDAUTO_CHARGING_COMMON: granted=true
+      android.permission.EXPAND_STATUS_BAR: granted=true
+      dilink.permission.PRIVACY_MODE_STATE_READ: granted=true
+      android.permission.BYDAUTO_TYRE_COMMON: granted=true
+      android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS: granted=true
+      com.byd.cmgamecenter.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.READ_PROFILE: granted=true
+      android.permission.BYDACQUISITION_SEND_EVENT_BUFFER: granted=true
+      android.permission.BYDAUTO_INSTRUMENT_COMMON: granted=true
+      com.multimodal.bydai.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BLUETOOTH: granted=true
+      android.permission.BYDAUTO_AC_GET: granted=true
+      android.permission.BYDAUTO_AC_SET: granted=true
+      android.permission.CHANGE_WIFI_MULTICAST_STATE: granted=true
+      android.permission.BYDAUTO_ENERGY_COMMON: granted=true
+      android.permission.WRITE_MEDIA_STORAGE: granted=true
+      android.permission.WRITE_BLOCKED_NUMBERS: granted=true
+      android.permission.GET_TASKS: granted=true
+      android.permission.BYDAUTO_SAFETY_BELT_GET: granted=true
+      android.permission.BYDAUTO_SAFETY_BELT_SET: granted=true
+      android.permission.INTERNET: granted=true
+      android.permission.BYDAUTO_GB_GET: granted=true
+      android.permission.REORDER_TASKS: granted=true
+      com.byd.yqzx.vehiclesystem.shared.vehicle.data: granted=true
+      android.permission.BYDACQUISITION_SEND_BUFFER: granted=true
+      android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION: granted=true
+      android.permission.BLUETOOTH_ADMIN: granted=true
+      android.permission.CONTROL_VPN: granted=true
+      android.permission.BYDAUTO_TIME_GET: granted=true
+      android.permission.BYDAUTO_TIME_SET: granted=true
+      android.permission.UPDATE_DEVICE_STATS: granted=true
+      android.permission.BLUETOOTH_STACK: granted=true
+      android.permission.BLUETOOTH_MAP: granted=true
+      android.permission.READ_PRECISE_PHONE_STATE: granted=true
+      com.codeaurora.permission.SUBSIDYLOCK: granted=true
+      android.permission.READ_PROJECTION_STATE: granted=true
+      android.permission.BIND_CONNECTION_SERVICE: granted=true
+      com.byd.autovoice.permission.thirdapp: granted=true
+      com.byd.customkey.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.ACCESS_INSTANT_APPS: granted=true
+      android.permission.BYDAUTO_SETTING_GET: granted=true
+      android.permission.BYDAUTO_SETTING_SET: granted=true
+      android.permission.CONTROL_REMOTE_APP_TRANSITION_ANIMATIONS: granted=true
+      android.permission.GET_PACKAGE_SIZE: granted=true
+      com.byd.softwareactivation.permission.VEHICLE_SOTA_MASTER: granted=true
+      android.permission.ACCESS_CONTEXT_HUB: granted=true
+      android.permission.INTERACT_ACROSS_USERS_FULL: granted=true
+      android.permission.BYDAUTO_MULTIMEDIA_COMMON: granted=true
+      android.permission.STOP_APP_SWITCHES: granted=true
+      com.byd.mediacenter.STARTSERVER: granted=true
+      android.permission.PACKAGE_USAGE_STATS: granted=true
+      android.permission.BYDAUTO_PANORAMA_COMMON: granted=true
+      android.permission.WRITE_PROFILE: granted=true
+      android.permission.MOUNT_UNMOUNT_FILESYSTEMS: granted=true
+      android.permission.TETHER_PRIVILEGED: granted=true
+      android.permission.WRITE_SECURE_SETTINGS: granted=true
+      android.permission.BIND_NOTIFICATION_LISTENER_SERVICE: granted=true
+      android.permission.BYDAUTO_SPEED_GET: granted=true
+      android.permission.BYDAUTO_SPEED_SET: granted=true
+      androidx.recyclerview.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.SET_ACTIVITY_WATCHER: granted=true
+      android.permission.READ_BLOCKED_NUMBERS: granted=true
+      android.permission.STATUS_BAR_SERVICE: granted=true
+      com.byd.autoiot.service.storage.AutoiotProvider.READWRITE: granted=true
+      android.permission.USE_FULL_SCREEN_INTENT: granted=true
+      com.byd.otaupdate.permission.VEHICLE_OTA_UPDATE: granted=true
+      android.permission.ACCESS_LOCATION_EXTRA_COMMANDS: granted=true
+      android.permission.READ_PRIVILEGED_PHONE_STATE: granted=true
+      android.permission.TRIGGER_TIME_ZONE_RULES_CHECK: granted=true
+      android.permission.ACCESS_DOWNLOAD_MANAGER: granted=true
+      com.idd.hidps.permission.MODULE_RECEIVER: granted=true
+      android.permission.BYDAUTO_SETTING_COMMON: granted=true
+      android.permission.NETWORK_FACTORY: granted=true
+      android.permission.BLUETOOTH_PRIVILEGED: granted=true
+      android.permission.NETWORK_STACK: granted=true
+      android.permission.OBSERVE_SENSOR_PRIVACY: granted=true
+      android.permission.CONTROL_DISPLAY_BRIGHTNESS: granted=true
+      android.permission.SUBSTITUTE_NOTIFICATION_APP_NAME: granted=true
+      android.intent.category.MASTER_CLEAR.permission.C2D_MESSAGE: granted=true
+      android.permission.BIND_JOB_SERVICE: granted=true
+      android.permission.OBSERVE_ROLE_HOLDERS: granted=true
+      android.permission.CONFIRM_FULL_BACKUP: granted=true
+      android.permission.CAPTURE_SECURE_VIDEO_OUTPUT: granted=true
+      android.permission.SET_TIME: granted=true
+      android.permission.BYDAUTO_RADAR_COMMON: granted=true
+      com.android.SEND_DES_RESULT: granted=true
+      android.permission.BYDAUTO_ADAS_GET: granted=true
+      android.permission.BYDAUTO_ADAS_SET: granted=true
+      android.permission.CHANGE_WIFI_STATE: granted=true
+      android.permission.BYDAUTO_DOOR_LOCK_GET: granted=true
+      android.permission.BYDAUTO_DOOR_LOCK_SET: granted=true
+      android.permission.GPS_ALTITUDE_CHANGE: granted=true
+      android.permission.BYDAUTO_RADAR_GET: granted=true
+      android.permission.BYDAUTO_RADAR_SET: granted=true
+      android.permission.MANAGE_USERS: granted=true
+      android.permission.SET_PREFERRED_APPLICATIONS: granted=true
+      android.permission.DELETE_CACHE_FILES: granted=true
+      android.permission.ACCESS_NETWORK_STATE: granted=true
+      com.byd.screensaver.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.DISABLE_KEYGUARD: granted=true
+      android.permission.BYDAUTO_TEST_GET: granted=true
+      android.permission.BYDAUTO_TEST_SET: granted=true
+      android.permission.CHANGE_CONFIGURATION: granted=true
+      android.permission.BYDAUTO_VERSION_GET: granted=true
+      android.permission.BYDAUTO_VERSION_SET: granted=true
+      android.permission.LOCAL_MAC_ADDRESS: granted=true
+      android.permission.READ_LOGS: granted=true
+      android.permission.INTERACT_ACROSS_USERS: granted=true
+      android.permission.SET_WALLPAPER: granted=true
+      android.permission.BYDAUTO_STATISTIC_GET: granted=true
+      android.permission.BYDAUTO_STATISTIC_SET: granted=true
+      com.byd.appServer.PROVIDER: granted=true
+      android.permission.BYDAUTO_RADIO_GET: granted=true
+      android.permission.BYDAUTO_RADIO_SET: granted=true
+      android.permission.START_XCALL: granted=true
+      android.permission.BROADCAST_CLOSE_SYSTEM_DIALOGS: granted=true
+      android.permission.READ_NETWORK_USAGE_HISTORY: granted=true
+      com.byd.synclink.permissions.MAP_RELAY: granted=true
+      android.permission.BYDAUTO_PM2P5_GET: granted=true
+      android.permission.KILL_BACKGROUND_PROCESSES: granted=true
+      com.android.phone.permission.ACCESS_LAST_KNOWN_CELL_ID: granted=true
+      android.permission.MANAGE_SENSOR_PRIVACY: granted=true
+      android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS: granted=true
+      android.permission.BYDAUTO_RSE_GET: granted=true
+      android.permission.BYDAUTO_RSE_SET: granted=true
+      android.permission.MANAGE_OWN_CALLS: granted=true
+      com.byd.appstore.permission.BYDSTORE_INNER_INSTALL: granted=true
+      com.byd.wallpaper.permission.WRITE_SETTINGS: granted=true
+      com.byd.mediacenter.READ_PROVIDER: granted=true
+      android.permission.REBOOT: granted=true
+      android.permission.MOUNT_FORMAT_FILESYSTEMS: granted=true
+      com.byd.wallpaperhome.fse.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.SCHEDULE_EXACT_ALARM: granted=true
+      android.permission.REQUEST_DELETE_PACKAGES: granted=true
+      android.permission.RECV_CLEAN_XCALL_DATA: granted=true
+      com.hihonor.hwddmp.service.permission.ALARM_RECEIVER_PERMISSION_SELF_FINDING: granted=true
+      com.byd.permission.ACCOUNT_SERVICE_LINK: granted=true
+      android.permission.TEST_MANAGE_ROLLBACKS: granted=true
+      android.permission.MANAGE_NETWORK_POLICY: granted=true
+      android.permission.BYDAUTO_STATISTIC_COMMON: granted=true
+      android.permission.MANAGE_NOTIFICATION_LISTENERS: granted=true
+      android.permission.BYDAUTO_LIGHT_COMMON: granted=true
+      android.permission.BYDAUTO_MOTOR_GET: granted=true
+      android.permission.BYDAUTO_MOTOR_SET: granted=true
+      android.permission.SEND_SHOW_SUSPENDED_APP_DETAILS: granted=true
+      android.permission.CONNECTIVITY_INTERNAL: granted=true
+      android.permission.READ_SYNC_SETTINGS: granted=true
+      com.byd.mirror.permission.MIRROR_CLIENT_SERVICE: granted=true
+      android.permission.SEND_CLEAN_XCALL_DATA: granted=true
+      android.permission.LOADER_USAGE_STATS: granted=true
+      android.permission.OVERRIDE_WIFI_CONFIG: granted=true
+      android.permission.FORCE_STOP_PACKAGES: granted=true
+      android.permission.HIDE_NON_SYSTEM_OVERLAY_WINDOWS: granted=true
+      android.permission.CAPTURE_VIDEO_OUTPUT: granted=true
+      android.permission.HANDLE_CALL_INTENT: granted=true
+      android.permission.MEDIA_RESOURCE_OVERRIDE_PID: granted=true
+      com.android.bluetoothcall.permission.READ_CONTENTPROVIDER: granted=true
+      android.permission.VIBRATE: granted=true
+      com.android.certinstaller.INSTALL_AS_USER: granted=true
+      com.byd.card.permission.WRITE_CARD: granted=true
+      android.permission.BYDAUTO_INSTRUMENT_GET: granted=true
+      android.permission.BYDAUTO_INSTRUMENT_SET: granted=true
+      android.permission.HANDLE_CAR_MODE_CHANGES: granted=true
+      com.huawei.permission.HISIGHT_ACCESS: granted=true
+      android.permission.INTERACT_ACROSS_PROFILES: granted=true
+      androidx.legacy.v4.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BYDAUTO_ENGINE_COMMON: granted=true
+      com.byd.scenemodes.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.SEND_CLEAN_APN2_DATA: granted=true
+      android.permission.ACCESS_LOG_SERVICE: granted=true
+      android.permission.BYDAUTO_DOOR_LOCK_COMMON: granted=true
+      android.permission.MODIFY_NETWORK_ACCOUNTING: granted=true
+      android.permission.TRAFFIC_ICALL_NOTIFY: granted=true
+      com.android.launcher3.home.permission.READ_HOME: granted=true
+      android.permission.ACCESS_WIFI_STATE: granted=true
+      android.permission.BYDDIAGNOSTIC_SEND_BUFFER: granted=true
+      com.huawei.hiviewlite.permission.USE_SERVICE: granted=true
+      com.byd.spotinspection.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BYDAUTO_SPEED_COMMON: granted=true
+      com.android.launcher3.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.BYDAUTO_AUDIO_GET: granted=true
+      android.permission.BYDAUTO_AUDIO_SET: granted=true
+      android.permission.BYDAUTO_LOCATION_GET: granted=true
+      android.permission.BYDAUTO_LOCATION_SET: granted=true
+      android.permission.REQUEST_INSTALL_PACKAGES: granted=true
+      android.permission.MODIFY_PHONE_STATE: granted=true
+      android.permission.BYDAUTO_REMINDER_GET: granted=true
+      android.permission.BYDAUTO_REMINDER_SET: granted=true
+      android.permission.STATUS_BAR: granted=true
+      android.permission.QUERY_ALL_PACKAGES: granted=true
+      android.permission.BYDAUTO_RESCUE_GET: granted=true
+      android.permission.BYDAUTO_RESCUE_SET: granted=true
+      android.permission.READ_DEVICE_CONFIG: granted=true
+      android.permission.BYDAUTO_BODYWORK_GET: granted=true
+      android.permission.BYDAUTO_BODYWORK_SET: granted=true
+      android.permission.LOCATION_HARDWARE: granted=true
+      android.permission.BYDAUTO_REAR_VIEW_MIRROR_GET: granted=true
+      android.permission.BYDAUTO_REAR_VIEW_MIRROR_SET: granted=true
+      android.permission.UNLIMITED_TOASTS: granted=true
+      com.byd.permission.carsettings.WRITE_CARSETTINGS_PROVIDER: granted=true
+      android.permission.BYDAUTO_MULTIMEDIA_GET: granted=true
+      com.byd.updated.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.WAKE_LOCK: granted=true
+      android.permission.INJECT_EVENTS: granted=true
+      android.permission.BIND_NETWORK_RECOMMENDATION_SERVICE: granted=true
+      android.permission.UPDATE_APP_OPS_STATS: granted=true
+      android.permission.BYDAUTO_GEARBOX_COMMON: granted=true
+      android.permission.MEDIA_CONTENT_CONTROL: granted=true
+      android.permission.DELETE_PACKAGES: granted=true
+    User 0: 
+      gids=[2001, 3002, 3003, 3001, 3007, 1002, 3010, 3011, 1007, 3006]
+      runtime permissions:
+        android.permission.POST_NOTIFICATIONS: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.READ_CALL_LOG: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.ACCESS_FINE_LOCATION: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.BLUETOOTH_CONNECT: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.READ_EXTERNAL_STORAGE: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        com.mediatek.permission.CTA_CONFERENCE_CALL: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.ACCESS_COARSE_LOCATION: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|REVOKE_WHEN_REQUESTED|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.READ_PHONE_STATE: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.SEND_SMS: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.CALL_PHONE: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.READ_MEDIA_IMAGES: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.WRITE_CONTACTS: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.CAMERA: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.WRITE_CALL_LOG: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.READ_MEDIA_AUDIO: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.READ_MEDIA_VIDEO: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        com.mediatek.permission.CTA_CALL_FORWARD: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.PROCESS_OUTGOING_CALLS: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.BLUETOOTH_ADVERTISE: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|REVOKE_WHEN_REQUESTED|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.GET_ACCOUNTS: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.WRITE_EXTERNAL_STORAGE: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.RECORD_AUDIO: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.READ_CONTACTS: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.ACCESS_BACKGROUND_LOCATION: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.BLUETOOTH_SCAN: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+        android.permission.ACCESS_MEDIA_LOCATION: granted=true, flags=[ SYSTEM_FIXED|GRANTED_BY_DEFAULT|RESTRICTION_SYSTEM_EXEMPT|RESTRICTION_UPGRADE_EXEMPT]
+
+Dexopt state:
+  [com.byd.vehicledialog]
+    path: /system/priv-app/VehicleDialog/VehicleDialog.apk
+      arm64: [status=speed-profile] [reason=bg-dexopt]
+  BgDexopt state:
+    enabled:true
+    mDexOptThread:null
+    mDexOptCancellingThread:null
+    mFinishedPostBootUpdate:false
+    mLastExecutionStatus:0
+    mLastExecutionStartTimeMs:0
+    mLastExecutionDurationIncludingSleepMs:0
+    mLastExecutionStartUptimeMs:0
+    mLastExecutionDurationMs:0
+    now:882335
+    mLastCancelledPackages:
+    mFailedPackageNamesPrimary:
+    mFailedPackageNamesSecondary:
+
+Compiler stats:
+  [com.byd.vehicledialog]
+     VehicleDialog.apk - 1430

@@ -44,6 +44,7 @@ class HudController @Inject constructor(
         val amapCapable: Boolean = false,
         val amapFramesSent: Long = 0,
         val amapStopsSent: Long = 0,
+        val dialect: String = "",
     )
 
     companion object {
@@ -81,6 +82,30 @@ class HudController @Inject constructor(
         prefs().edit().putBoolean(KEY_SPEED_SIGN, on).apply()
     }
 
+    /** Frame layout / service key family for the connected glass (see [HudDialect]). */
+    fun dialect(): HudDialect = HudDialect.resolve(context)
+
+    fun dialectPref(): String = HudDialect.stored(context)
+
+    /** [HudDialect.PREF_AUTO] or a [HudDialect.prefValue]. A running channel is re-opened so
+     *  the service keys match the new family; the push loop itself reads the dialect per tick. */
+    fun setDialectPref(value: String) {
+        prefs().edit().putString(HudDialect.KEY, value).apply()
+        Log.i(TAG, "dialect pref=$value -> ${dialect()}")
+        if (isEnabled()) {
+            NavA11yFeed.enabled = false
+            scope.launch { stopSequence(); startSequence() }
+        }
+    }
+
+    /** Gateway service keys to open for [d], primary first. The AR-HUD opens the classic key
+     *  too: harmless on that firmware and it keeps the older glass working when "auto" guesses
+     *  wrong on an unknown DiLink 150 trim. */
+    internal fun serviceIdsFor(d: HudDialect): List<Long> = when (d) {
+        HudDialect.CLASSIC -> listOf(HudSomeIpBridge.SERVICE_ID_NAVI)
+        HudDialect.AR_HUD -> listOf(HudSomeIpBridge.SERVICE_ID_NAVI_ARHUD, HudSomeIpBridge.SERVICE_ID_NAVI)
+    }
+
     fun diag(): HudDiag? = loop?.let { l ->
         HudDiag(
             framesSent = l.framesSent,
@@ -90,6 +115,7 @@ class HudController @Inject constructor(
             amapCapable = l.amap?.capable ?: false,
             amapFramesSent = l.amap?.framesSent ?: 0,
             amapStopsSent = l.amap?.stopsSent ?: 0,
+            dialect = "${dialect()} (pref=${dialectPref()}, vehicle='${HudDialect.readVehicleType()}')",
         )
     }
 
@@ -142,18 +168,26 @@ class HudController @Inject constructor(
                     _status.value = Status.BIND_FAILED
                     return@launch
                 }
-                val rc = b.startService(HudSomeIpBridge.SERVICE_ID_NAVI)
+                val d = dialect()
+                val ids = serviceIdsFor(d)
+                val rc = b.startService(ids.first())
                 if (rc < 0) {
                     b.unbind()
                     _status.value = Status.BIND_FAILED
                     return@launch
                 }
+                ids.drop(1).forEach { id -> b.startService(id) }   // rc logged by the bridge
+                Log.i(TAG, "dialect=$d vehicle='${HudDialect.readVehicleType()}' keys=${ids.joinToString { "0x" + it.toString(16) }}")
                 HudIconLoader.init(context)
                 bridge = b
                 NavA11yFeed.enabled = true
                 loop = HudPushLoop(b, speedSignEnabled = { isSpeedSignEnabled() },
                     amap = HudAmapBroadcaster(context),
-                    maneuvers = HudManeuverJournal(prefs()))
+                    maneuvers = HudManeuverJournal(prefs()),
+                    dialect = { dialect() },
+                    remainFormatter = { minutes ->
+                        context.getString(com.bydmate.app.R.string.hud_eta_remaining_minutes, minutes)
+                    })
                     .also { it.start(scope) }
                 _status.value = Status.ON
                 Log.i(TAG, "HUD output active")
@@ -192,8 +226,9 @@ class HudController @Inject constructor(
             loop = null
             bridge?.let {
                 // Leave the HUD clean before tearing the channel down (Codex fix 4).
-                runCatching { it.fireEvent(HudSomeIpBridge.TOPIC_NAVI, HudProtobufBuilder.buildClearFrame(0)) }
-                runCatching { it.stopService(HudSomeIpBridge.SERVICE_ID_NAVI) }
+                val d = dialect()
+                runCatching { it.fireEvent(HudSomeIpBridge.TOPIC_NAVI, HudProtobufBuilder.buildClearFrame(0, d)) }
+                serviceIdsFor(d).forEach { id -> runCatching { it.stopService(id) } }
                 runCatching { it.unbind() }
             }
             bridge = null

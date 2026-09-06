@@ -58,6 +58,23 @@ object NavA11yFeed {
     @Volatile private var pendingEventManeuverGaode = 0
     @Volatile private var pendingEventManeuverMs = 0L
 
+    /** Field diagnostics at info level (release strips Log.d): one line whenever the
+     *  maneuver, distance or road changes, at most every [READ_LOG_MIN_MS]. */
+    private const val READ_LOG_MIN_MS = 3_000L
+    @Volatile private var lastLoggedRead: NavGuidance? = null
+    @Volatile private var lastLoggedReadMs = 0L
+
+    private fun logRead(pkg: String?, data: NavGuidance, nowMs: Long) {
+        val prev = lastLoggedRead
+        val changed = prev == null || prev.maneuverGaode != data.maneuverGaode ||
+            prev.distanceMeters != data.distanceMeters || prev.road != data.road
+        if (!changed || (prev != null && nowMs - lastLoggedReadMs < READ_LOG_MIN_MS)) return
+        lastLoggedRead = data
+        lastLoggedReadMs = nowMs
+        Log.i(TAG, "a11y read: $pkg gaode=${data.maneuverGaode} dist=${data.distanceMeters} " +
+            "road='${data.road}' eta=${data.etaSeconds}s total=${data.totalDistMeters} limit=${data.speedLimit}")
+    }
+
     fun onEvent(service: SteeringWheelKeyService, event: AccessibilityEvent?) {
         if (!enabled) return
         val nowMs = System.currentTimeMillis()
@@ -105,11 +122,17 @@ object NavA11yFeed {
                 is NavA11yExtractor.ReadResult.Guidance -> {
                     val data = withWazeManeuverHint(root, result.data, nowMs)
                     NavGuidanceHub.update(data, NavGuidanceHub.Source.A11Y, nowMs)
+                    logRead(pkg, data, nowMs)
                     dumpTreeOnManeuverChange(root, data.maneuverGaode, nowMs)
                     if (data.maneuverGaode == 0) requestWazeVisualManeuver(service, root)
                 }
-                is NavA11yExtractor.ReadResult.NoGuidance ->
+                is NavA11yExtractor.ReadResult.NoGuidance -> {
                     NavGuidanceHub.markNoGuidance(nowMs)
+                    if (lastLoggedRead != null) {
+                        lastLoggedRead = null
+                        Log.i(TAG, "a11y read: $pkg window without guidance widgets")
+                    }
+                }
                 is NavA11yExtractor.ReadResult.NotNavigator -> Unit
             }
         } finally {

@@ -51,6 +51,25 @@ object HudProtobufBuilder {
         else -> 99
     }
 
+    /** GAODE maneuver -> f28 for the DiLink 150 AR-HUD (Tang L). The car's own map app
+     *  sends the Gaode HUD code itself (`PlatformHudImpl.setDirectionIconAndSendData`, table
+     *  `k.h.j.e.b`): 1 left, 2 right, 3 slight left, 5 slight right, 7/8 sharp, 9 U-turn,
+     *  11 straight, 13 enter / 24 exit roundabout, 45 waypoint, 46 service area, 47 toll,
+     *  48 destination, 49 tunnel. Our synthetic per-exit codes collapse to 24; the codes the
+     *  table never produces (U-turn right, dotted straight) fall back to their nearest glyph. */
+    fun gaodeToArHudId(gaode: Int): Int = when (gaode) {
+        0 -> 0
+        1, 2, 3 -> gaode
+        4 -> 5
+        7, 8, 9 -> gaode
+        10 -> 9
+        11, 12 -> 11
+        13 -> 13
+        24, in 25..44 -> 24
+        in 45..49 -> gaode
+        else -> 0
+    }
+
     fun buildFrame(
         maneuverGaode: Int,
         distanceMeters: Int,
@@ -61,7 +80,14 @@ object HudProtobufBuilder {
         maneuverIconPng: ByteArray?,
         speedSignPng: ByteArray?,
         suppressArrow: Boolean = false,
+        dialect: HudDialect = HudDialect.CLASSIC,
+        etaSeconds: Int = 0,
+        remainString: String? = null,
     ): ByteArray {
+        if (dialect == HudDialect.AR_HUD) {
+            return buildArHudFrame(maneuverGaode, distanceMeters, road, etaString, totalDistMeters,
+                speedLimit, maneuverIconPng, suppressArrow, etaSeconds, remainString)
+        }
         val inner = ByteArrayOutputStream()
         // f2 is the constant 2 in every reference guidance frame (donor stage 6,
         // 1779/1779 discope events); only the clear frame carries a counter here.
@@ -80,6 +106,43 @@ object HudProtobufBuilder {
         return wrap(inner.toByteArray())
     }
 
+    /** DiLink 150 AR-HUD frame, the field set the Tang L map app fills
+     *  (`HudRoadInfoNotifyStruct`, non-zero fields only, ascending order like its protobuf
+     *  builder): f2 counter 2, f3 route remaining m, f4 route remaining s, f8 maneuver PNG,
+     *  f9 distance, f10 next road, f11 + f15 speed limit, f16 navigating status 2, f26 arrival
+     *  time, f27 remaining time, f28 Gaode code, f33 progress. No f6/f7 speed-sign trick:
+     *  that glass draws its own sign from the limit, and f7 is the lane image there. */
+    private fun buildArHudFrame(
+        maneuverGaode: Int,
+        distanceMeters: Int,
+        road: String,
+        etaString: String?,
+        totalDistMeters: Int,
+        speedLimit: Int,
+        maneuverIconPng: ByteArray?,
+        suppressArrow: Boolean,
+        etaSeconds: Int,
+        remainString: String?,
+    ): ByteArray {
+        val inner = ByteArrayOutputStream()
+        writeVarintField(inner, 2, 2L)
+        if (totalDistMeters > 0) writeVarintField(inner, 3, totalDistMeters.toLong())
+        if (etaSeconds > 0) writeVarintField(inner, 4, etaSeconds.toLong())
+        if (maneuverIconPng != null) writeBytesField(inner, 8, maneuverIconPng)
+        writeVarintField(inner, 9, displayDistance(distanceMeters).toLong())
+        if (road.isNotEmpty()) writeBytesField(inner, 10, road.toByteArray(Charsets.UTF_8))
+        if (speedLimit > 0) {
+            writeVarintField(inner, 11, speedLimit.toLong())
+            writeVarintField(inner, 15, speedLimit.toLong())
+        }
+        writeVarintField(inner, 16, 2L)
+        if (etaString != null) writeBytesField(inner, 26, etaString.toByteArray(Charsets.UTF_8))
+        if (remainString != null) writeBytesField(inner, 27, remainString.toByteArray(Charsets.UTF_8))
+        writeVarintField(inner, 28, if (suppressArrow) 0L else gaodeToArHudId(maneuverGaode).toLong())
+        writeFixed64Field(inner, 33, progress(distanceMeters, totalDistMeters).toRawBits())
+        return wrap(inner.toByteArray())
+    }
+
     /** buildFrame with the road cap and the donor's size fallback: past MAX_PAYLOAD_BYTES the
      *  speed-sign PNG (f7) is dropped first; the maneuver icon (f8) is never dropped. */
     fun buildFrameSafe(
@@ -92,21 +155,33 @@ object HudProtobufBuilder {
         maneuverIconPng: ByteArray?,
         speedSignPng: ByteArray?,
         suppressArrow: Boolean = false,
+        dialect: HudDialect = HudDialect.CLASSIC,
+        etaSeconds: Int = 0,
+        remainString: String? = null,
     ): ByteArray {
         // The road string is the only unbounded input (a11y screen text); cap it so a
         // corrupted read can never push the frame past MAX_PAYLOAD_BYTES (Codex audit fix 4).
         val safeRoad = if (road.length > MAX_ROAD_CHARS) road.take(MAX_ROAD_CHARS) else road
         val full = buildFrame(maneuverGaode, distanceMeters, safeRoad, etaString,
-            totalDistMeters, speedLimit, maneuverIconPng, speedSignPng, suppressArrow)
+            totalDistMeters, speedLimit, maneuverIconPng, speedSignPng, suppressArrow,
+            dialect, etaSeconds, remainString)
         if (full.size <= MAX_PAYLOAD_BYTES || speedSignPng == null) return full
         return buildFrame(maneuverGaode, distanceMeters, safeRoad, etaString,
             totalDistMeters, speedLimit, maneuverIconPng, speedSignPng = null,
-            suppressArrow = suppressArrow)
+            suppressArrow = suppressArrow, dialect = dialect, etaSeconds = etaSeconds,
+            remainString = remainString)
     }
 
-    /** Clear frame: render class 255 + f16=1 wipes the HUD navigation area. */
-    fun buildClearFrame(counter: Int): ByteArray {
+    /** Clear frame. Classic glass: render class 255 + f16=1 wipes the navigation area.
+     *  AR-HUD: what the Tang L map sends from `clearAndSendNullData` - every field at its
+     *  default, navigating status 1 (idle), counter 2. */
+    fun buildClearFrame(counter: Int, dialect: HudDialect = HudDialect.CLASSIC): ByteArray {
         val inner = ByteArrayOutputStream()
+        if (dialect == HudDialect.AR_HUD) {
+            writeVarintField(inner, 2, 2L)
+            writeVarintField(inner, 16, 1L)
+            return wrap(inner.toByteArray())
+        }
         writeVarintField(inner, 2, counter.toLong())
         writeVarintField(inner, 6, 255L)
         writeVarintField(inner, 16, 1L)

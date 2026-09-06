@@ -1,0 +1,25 @@
+t=15s hub-lines=0 waze-fg=0
+t=30s hub-lines=0 waze-fg=0
+t=45s hub-lines=0 waze-fg=0
+t=60s hub-lines=0 waze-fg=0
+t=75s hub-lines=0 waze-fg=0
+t=90s hub-lines=2 waze-fg=1
+t=105s hub-lines=0 waze-fg=1
+t=120s hub-lines=0 waze-fg=1
+t=135s hub-lines=0 waze-fg=1
+t=150s hub-lines=0 waze-fg=1
+t=165s hub-lines=0 waze-fg=0
+t=180s hub-lines=1 waze-fg=0
+t=195s hub-lines=1 waze-fg=0
+t=210s hub-lines=0 waze-fg=0
+t=225s hub-lines=0 waze-fg=1
+t=240s hub-lines=0 waze-fg=1
+t=255s hub-lines=1 waze-fg=0
+t=270s hub-lines=0 waze-fg=0
+t=285s hub-lines=0 waze-fg=0
+t=300s hub-lines=0 waze-fg=0
+t=315s hub-lines=0 waze-fg=0
+t=330s hub-lines=0 waze-fg=0
+t=345s hub-lines=0 waze-fg=0
+t=360s hub-lines=0 waze-fg=0
+== bydmate/gateway logs during watch
