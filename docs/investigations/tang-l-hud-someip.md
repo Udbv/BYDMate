@@ -107,6 +107,16 @@ the foreground. The a11y window therefore has the app's label as title and
 `com.byd.vehicledialog` as root package - matched by `VehicleDialogDismisser` since 9feea63
 (label, package or warning text), which clicks the button or sends BACK (the dialog is cancelable).
 
+Why the warning cannot simply be whitelisted: `isWhitelistMcc()` compares the system property
+`persist.radio.byd.last_mcc` (written by the radio stack from the SIM's network, 255 = Ukraine)
+against `assets/mccWhitelist.properties` inside the signed system APK on the read-only `/system`
+partition (China 460, HK/Macau 454-457, Russia 250, Belarus 257, Kazakhstan 401, Uzbekistan 434,
+Azerbaijan 400, Georgia 282, Armenia 283, Middle East and North Africa 4xx/6xx). Editing the asset
+needs root; the property belongs to the radio SELinux domain, so neither the app nor the ADB shell
+user (which is what the helper daemon runs as) may set it, and the modem rewrites it on every
+network registration anyway. The check passes only when the property is absent (-1) or listed.
+Closing the dialog through the accessibility service stays the practical route.
+
 ## Open questions
 
 - Whether the low word of the service key is the SOME/IP instance or the major version.
