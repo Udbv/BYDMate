@@ -1277,6 +1277,9 @@
     <string name="settings_hud_status_on">正在向 HUD 传输</string>
     <string name="settings_hud_status_bind_failed">无法连接 SOME/IP 总线</string>
     <string name="settings_hud_hint">需要配备抬头显示的车型。数据来自 Yandex 导航窗口</string>
+    <string name="settings_display_card_export_dialog_title">èªå¨å³é­âéå®æ¹åºå£âçªå£</string>
+    <string name="settings_display_card_export_dialog_sub">BYD åºå£è­¦åçªå£ä¼èªå¨å³é­ã%1$s</string>
+    <string name="settings_export_dialog_hint">éè¿æ éç¢æå¡ç¹å»âThis car is not from official exportâçªå£çå¯ä¸æé®æ¥å³é­å®ï¼ä¸ä¾èµåºå®åæ ï¼ä¸è¯­è¨æ å³ãè¯¥çªå£ææ é¢ vehicledialog è¯å«</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">盲区</string>
     <string name="settings_blindspot_title">转向灯触发摄像头</string>

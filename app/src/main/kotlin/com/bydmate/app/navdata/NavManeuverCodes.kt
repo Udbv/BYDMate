@@ -332,106 +332,12 @@ object NavManeuverCodes {
         }
     }
 
-    private data class ManeuverPattern(val regex: Regex, val code: Int)
+    private val SYMBOLIC_LEFT = Regex("""(?<!\p{L})left(?!\p{L})""", RegexOption.IGNORE_CASE)
+    private val SYMBOLIC_RIGHT = Regex("""(?<!\p{L})right(?!\p{L})""", RegexOption.IGNORE_CASE)
+
     private data class Candidate(val code: Int, val start: Int, val endExclusive: Int, val rank: Int) {
         val length: Int get() = endExclusive - start
         fun overlaps(other: Candidate): Boolean = start < other.endExclusive && other.start < endExclusive
-    }
-
-    private val EN_NUMBERED_EXIT_RE = Regex(
-        """(?:(?:(?:at|on)\s+)?(?:the\s+)?roundabout\b.{0,48}?)?(?:take\s+)?(?:the\s+)?(\d+)(?:st|nd|rd|th)?\s+exit\b""",
-        RegexOption.IGNORE_CASE,
-    )
-    private val RU_NUMBERED_EXIT_RE = Regex(
-        """(?:(?:кольц\p{L}*|кругов\p{L}*)(?!\p{L}).{0,48}?)?(\d+)[-‑ ]?(?:й|я|е)?\s+съезд(?!\p{L})""",
-        RegexOption.IGNORE_CASE,
-    )
-    // "2-й з'їзд", "на 2-му з'їзді", "з'їдьте на 3-му з'їзді"; apostrophes are normalized to
-    // U+0027 before matching (Waze/Android emit ʼ U+02BC, ’ U+2019 or ' interchangeably).
-    private val UK_NUMBERED_EXIT_RE = Regex(
-        """(?:(?:кільц\p{L}*|кругов\p{L}*)(?!\p{L}).{0,48}?)?(\d+)[-‑ ]?(?:й|му|го|м|е|я)?\s*з'їзд\p{L}*(?!\p{L})""",
-        RegexOption.IGNORE_CASE,
-    )
-
-    private fun literalRegex(value: String): Regex = Regex(
-        """(?<!\p{L})${Regex.escape(value)}(?!\p{L})""",
-        RegexOption.IGNORE_CASE,
-    )
-
-    private val MANEUVER_PATTERNS: List<ManeuverPattern> = buildList {
-        fun add(code: Int, vararg phrases: String) {
-            phrases.forEach { add(ManeuverPattern(literalRegex(it), code)) }
-        }
-
-        add(GAODE_UTURN_RIGHT,
-            "развернитесь направо", "разворот направо",
-            "make a u-turn to the right", "make a u turn to the right", "u-turn right", "u turn right",
-            "otocte se doprava", "otočte se doprava",
-            "向右掉头")
-        add(GAODE_UTURN,
-            "развернитесь налево", "разворот налево", "развернитесь", "разворот",
-            "make a u-turn", "make a u turn", "u-turn", "u turn", "掉头")
-        add(GAODE_UTURN, "otocte se", "otočte se")
-        add(GAODE_HARD_LEFT, "резкий поворот налево", "резко налево", "sharp left", "ostře vlevo")
-        add(GAODE_HARD_RIGHT, "резкий поворот направо", "резко направо", "sharp right", "ostře vpravo")
-        add(GAODE_SLIGHT_LEFT,
-            "плавный поворот налево", "плавно налево", "держитесь левее", "левее",
-            "slight left", "keep left", "bear left", "fork left",
-            "držte se vlevo", "mírně vlevo", "靠左")
-        add(GAODE_SLIGHT_RIGHT,
-            "плавный поворот направо", "плавно направо", "держитесь правее", "правее",
-            "slight right", "keep right", "bear right", "fork right",
-            "držte se vpravo", "mírně vpravo", "靠右")
-        add(GAODE_ROUNDABOUT_EXIT,
-            "выезд с кольца", "съезд с кольца", "съезжайте с кольца", "выезжайте из кольца",
-            "exit the roundabout", "leave the roundabout")
-        add(GAODE_ROUNDABOUT_ENTER,
-            "кольцевое", "круговое", "въезжайте на кольцо", "войдите в кольцо", "кольцо", "roundabout", "环岛")
-        add(GAODE_FERRY, "въезд на паром", "board the ferry", "паром")
-        add(GAODE_STRAIGHT, "съезд с парома", "выезд с парома", "leave the ferry")
-        add(GAODE_WAYPOINT, "промежуточная точка")
-        add(GAODE_ARRIVE,
-            "you have arrived", "arrive at your destination", "destination reached", "reached your destination",
-            "вы прибыли", "прибытие", "маршрут окончен", "маршрут завершён", "до конца маршрута",
-            "конец маршрута", "конечная", "достигнут")
-        add(GAODE_TUNNEL, "тоннель", "туннель", "tunnel")
-        // Ukrainian (Waze uk route bar). Specific phrases first; the bare ліворуч/праворуч/прямо
-        // generics sit at the very end of the table.
-        add(GAODE_UTURN_RIGHT, "розверніться праворуч", "розворот праворуч")
-        add(GAODE_UTURN, "розверніться ліворуч", "розверніться", "розворот")
-        add(GAODE_HARD_LEFT, "різко ліворуч", "різкий поворот ліворуч")
-        add(GAODE_HARD_RIGHT, "різко праворуч", "різкий поворот праворуч")
-        add(GAODE_SLIGHT_LEFT,
-            "тримайтеся ліворуч", "тримайтесь ліворуч", "плавно ліворуч", "плавний поворот ліворуч", "лівіше")
-        add(GAODE_SLIGHT_RIGHT,
-            "тримайтеся праворуч", "тримайтесь праворуч", "плавно праворуч", "плавний поворот праворуч", "правіше")
-        add(GAODE_ROUNDABOUT_EXIT, "з'їзд з кільця", "виїзд з кільця", "з'їжджайте з кільця")
-        // "кільці" rather than "на кільці": the numbered-exit regex anchors on the same
-        // "кільц…" token, and overlapping candidates are resolved by start offset first,
-        // so an ENTER phrase starting two characters earlier would swallow the exit.
-        add(GAODE_ROUNDABOUT_ENTER, "кільці", "кільцева", "кругова", "кільце")
-        add(GAODE_FERRY, "сідайте на пором", "в'їзд на пором", "пором")
-        add(GAODE_STRAIGHT, "з'їзд з порома", "виїзд з порома")
-        add(GAODE_WAYPOINT, "проміжна точка")
-        add(GAODE_ARRIVE, "ви прибули", "пункт призначення", "кінець маршруту", "маршрут завершено", "прибуття")
-        add(GAODE_TUNNEL, "тунель")
-        add(GAODE_LEFT, "поверніть ліворуч", "поворот ліворуч")
-        add(GAODE_RIGHT, "поверніть праворуч", "поворот праворуч")
-        add(GAODE_STRAIGHT, "продовжуйте рух прямо", "продовжуйте прямо", "рухайтеся прямо", "продовжуйте")
-        add(GAODE_LEFT,
-            "поверните налево", "поворот налево", "съезд налево", "налево",
-            "take the left", "turn left", "exit left",
-            "odbočte vlevo", "zahněte vlevo", "doleva", "vlevo", "向左转", "左转")
-        add(GAODE_RIGHT,
-            "поверните направо", "поворот направо", "съезд направо", "направо",
-            "take the right", "turn right", "exit right",
-            "odbočte vpravo", "zahněte vpravo", "doprava", "vpravo", "向右转", "右转")
-        add(GAODE_STRAIGHT,
-            "продолжайте прямо", "двигайтесь прямо", "продолжайте", "двигайтесь", "прямо",
-            "keep straight", "continue straight", "continue", "straight",
-            "pokračujte rovně", "jeďte rovně", "rovně", "直行")
-        add(GAODE_LEFT, "ліворуч")
-        add(GAODE_RIGHT, "праворуч")
     }
 
     fun parseInstructionText(text: String?): ParseResult {
@@ -474,17 +380,22 @@ object NavManeuverCodes {
                 candidates += Candidate(code, match.range.first, match.range.last + 1, rank)
             }
         }
-        collectNumberedExit(EN_NUMBERED_EXIT_RE, rank = -3)
-        collectNumberedExit(RU_NUMBERED_EXIT_RE, rank = -2)
-        collectNumberedExit(UK_NUMBERED_EXIT_RE, rank = -1)
-        MANEUVER_PATTERNS.forEachIndexed { index, pattern ->
-            collect(pattern.regex, pattern.code, rank = index)
+        // Language packs (assets/navi/phrases/<lang>.json via NavPhraseTables): numbered-exit
+        // regexes rank before every phrase, phrases keep file order. Nothing language-specific
+        // lives in this file any more.
+        val tables = NavPhraseTables.current
+        tables.numberedExitPatterns.forEachIndexed { index, regex ->
+            collectNumberedExit(regex, rank = index - tables.numberedExitPatterns.size)
+        }
+        tables.phrasePatterns.forEachIndexed { index, (regex, code) ->
+            collect(regex, code, rank = index)
         }
         if (symbolicTag) {
-            // Bare direction words are accepted only inside an explicit symbolic tag. In normal
-            // prose they would misread road names such as "Left Bank Road" as a maneuver.
-            collect(literalRegex("left"), GAODE_LEFT, rank = MANEUVER_PATTERNS.size)
-            collect(literalRegex("right"), GAODE_RIGHT, rank = MANEUVER_PATTERNS.size + 1)
+            // Bare direction words are accepted only inside an explicit symbolic tag
+            // (TURN_RIGHT, ic_turn_left_24): resource names are English regardless of locale.
+            // In normal prose they would misread road names such as "Left Bank Road".
+            collect(SYMBOLIC_LEFT, GAODE_LEFT, rank = tables.phrasePatterns.size)
+            collect(SYMBOLIC_RIGHT, GAODE_RIGHT, rank = tables.phrasePatterns.size + 1)
         }
 
         // Specific overlapping phrases win ("slight right" over "right"). Non-overlapping
@@ -505,6 +416,27 @@ object NavManeuverCodes {
 
     /** Waze instruction / arrow description / resource tag -> GAODE; 0 = not a maneuver. */
     fun fromInstructionText(text: String?): Int = parseInstructionText(text).gaode
+
+    /** Inverse of [codeName] for the language-pack files; null = unknown name. */
+    fun codeFromName(name: String): Int? = when (name.trim().uppercase()) {
+        "LEFT" -> GAODE_LEFT
+        "RIGHT" -> GAODE_RIGHT
+        "SLIGHT_LEFT" -> GAODE_SLIGHT_LEFT
+        "SLIGHT_RIGHT" -> GAODE_SLIGHT_RIGHT
+        "HARD_LEFT" -> GAODE_HARD_LEFT
+        "HARD_RIGHT" -> GAODE_HARD_RIGHT
+        "UTURN_LEFT", "UTURN" -> GAODE_UTURN
+        "UTURN_RIGHT" -> GAODE_UTURN_RIGHT
+        "STRAIGHT" -> GAODE_STRAIGHT
+        "ROUNDABOUT_ENTER" -> GAODE_ROUNDABOUT_ENTER
+        "ROUNDABOUT_EXIT" -> GAODE_ROUNDABOUT_EXIT
+        "WAYPOINT" -> GAODE_WAYPOINT
+        "FERRY" -> GAODE_FERRY
+        "ARRIVE" -> GAODE_ARRIVE
+        "TUNNEL" -> GAODE_TUNNEL
+        "TOLL" -> GAODE_TOLL
+        else -> null
+    }
 
     internal fun codeName(code: Int): String = when (code) {
         GAODE_LEFT -> "LEFT"

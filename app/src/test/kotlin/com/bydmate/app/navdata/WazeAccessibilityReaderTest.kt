@@ -9,6 +9,8 @@ import org.junit.Test
 
 class WazeAccessibilityReaderTest {
 
+    @org.junit.Before fun loadPacks() = NaviPhraseFixtures.load()
+
     @Test fun `Waze accessibility event exposes a maneuver missed by the later window read`() {
         val event = mockk<AccessibilityEvent>(relaxed = true) {
             every { packageName } returns "com.waze"

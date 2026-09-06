@@ -1569,7 +1569,9 @@ class TrackingService : Service(), LocationListener {
         val knobEnabled = prefs.getBoolean(ClusterProjectionManager.KEY_KNOB_PLAY_PAUSE, false)
         // HUD guidance also reads Navigator via this a11y service; gate on CONFIRMED
         // support, not the raw pref, so unsupported cars stay untouched (Codex fix 1).
-        if (!mirrorEnabled && !voiceEnabled && !knobEnabled && !hudController.requiresA11y()) return
+        // The export-warning auto-close rides the same a11y service (window title match + click).
+        val dialogDismiss = com.bydmate.app.cluster.VehicleDialogDismisser.isEnabled(this)
+        if (!mirrorEnabled && !voiceEnabled && !knobEnabled && !dialogDismiss && !hudController.requiresA11y()) return
         starGrant.ensure(reason)
     }
 

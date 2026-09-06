@@ -1314,6 +1314,30 @@ private fun DisplaySection() {
         SettingHint(text = stringResource(R.string.settings_hud_hint))
     }
 
+    // Export-warning auto-close: BYD's "This car is not from official export" window is
+    // closed by the accessibility service (single button, matched by window title).
+    val dismissCtx = LocalContext.current
+    var exportDismiss by remember {
+        mutableStateOf(com.bydmate.app.cluster.VehicleDialogDismisser.isEnabled(dismissCtx))
+    }
+    SettingCollapsibleCard(
+        title = stringResource(R.string.settings_display_card_export_dialog_title),
+        subtitle = stringResource(
+            R.string.settings_display_card_export_dialog_sub,
+            stringResource(
+                if (exportDismiss) R.string.settings_display_state_on
+                else R.string.settings_display_state_off
+            ),
+        ),
+        checked = exportDismiss,
+        onCheckedChange = {
+            exportDismiss = it
+            com.bydmate.app.cluster.VehicleDialogDismisser.setEnabled(dismissCtx, it)
+        },
+    ) {
+        SettingHint(text = stringResource(R.string.settings_export_dialog_hint))
+    }
+
     if (learning) {
         LearnButtonDialog(
             onSave = { code ->

@@ -15,24 +15,15 @@ object WazeGuidanceParser {
     private const val MIN_SPEED_LIMIT = 5
     private const val MAX_SPEED_LIMIT = 250
 
-    // A unit may be followed by punctuation in a complete Waze instruction ("500 m, turn").
-    // Reject only another letter so `m` cannot steal the prefix of `mi`/`mile`.
-    private val DIST_KM = Regex("""(?<![-+\d.,])(\d+(?:[.,]\d+)?)\s*(км|km)(?!\p{L})""", RegexOption.IGNORE_CASE)
-    private val DIST_M = Regex("""(?<![-+\d.,])(\d+)\s*(м|m)(?!\p{L})""", RegexOption.IGNORE_CASE)
-    private val DIST_MI = Regex("""(?<![-+\d.,])(\d+(?:[.,]\d+)?)\s*(mi|mile|miles)(?!\p{L})""", RegexOption.IGNORE_CASE)
-    private val DIST_FT = Regex("""(?<![-+\d.,])(\d+(?:[.,]\d+)?)\s*(ft|foot|feet)(?!\p{L})""", RegexOption.IGNORE_CASE)
-    private val ETA_HR_MIN = Regex(
-        """(?<![-+\d])(\d+)\s*(?:год|ч|h|hr|hrs|hour|hours)\s*(\d+)\s*(?:хв|мин|min|mins|minute|minutes)(?!\p{L})""",
-        RegexOption.IGNORE_CASE,
-    )
-    private val ETA_HR = Regex(
-        """(?<![-+\d])(\d+)\s*(?:год|ч|h|hr|hrs|hour|hours)(?!\p{L})""",
-        RegexOption.IGNORE_CASE,
-    )
-    private val ETA_MIN = Regex(
-        """(?<![-+\d])(\d+)\s*(?:хв|мин|min|mins|minute|minutes)(?!\p{L})""",
-        RegexOption.IGNORE_CASE,
-    )
+    // Unit tokens come from the language packs (assets/navi/phrases/<lang>.json, "units");
+    // NavPhraseTables compiles the alternations once per load, for all languages at once.
+    private val DIST_KM: Regex get() = NavPhraseTables.current.distKm
+    private val DIST_M: Regex get() = NavPhraseTables.current.distM
+    private val DIST_MI: Regex get() = NavPhraseTables.current.distMi
+    private val DIST_FT: Regex get() = NavPhraseTables.current.distFt
+    private val ETA_HR_MIN: Regex get() = NavPhraseTables.current.etaHourMin
+    private val ETA_HR: Regex get() = NavPhraseTables.current.etaHour
+    private val ETA_MIN: Regex get() = NavPhraseTables.current.etaMin
     private val SPEED_LIMIT = Regex("""(?<![-+\d])(\d{1,4})(?!\d)""")
     private val DIGITS = Regex("""\d+""")
 

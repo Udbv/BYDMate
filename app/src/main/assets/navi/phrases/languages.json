@@ -1,0 +1,5 @@
+{
+  "_comment": "Navigator text tables, one file per language, loaded ALL at once regardless of the UI language (the navigator speaks the head unit's language and drivers mix). List order = precedence for equal-length matches. To add a language: add <tag>.json here and list it.",
+  "reference": "en",
+  "languages": ["en", "ru", "cs", "zh", "uk"]
+}

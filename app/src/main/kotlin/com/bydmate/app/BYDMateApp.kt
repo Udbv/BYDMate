@@ -61,6 +61,8 @@ class BYDMateApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        // Navigator phrase tables (assets/navi/phrases): language packs for the HUD maneuver parser.
+        com.bydmate.app.navdata.NavPhraseTables.ensureLoaded(this)
         // Allow in-process ServiceManager.getService() on Android 9+ to reach the helper
         // binder service without hidden-API restrictions (UnsatisfiedLinkError / NoSuchMethodError).
         // Guarded: under JVM/Robolectric unit tests the HiddenApiBypass static initializer throws

@@ -1,5 +1,12 @@
 # Pluggable language packs (design, 2026-09-06)
 
+> Status: the navigator-parser half is IMPLEMENTED (`assets/navi/phrases/{languages,en,ru,cs,zh,uk}.json`,
+> loader `navdata/NavPhraseTables.kt`, contract test `NavPhraseTablesTest`). The Waze engine in
+> `NavManeuverCodes.parseInstructionText`, `WazeGuidanceParser` and `WazeAccessibilityReader` holds no
+> language data. Yandex Navigator's tables (`fromA11yDescription`, notification res-ids) stay in Kotlin:
+> that app is Russian-only and its tables are donor field-tested. UI strings, prompts and the
+> manifest/ledger tooling below are still design.
+
 Goal: every language is one self-contained pack; adding a language touches one Kotlin line; a
 tool tells the developer exactly which translations a feature change left missing or stale.
 Companion to `localization-framework-design.md`.
@@ -46,14 +53,22 @@ app/src/main/
 `{name}` placeholders; a `PromptCatalog` object replaces the literals in `AgentOrchestrator`,
 `AgentPersona`, `AgentTools`, `WeatherClient`, `AgentCommandCatalog`.
 
-`navi/phrases/uk.json` mirrors the `add(GAODE_x, phrases...)` blocks in `NavManeuverCodes.kt` and the
-unit regexes; order is significant (see the comment on "кільці" in `NavManeuverCodes.kt`), so phrases
-are ordered arrays, never maps:
+`navi/phrases/uk.json` (as shipped). Order is significant: overlapping matches are resolved by start
+offset, then length, then file order, so phrases are ordered arrays, never maps. The engine
+lowercases phrases and wraps each in letter boundaries; `numberedExit` is a full regex whose group 1
+is the exit number (the engine maps it to 24+N, flat 24 past exit 10); `exitNouns`/`ordinalSuffixes`
+feed the reader's quick exit-number scan; every `units` key must be present (empty list allowed):
 ```json
-{ "source": ["waze"],
-  "maneuvers": [ {"code": "UTURN_RIGHT", "phrases": ["розверніться праворуч"]}, ... ],
-  "units": { "km": ["км"], "m": ["м"], "hourMin": "(\\d+)\\s*год\\s*(\\d+)\\s*хв", "min": "(\\d+)\\s*хв" } }
+{ "lang": "uk", "sources": ["waze"],
+  "maneuvers": [ {"code": "UTURN_RIGHT", "phrases": ["розверніться праворуч", "розворот праворуч"]}, ... ],
+  "numberedExit": "(?:(?:кільц\\p{L}*|кругов\\p{L}*)(?!\\p{L}).{0,48}?)?(\\d+)[-‑ ]?(?:й|му|го|м|е|я)?\\s*з'їзд\\p{L}*(?!\\p{L})",
+  "exitNouns": ["з'їзд"], "ordinalSuffixes": ["й", "му", "го", "м", "е", "я"],
+  "units": {"km": ["км"], "m": ["м"], "mi": [], "ft": [], "hour": ["год"], "minute": ["хв"]} }
 ```
+Codes: LEFT, RIGHT, SLIGHT_LEFT, SLIGHT_RIGHT, HARD_LEFT, HARD_RIGHT, UTURN_LEFT, UTURN_RIGHT, STRAIGHT,
+ROUNDABOUT_ENTER, ROUNDABOUT_EXIT, WAYPOINT, FERRY, ARRIVE, TUNNEL, TOLL. Apostrophes ʼ ’ ‘ are normalized
+to ' by the engine before matching, so files use the plain apostrophe. `NavPhraseTablesTest` fails the
+build when a listed file is missing, a code is unknown, a phrase maps to two codes, or a unit key is absent.
 
 ## 2. Completeness model (machine-checked)
 

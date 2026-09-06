@@ -15,12 +15,9 @@ object WazeAccessibilityReader {
     private const val MAX_FALLBACK_TREE_NODES = 256
     private val COMPOSE_TEST_TAG = Regex("^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$")
     private val SPEED_LIMIT = Regex("""(?<![-+\d])(\d{1,3})(?!\d)""")
-    // RU "2-й съезд", UK "2-й з'їзд" / "на 2-му з'їзді", EN "2nd exit"; apostrophe variants are
-    // normalized in numberedExit() before matching.
-    private val NUMBERED_EXIT = Regex(
-        """(?<!\d)(\d{1,2})(?:[-‑ ]?(?:й|я|е|му|го|st|nd|rd|th))?\s*(?:съезд|з'їзд\p{L}*|exit)(?!\p{L})""",
-        RegexOption.IGNORE_CASE,
-    )
+    // "2-й съезд", "на 2-му з'їзді", "2nd exit": exit nouns and ordinal suffixes come from the
+    // language packs (assets/navi/phrases); apostrophes are normalized in numberedExit() first.
+    private val NUMBERED_EXIT: Regex get() = NavPhraseTables.current.numberedExitQuick
     private val SHORT_DIRECTIONS = setOf("LEFT", "RIGHT", "STRAIGHT", "U-TURN", "U TURN")
     private val MANEUVER_RESOURCE_HINT = Regex(
         "(?:^|_)(?:nav|navigation|maneuver|direction|turn|uturn|u_turn|keep|bear|fork|" +

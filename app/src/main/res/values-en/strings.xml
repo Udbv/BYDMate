@@ -1162,6 +1162,9 @@
     <string name="settings_hud_status_on">Streaming to the HUD</string>
     <string name="settings_hud_status_bind_failed">Could not connect to the SOME/IP bus</string>
     <string name="settings_hud_hint">Requires a trim with the head-up display. Data comes from the navigator window (Yandex Navigator, Yandex Maps or Waze)</string>
+    <string name="settings_display_card_export_dialog_title">Auto-close the ânot official exportâ window</string>
+    <string name="settings_display_card_export_dialog_sub">The BYD export warning closes by itself. %1$s</string>
+    <string name="settings_export_dialog_hint">The âThis car is not from official exportâ window is closed by pressing its single button through the accessibility service: no fixed coordinates, any language. Behaviour ported from RoamingManager; the window is recognized by its vehicledialog title</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">Blind spots</string>
     <string name="settings_blindspot_title">Camera on turn signal</string>

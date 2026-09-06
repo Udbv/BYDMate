@@ -1315,6 +1315,9 @@
     <string name="settings_hud_status_on">Przesyłanie na HUD aktywne</string>
     <string name="settings_hud_status_bind_failed">Nie udało się połączyć z magistralą SOME/IP</string>
     <string name="settings_hud_hint">Potrzebna wersja wyposażenia z wyświetlaczem przeziernym. Dane brane są z okna Yandex Nawigatora</string>
+    <string name="settings_display_card_export_dialog_title">Automatyczne zamykanie okna ânieoficjalny eksportâ</string>
+    <string name="settings_display_card_export_dialog_sub">OstrzeÅ¼enie BYD o eksporcie zamyka siÄ samo. %1$s</string>
+    <string name="settings_export_dialog_hint">Okno âThis car is not from official exportâ jest zamykane naciÅniÄciem jego jedynego przycisku przez usÅugÄ uÅatwieÅ dostÄpu: bez staÅych wspÃ³ÅrzÄdnych, w dowolnym jÄzyku. Okno rozpoznawane po tytule vehicledialog</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">Martwe pola</string>
     <string name="settings_blindspot_title">Kamera przy kierunkowskazie</string>

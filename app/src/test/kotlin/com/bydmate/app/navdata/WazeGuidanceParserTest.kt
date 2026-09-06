@@ -6,6 +6,8 @@ import org.junit.Test
 
 class WazeGuidanceParserTest {
 
+    @org.junit.Before fun loadPacks() = NaviPhraseFixtures.load()
+
     private fun fields(
         maneuver: String? = null, distance: String? = null, street: String? = null,
         remainingDistance: String? = null, remainingTime: String? = null,

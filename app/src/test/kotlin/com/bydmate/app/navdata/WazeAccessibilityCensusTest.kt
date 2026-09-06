@@ -22,6 +22,7 @@ import org.robolectric.annotation.Config
 class WazeAccessibilityCensusTest {
 
     @Before fun setUp() {
+        NaviPhraseFixtures.load()
         WazeAccessibilityReader.resetCensus()
     }
 

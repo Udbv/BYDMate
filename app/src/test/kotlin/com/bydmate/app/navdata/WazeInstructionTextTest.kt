@@ -9,6 +9,8 @@ import org.junit.Test
  *  Sea Lion 07 fork; the Yandex a11y/notification tables are covered by NavManeuverCodesTest. */
 class WazeInstructionTextTest {
 
+    @org.junit.Before fun loadPacks() = NaviPhraseFixtures.load()
+
     private fun gaode(text: String?) = NavManeuverCodes.fromInstructionText(text)
 
     @Test fun `waze package is a guidance source next to yandex`() {

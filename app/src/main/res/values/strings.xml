@@ -1317,6 +1317,9 @@
     <string name="settings_hud_status_on">Передача на HUD активна</string>
     <string name="settings_hud_status_bind_failed">Не удалось подключиться к шине SOME/IP</string>
     <string name="settings_hud_hint">Нужна комплектация с проекционным дисплеем. Данные берутся из окна навигатора (Яндекс Навигатор, Яндекс Карты или Waze)</string>
+    <string name="settings_display_card_export_dialog_title">ÐÐ²ÑÐ¾Ð·Ð°ÐºÑÑÑÐ¸Ðµ Ð¾ÐºÐ½Ð° Â«Ð½Ðµ Ð¾ÑÐ¸ÑÐ¸Ð°Ð»ÑÐ½ÑÐ¹ ÑÐºÑÐ¿Ð¾ÑÑÂ»</string>
+    <string name="settings_display_card_export_dialog_sub">ÐÑÐµÐ´ÑÐ¿ÑÐµÐ¶Ð´ÐµÐ½Ð¸Ðµ BYD Ð¾Ð± ÑÐºÑÐ¿Ð¾ÑÑÐµ Ð·Ð°ÐºÑÑÐ²Ð°ÐµÑÑÑ ÑÐ°Ð¼Ð¾. %1$s</string>
+    <string name="settings_export_dialog_hint">ÐÐºÐ½Ð¾ Â«This car is not from official exportÂ» Ð·Ð°ÐºÑÑÐ²Ð°ÐµÑÑÑ Ð½Ð°Ð¶Ð°ÑÐ¸ÐµÐ¼ ÐµÐ³Ð¾ ÐµÐ´Ð¸Ð½ÑÑÐ²ÐµÐ½Ð½Ð¾Ð¹ ÐºÐ½Ð¾Ð¿ÐºÐ¸ ÑÐµÑÐµÐ· ÑÐ»ÑÐ¶Ð±Ñ ÑÐ¿ÐµÑÐ¸Ð°Ð»ÑÐ½ÑÑ Ð²Ð¾Ð·Ð¼Ð¾Ð¶Ð½Ð¾ÑÑÐµÐ¹: Ð±ÐµÐ· ÑÐ¸ÐºÑÐ¸ÑÐ¾Ð²Ð°Ð½Ð½ÑÑ ÐºÐ¾Ð¾ÑÐ´Ð¸Ð½Ð°Ñ Ð¸ Ð½ÐµÐ·Ð°Ð²Ð¸ÑÐ¸Ð¼Ð¾ Ð¾Ñ ÑÐ·ÑÐºÐ°. ÐÑÐ¾Ð²ÐµÑÐµÐ½Ð¾ Ð´Ð¾Ð½Ð¾ÑÐ¾Ð¼ RoamingManager; Ð½Ð° Tang L Ð¾ÐºÐ½Ð¾ ÑÐ°ÑÐ¿Ð¾Ð·Ð½Ð°ÑÑÑÑ Ð¿Ð¾ Ð·Ð°Ð³Ð¾Ð»Ð¾Ð²ÐºÑ vehicledialog</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">Слепые зоны</string>
     <string name="settings_blindspot_title">Камера по поворотнику</string>

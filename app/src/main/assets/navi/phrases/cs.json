@@ -1,0 +1,16 @@
+{
+  "lang": "cs",
+  "sources": ["waze"],
+  "maneuvers": [
+    {"code": "UTURN_RIGHT", "phrases": ["otocte se doprava", "otočte se doprava"]},
+    {"code": "UTURN_LEFT", "phrases": ["otocte se", "otočte se"]},
+    {"code": "HARD_LEFT", "phrases": ["ostře vlevo"]},
+    {"code": "HARD_RIGHT", "phrases": ["ostře vpravo"]},
+    {"code": "SLIGHT_LEFT", "phrases": ["držte se vlevo", "mírně vlevo"]},
+    {"code": "SLIGHT_RIGHT", "phrases": ["držte se vpravo", "mírně vpravo"]},
+    {"code": "LEFT", "phrases": ["odbočte vlevo", "zahněte vlevo", "doleva", "vlevo"]},
+    {"code": "RIGHT", "phrases": ["odbočte vpravo", "zahněte vpravo", "doprava", "vpravo"]},
+    {"code": "STRAIGHT", "phrases": ["pokračujte rovně", "jeďte rovně", "rovně"]}
+  ],
+  "units": {"km": ["km"], "m": ["m"], "mi": [], "ft": [], "hour": ["h", "hod"], "minute": ["min"]}
+}

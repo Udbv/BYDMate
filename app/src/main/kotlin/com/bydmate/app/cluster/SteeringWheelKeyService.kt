@@ -37,6 +37,7 @@ class SteeringWheelKeyService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        VehicleDialogDismisser.refresh(this)
         val info = serviceInfo ?: AccessibilityServiceInfo()
         info.flags = info.flags or AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS  // 32
         info.flags = info.flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
@@ -150,9 +151,11 @@ class SteeringWheelKeyService : AccessibilityService() {
         return null
     }
 
-    // Single volatile read when the HUD feature is off - see NavA11yFeed.enabled.
+    // Single volatile read per consumer when its feature is off - see NavA11yFeed.enabled and
+    // VehicleDialogDismisser.enabled.
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         NavA11yFeed.onEvent(this, event)
+        VehicleDialogDismisser.onEvent(this, event)
     }
     override fun onInterrupt() { /* no-op */ }
 

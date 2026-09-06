@@ -1,0 +1,28 @@
+{
+  "lang": "en",
+  "sources": ["waze"],
+  "maneuvers": [
+    {"code": "UTURN_RIGHT", "phrases": ["make a u-turn to the right", "make a u turn to the right", "u-turn right", "u turn right"]},
+    {"code": "UTURN_LEFT", "phrases": ["make a u-turn", "make a u turn", "u-turn", "u turn"]},
+    {"code": "HARD_LEFT", "phrases": ["sharp left"]},
+    {"code": "HARD_RIGHT", "phrases": ["sharp right"]},
+    {"code": "SLIGHT_LEFT", "phrases": ["slight left", "keep left", "bear left", "fork left"]},
+    {"code": "SLIGHT_RIGHT", "phrases": ["slight right", "keep right", "bear right", "fork right"]},
+    {"code": "ROUNDABOUT_EXIT", "phrases": ["exit the roundabout", "leave the roundabout"]},
+    {"code": "ROUNDABOUT_ENTER", "phrases": ["roundabout"]},
+    {"code": "FERRY", "phrases": ["board the ferry"]},
+    {"code": "STRAIGHT", "phrases": ["leave the ferry"]},
+    {"code": "ARRIVE", "phrases": ["you have arrived", "arrive at your destination", "destination reached", "reached your destination"]},
+    {"code": "TUNNEL", "phrases": ["tunnel"]},
+    {"code": "LEFT", "phrases": ["take the left", "turn left", "exit left"]},
+    {"code": "RIGHT", "phrases": ["take the right", "turn right", "exit right"]},
+    {"code": "STRAIGHT", "phrases": ["keep straight", "continue straight", "continue", "straight"]}
+  ],
+  "numberedExit": "(?:(?:(?:at|on)\\s+)?(?:the\\s+)?roundabout\\b.{0,48}?)?(?:take\\s+)?(?:the\\s+)?(\\d+)(?:st|nd|rd|th)?\\s+exit\\b",
+  "exitNouns": ["exit"],
+  "ordinalSuffixes": ["st", "nd", "rd", "th"],
+  "units": {
+    "km": ["km"], "m": ["m"], "mi": ["mi", "mile", "miles"], "ft": ["ft", "foot", "feet"],
+    "hour": ["h", "hr", "hrs", "hour", "hours"], "minute": ["min", "mins", "minute", "minutes"]
+  }
+}
