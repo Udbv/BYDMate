@@ -44,8 +44,8 @@ class WazeInstructionTextTest {
     @Test fun `roundabout enter exit and numbered exit`() {
         assertEquals(13, gaode("Кольцевое движение"))
         assertEquals(24, gaode("Выезд с кольца"))
-        assertEquals(24, gaode("2-й съезд"))
-        assertEquals(0, gaode("Take the 11th exit"))
+        assertEquals(26, gaode("2-й съезд"))
+        assertEquals(24, gaode("Take the 11th exit"))  // no icon past exit 10, still a roundabout exit
     }
 
     @Test fun `english waze instructions map to gaode`() {
@@ -55,7 +55,7 @@ class WazeInstructionTextTest {
         assertEquals(4, gaode("Slight right"))
         assertEquals(11, gaode("Continue straight"))
         assertEquals(13, gaode("Enter the roundabout"))
-        assertEquals(24, gaode("Take the 2nd exit"))
+        assertEquals(26, gaode("Take the 2nd exit"))
         assertEquals(48, gaode("You have arrived at your destination"))
         assertEquals(9, gaode("Make a U-turn"))
         assertEquals(10, gaode("Make a U-turn to the right"))
@@ -90,7 +90,7 @@ class WazeInstructionTextTest {
         assertEquals(1, gaode("Turn left, then turn right"))
         assertEquals(4, gaode("Slight right, then turn left"))
         assertEquals(10, gaode("Make a U-turn to the right, then keep left"))
-        assertEquals(24, gaode("At the roundabout, take the 2nd exit, then turn left"))
+        assertEquals(26, gaode("At the roundabout, take the 2nd exit, then turn left"))
         assertEquals(2, gaode("Turn right, then take the 2nd exit"))
     }
 
@@ -120,6 +120,32 @@ class WazeInstructionTextTest {
         assertFalse(NavManeuverCodes.isDirectionalManeuver(NavManeuverCodes.GAODE_ARRIVE))
         assertFalse(NavManeuverCodes.isDirectionalManeuver(NavManeuverCodes.GAODE_TUNNEL))
         assertFalse(NavManeuverCodes.isDirectionalManeuver(0))
+    }
+
+    @Test fun `ukrainian waze instructions map to gaode`() {
+        assertEquals(1, gaode("Поверніть ліворуч"))
+        assertEquals(2, gaode("Поверніть праворуч на вул. Хрещатик"))
+        assertEquals(3, gaode("Тримайтеся ліворуч"))
+        assertEquals(4, gaode("Тримайтеся праворуч"))
+        assertEquals(7, gaode("Різко ліворуч"))
+        assertEquals(8, gaode("Різко праворуч"))
+        assertEquals(9, gaode("Розверніться"))
+        assertEquals(10, gaode("Розверніться праворуч"))
+        assertEquals(11, gaode("Продовжуйте рух прямо"))
+        assertEquals(11, gaode("Прямо"))
+        assertEquals(13, gaode("На кільці"))
+        assertEquals(48, gaode("Ви прибули"))
+        assertEquals(49, gaode("Тунель"))
+        assertEquals(1, gaode("ліворуч"))
+        assertEquals(0, gaode("вул. Праворучна"))
+    }
+
+    @Test fun `ukrainian numbered roundabout exit with apostrophe variants`() {
+        assertEquals(26, gaode("На кільці з'їдьте на 2-му з'їзді"))   // U+0027
+        assertEquals(26, gaode("На кільці зʼїдьте на 2-му зʼїзді"))   // U+02BC
+        assertEquals(27, gaode("3-й з’їзд"))                           // U+2019
+        assertEquals(24, gaode("11-й з'їзд"))                          // no icon past 10
+        assertEquals(24, gaode("З'їзд з кільця"))
     }
 
     @Test fun `yandex tables are untouched by the waze parser`() {

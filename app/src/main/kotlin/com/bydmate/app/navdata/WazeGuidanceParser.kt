@@ -22,15 +22,15 @@ object WazeGuidanceParser {
     private val DIST_MI = Regex("""(?<![-+\d.,])(\d+(?:[.,]\d+)?)\s*(mi|mile|miles)(?!\p{L})""", RegexOption.IGNORE_CASE)
     private val DIST_FT = Regex("""(?<![-+\d.,])(\d+(?:[.,]\d+)?)\s*(ft|foot|feet)(?!\p{L})""", RegexOption.IGNORE_CASE)
     private val ETA_HR_MIN = Regex(
-        """(?<![-+\d])(\d+)\s*(?:ч|h|hr|hrs|hour|hours)\s*(\d+)\s*(?:мин|min|mins|minute|minutes)(?!\p{L})""",
+        """(?<![-+\d])(\d+)\s*(?:год|ч|h|hr|hrs|hour|hours)\s*(\d+)\s*(?:хв|мин|min|mins|minute|minutes)(?!\p{L})""",
         RegexOption.IGNORE_CASE,
     )
     private val ETA_HR = Regex(
-        """(?<![-+\d])(\d+)\s*(?:ч|h|hr|hrs|hour|hours)(?!\p{L})""",
+        """(?<![-+\d])(\d+)\s*(?:год|ч|h|hr|hrs|hour|hours)(?!\p{L})""",
         RegexOption.IGNORE_CASE,
     )
     private val ETA_MIN = Regex(
-        """(?<![-+\d])(\d+)\s*(?:мин|min|mins|minute|minutes)(?!\p{L})""",
+        """(?<![-+\d])(\d+)\s*(?:хв|мин|min|mins|minute|minutes)(?!\p{L})""",
         RegexOption.IGNORE_CASE,
     )
     private val SPEED_LIMIT = Regex("""(?<![-+\d])(\d{1,4})(?!\d)""")

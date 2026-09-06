@@ -316,7 +316,7 @@ object NavManeuverCodes {
         GAODE_UTURN, GAODE_UTURN_RIGHT,
         GAODE_STRAIGHT,
         GAODE_ROUNDABOUT_ENTER, GAODE_ROUNDABOUT_EXIT,
-    )
+    ) + (GAODE_ROUNDABOUT_EXIT + 1..GAODE_ROUNDABOUT_EXIT + 10)
 
     fun isDirectionalManeuver(gaode: Int): Boolean = gaode in DIRECTIONAL_CODES
 
@@ -344,6 +344,12 @@ object NavManeuverCodes {
     )
     private val RU_NUMBERED_EXIT_RE = Regex(
         """(?:(?:кольц\p{L}*|кругов\p{L}*)(?!\p{L}).{0,48}?)?(\d+)[-‑ ]?(?:й|я|е)?\s+съезд(?!\p{L})""",
+        RegexOption.IGNORE_CASE,
+    )
+    // "2-й з'їзд", "на 2-му з'їзді", "з'їдьте на 3-му з'їзді"; apostrophes are normalized to
+    // U+0027 before matching (Waze/Android emit ʼ U+02BC, ’ U+2019 or ' interchangeably).
+    private val UK_NUMBERED_EXIT_RE = Regex(
+        """(?:(?:кільц\p{L}*|кругов\p{L}*)(?!\p{L}).{0,48}?)?(\d+)[-‑ ]?(?:й|му|го|м|е|я)?\s*з'їзд\p{L}*(?!\p{L})""",
         RegexOption.IGNORE_CASE,
     )
 
@@ -389,6 +395,29 @@ object NavManeuverCodes {
             "вы прибыли", "прибытие", "маршрут окончен", "маршрут завершён", "до конца маршрута",
             "конец маршрута", "конечная", "достигнут")
         add(GAODE_TUNNEL, "тоннель", "туннель", "tunnel")
+        // Ukrainian (Waze uk route bar). Specific phrases first; the bare ліворуч/праворуч/прямо
+        // generics sit at the very end of the table.
+        add(GAODE_UTURN_RIGHT, "розверніться праворуч", "розворот праворуч")
+        add(GAODE_UTURN, "розверніться ліворуч", "розверніться", "розворот")
+        add(GAODE_HARD_LEFT, "різко ліворуч", "різкий поворот ліворуч")
+        add(GAODE_HARD_RIGHT, "різко праворуч", "різкий поворот праворуч")
+        add(GAODE_SLIGHT_LEFT,
+            "тримайтеся ліворуч", "тримайтесь ліворуч", "плавно ліворуч", "плавний поворот ліворуч", "лівіше")
+        add(GAODE_SLIGHT_RIGHT,
+            "тримайтеся праворуч", "тримайтесь праворуч", "плавно праворуч", "плавний поворот праворуч", "правіше")
+        add(GAODE_ROUNDABOUT_EXIT, "з'їзд з кільця", "виїзд з кільця", "з'їжджайте з кільця")
+        // "кільці" rather than "на кільці": the numbered-exit regex anchors on the same
+        // "кільц…" token, and overlapping candidates are resolved by start offset first,
+        // so an ENTER phrase starting two characters earlier would swallow the exit.
+        add(GAODE_ROUNDABOUT_ENTER, "кільці", "кільцева", "кругова", "кільце")
+        add(GAODE_FERRY, "сідайте на пором", "в'їзд на пором", "пором")
+        add(GAODE_STRAIGHT, "з'їзд з порома", "виїзд з порома")
+        add(GAODE_WAYPOINT, "проміжна точка")
+        add(GAODE_ARRIVE, "ви прибули", "пункт призначення", "кінець маршруту", "маршрут завершено", "прибуття")
+        add(GAODE_TUNNEL, "тунель")
+        add(GAODE_LEFT, "поверніть ліворуч", "поворот ліворуч")
+        add(GAODE_RIGHT, "поверніть праворуч", "поворот праворуч")
+        add(GAODE_STRAIGHT, "продовжуйте рух прямо", "продовжуйте прямо", "рухайтеся прямо", "продовжуйте")
         add(GAODE_LEFT,
             "поверните налево", "поворот налево", "съезд налево", "налево",
             "take the left", "turn left", "exit left",
@@ -401,6 +430,8 @@ object NavManeuverCodes {
             "продолжайте прямо", "двигайтесь прямо", "продолжайте", "двигайтесь", "прямо",
             "keep straight", "continue straight", "continue", "straight",
             "pokračujte rovně", "jeďte rovně", "rovně", "直行")
+        add(GAODE_LEFT, "ліворуч")
+        add(GAODE_RIGHT, "праворуч")
     }
 
     fun parseInstructionText(text: String?): ParseResult {
@@ -414,6 +445,9 @@ object NavManeuverCodes {
             .replace(' ', ' ')   // NBSP
             .replace(' ', ' ')   // narrow NBSP
             .replace('‑', '-')   // non-breaking hyphen
+            .replace('ʼ', '\'')  // U+02BC modifier apostrophe (correct Ukrainian)
+            .replace('’', '\'')  // U+2019 typographic
+            .replace('‘', '\'')  // U+2018
             .let { value ->
                 if (symbolicTag) value.replace('_', ' ').replace('-', ' ') else value
             }
@@ -430,21 +464,19 @@ object NavManeuverCodes {
                 candidates += Candidate(code, match.range.first, match.range.last + 1, rank)
             }
         }
+        // Numbered exits carry the number in the code (AutoNavi CCW_N_EXIT = 24+N, same as the
+        // Yandex a11y path), so the per-exit HUD icon and the Amap ROUNG_ABOUT_NUM extra work;
+        // an exit outside 1..10 is still a roundabout exit, just without an icon (flat 24).
         fun collectNumberedExit(regex: Regex, rank: Int) {
             regex.findAll(normalized).forEach { match ->
-                val exit = match.groupValues.getOrNull(1)?.toIntOrNull()
-                if (exit in 1..10) {
-                    candidates += Candidate(
-                        GAODE_ROUNDABOUT_EXIT,
-                        match.range.first,
-                        match.range.last + 1,
-                        rank,
-                    )
-                }
+                val exit = match.groupValues.getOrNull(1)?.toIntOrNull() ?: return@forEach
+                val code = if (exit in 1..10) GAODE_ROUNDABOUT_EXIT + exit else GAODE_ROUNDABOUT_EXIT
+                candidates += Candidate(code, match.range.first, match.range.last + 1, rank)
             }
         }
-        collectNumberedExit(EN_NUMBERED_EXIT_RE, rank = -2)
-        collectNumberedExit(RU_NUMBERED_EXIT_RE, rank = -1)
+        collectNumberedExit(EN_NUMBERED_EXIT_RE, rank = -3)
+        collectNumberedExit(RU_NUMBERED_EXIT_RE, rank = -2)
+        collectNumberedExit(UK_NUMBERED_EXIT_RE, rank = -1)
         MANEUVER_PATTERNS.forEachIndexed { index, pattern ->
             collect(pattern.regex, pattern.code, rank = index)
         }

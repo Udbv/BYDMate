@@ -51,6 +51,18 @@ class WazeGuidanceParserTest {
         assertEquals(0, WazeGuidanceParser.parseDurationSeconds("15:40"))
     }
 
+    @Test fun `ukrainian duration and distance tokens`() {
+        assertEquals(27 * 60, WazeGuidanceParser.parseDurationSeconds("27 хв"))
+        assertEquals(3900, WazeGuidanceParser.parseDurationSeconds("1 год 5 хв"))
+        assertEquals(7200, WazeGuidanceParser.parseDurationSeconds("2 год"))
+        assertEquals(1200, WazeGuidanceParser.parseDistanceText("1,2 км"))
+        assertEquals(800, WazeGuidanceParser.parseDistanceText("800 м"))
+        val d = WazeGuidanceParser.parse(fields(maneuver = "Поверніть праворуч", distance = "350 м", remainingTime = "18 хв"))!!
+        assertEquals(2, d.maneuverGaode)
+        assertEquals(350, d.distanceMeters)
+        assertEquals(18 * 60, d.etaSeconds)
+    }
+
     @Test fun `total distance from remaining distance label`() {
         assertEquals(28000, WazeGuidanceParser.parse(fields(maneuver = ">>>", remainingDistance = "28 km"))!!.totalDistMeters)
         assertEquals(800, WazeGuidanceParser.parse(fields(maneuver = ">>>", remainingDistance = "800 м"))!!.totalDistMeters)
