@@ -123,22 +123,38 @@ object HudProtobufBuilder {
         suppressArrow: Boolean,
         etaSeconds: Int,
         remainString: String?,
+        vehicle: HudVehicleState.Fix? = HudVehicleState.fix,
     ): ByteArray {
         val inner = ByteArrayOutputStream()
+        val glassCode = if (suppressArrow) 0 else gaodeToArHudId(maneuverGaode)
         writeVarintField(inner, 2, 2L)
         if (totalDistMeters > 0) writeVarintField(inner, 3, totalDistMeters.toLong())
         if (etaSeconds > 0) writeVarintField(inner, 4, etaSeconds.toLong())
         if (maneuverIconPng != null) writeBytesField(inner, 8, maneuverIconPng)
         writeVarintField(inner, 9, displayDistance(distanceMeters).toLong())
         if (road.isNotEmpty()) writeBytesField(inner, 10, road.toByteArray(Charsets.UTF_8))
-        if (speedLimit > 0) {
-            writeVarintField(inner, 11, speedLimit.toLong())
-            writeVarintField(inner, 15, speedLimit.toLong())
-        }
+        if (speedLimit > 0) writeVarintField(inner, 11, speedLimit.toLong())
+        if (vehicle != null && vehicle.speedKmh > 0) writeVarintField(inner, 12, vehicle.speedKmh.toLong())
+        if (speedLimit > 0) writeVarintField(inner, 15, speedLimit.toLong())
         writeVarintField(inner, 16, 2L)
+        // Vehicle position block (f19..f22, f30..f32): the factory map and openbyd both send it;
+        // an AR glass may refuse guidance without a position to anchor it to.
+        if (vehicle != null) {
+            writeFixed64Field(inner, 19, vehicle.lon.toRawBits())
+            writeFixed64Field(inner, 20, vehicle.lat.toRawBits())
+            if (vehicle.speedKmh > 0) writeVarintField(inner, 21, vehicle.speedKmh.toLong())
+            if (vehicle.altitudeM != 0) writeVarintField(inner, 22, vehicle.altitudeM.toLong())
+        }
+        writeBytesField(inner, 24, "[]".toByteArray())
+        writeBytesField(inner, 25, "[]".toByteArray())
         if (etaString != null) writeBytesField(inner, 26, etaString.toByteArray(Charsets.UTF_8))
         if (remainString != null) writeBytesField(inner, 27, remainString.toByteArray(Charsets.UTF_8))
-        writeVarintField(inner, 28, if (suppressArrow) 0L else gaodeToArHudId(maneuverGaode).toLong())
+        writeVarintField(inner, 28, glassCode.toLong())
+        if (vehicle != null) {
+            writeBytesField(inner, 30, HudGeometry.guideLine(maneuverGaode, vehicle.lat, vehicle.lon, vehicle.bearing).toByteArray())
+            writeBytesField(inner, 31, HudGeometry.guidePoint(distanceMeters, glassCode, vehicle.lat, vehicle.lon, vehicle.bearing).toByteArray())
+            writeFixed64Field(inner, 32, vehicle.bearing.toRawBits())
+        }
         writeFixed64Field(inner, 33, progress(distanceMeters, totalDistMeters).toRawBits())
         return wrap(inner.toByteArray())
     }

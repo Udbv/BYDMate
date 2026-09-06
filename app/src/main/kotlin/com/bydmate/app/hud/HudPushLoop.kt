@@ -26,6 +26,14 @@ class HudPushLoop(
     private val dialect: () -> HudDialect = { HudDialect.CLASSIC },
     /** Remaining minutes -> localized "9 min" for the AR-HUD f27 slot; null = omit. */
     private val remainFormatter: (Int) -> String? = { null },
+    /** AR-HUD sub-channels (docs/investigations/tang-l-hud-someip.md): the road-info frame on
+     *  the HUD service, the launcher-map context topics, the instrument-panel features. Each
+     *  gate is read per tick so the settings switches apply without a restart. */
+    private val roadInfoEnabled: () -> Boolean = { true },
+    internal val launcherContext: HudLauncherMapContext? = null,
+    private val launcherContextEnabled: () -> Boolean = { false },
+    internal val instrumentFids: HudInstrumentFids? = null,
+    private val instrumentFidsEnabled: () -> Boolean = { false },
 ) {
     companion object {
         private const val TAG = "HudPushLoop"
@@ -37,6 +45,7 @@ class HudPushLoop(
 
     private var job: Job? = null
     private var counter = 0   // clear frames only; guidance frames carry the constant 2 in f2
+    private var ctxCounter = 0   // launcher-map context header counter, 0..255 like the donor
 
     // Last journalled maneuver state; NO_MANEUVER means "nothing recorded yet in this guidance
     // session", so the first frame of a new session is always written.
@@ -74,6 +83,8 @@ class HudPushLoop(
             if (wasActive) {
                 val rc = sink.fireEvent(HudSomeIpBridge.TOPIC_NAVI, HudProtobufBuilder.buildClearFrame(counter++, d))
                 Log.i(TAG, "guidance ended, clear frame sent rc=$rc dialect=$d after $framesSent frames")
+                launcherContext?.stop()
+                instrumentFids?.stop()
             }
             amap?.onSnapshot(null)
             journalledGaode = NO_MANEUVER
@@ -100,16 +111,24 @@ class HudPushLoop(
             etaSeconds = s.etaSeconds,
             remainString = if (s.etaSeconds > 0) remainFormatter((s.etaSeconds + 59) / 60) else null,
         )
-        val rc = sink.fireEvent(HudSomeIpBridge.TOPIC_NAVI, frame)
+        val roadInfo = d == HudDialect.CLASSIC || roadInfoEnabled()
+        val rc = if (roadInfo) sink.fireEvent(HudSomeIpBridge.TOPIC_NAVI, frame) else 0
         framesSent++
         lastFrameTs = System.currentTimeMillis()
         lastRc = rc
         if (rc != 0) nonZeroRcCount++
+        if (d == HudDialect.AR_HUD) {
+            ctxCounter = (ctxCounter + 1) and 0xFF
+            if (launcherContextEnabled()) launcherContext?.send(s, ctxCounter)
+            if (instrumentFidsEnabled()) instrumentFids?.update(s)
+        }
         if (!wasActive || framesSent % LOG_EVERY_FRAMES == 0L) {
             Log.i(TAG, "frame #$framesSent rc=$rc dialect=$d bytes=${frame.size} gaode=${s.maneuverGaode} " +
                 "f28=${if (d == HudDialect.AR_HUD) HudProtobufBuilder.gaodeToArHudId(s.maneuverGaode) else HudProtobufBuilder.gaodeToF28(s.maneuverGaode)} " +
                 "dist=${s.distanceMeters} total=${s.totalDistMeters} eta=${s.etaSeconds}s limit=${s.speedLimit} " +
-                "icon=${(if (cameraActive) s.cameraIconPng ?: baseIcon else baseIcon)?.size ?: 0} road='${runningLine(s)}'")
+                "icon=${(if (cameraActive) s.cameraIconPng ?: baseIcon else baseIcon)?.size ?: 0} road='${runningLine(s)}'" +
+                (if (d == HudDialect.AR_HUD) " roadInfo=$roadInfo ctx=${launcherContextEnabled()}/${launcherContext?.eventsSent ?: 0}/rc${launcherContext?.lastRc ?: 0} " +
+                    "fids=${instrumentFidsEnabled()}/${instrumentFids?.writes ?: 0}/fail${instrumentFids?.failures ?: 0} fix=${HudVehicleState.fix != null}" else ""))
         }
         amap?.onSnapshot(s)
         journalManeuver(s, cameraActive)
@@ -136,7 +155,9 @@ class HudPushLoop(
 
     /** Donor running line (f10): beyond 3 km to go, enrich the street with remaining
      *  time and wall-clock arrival: "<road> | ЧЧ:ММ мин | ЧЧ:ММ". */
-    internal fun runningLine(s: NavGuidanceHub.Snapshot): String {
+    internal fun runningLine(s: NavGuidanceHub.Snapshot, d: HudDialect = dialect()): String {
+        // The AR-HUD has its own ETA slots (f26/f27): f10 stays the plain road name.
+        if (d == HudDialect.AR_HUD) return s.road
         if (s.totalDistMeters <= 3000 || s.etaSeconds <= 0 || s.road.isEmpty()) return s.road
         val etaTotalMin = s.etaSeconds / 60
         val remStr = String.format(Locale.US, "%02d:%02d", etaTotalMin / 60, etaTotalMin % 60)

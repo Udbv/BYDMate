@@ -1,35 +1,49 @@
-# Tang L (DiLink 150) HUD over SOME/IP: what the car actually speaks
+# Tang L (DiLink 150) HUD: what the car speaks, what openbyd sends, what BYDMate sends
 
-Field investigation 2026-09-06 on the user's BYD Tang L EV 2025 (DiLink150_7.0UI, DiLink 5.1,
-Android 13, AR-HUD) after BYDMate Waze v3.15.0-dev.1 bound the gateway successfully but nothing
-appeared on the glass. Sources pulled from the car live in `D:\BYD\DiLink` (not in the repo):
-`/system/etc/someip/someip_stack.json`, `/system/lib64/libsomeipimpl{,_proto}.so`,
-`/system/app/SomeIpService/SomeIpService.apk`, `/system/app/BydLaunchermap/BydLaunchermap.apk`
-(571 MB, the factory map), `/system/priv-app/AmapService/AmapService.apk`,
-`/system/priv-app/VehicleDialog/VehicleDialog.apk`.
+Field investigation 2026-09-06/07 on the user's BYD Tang L EV 2025 (`ro.vehicle.type =
+DiLink150_7.0UI`, DiLink 5.1, Android 13, AR-HUD). BYDMate Waze v3.15.0-dev.1 and dev.2 bound
+the SOME/IP gateway and pushed frames, yet the glass stayed empty, while openbyd 2.4.3's HUD test
+page renders on the same glass. Sources pulled from the car live in `D:\BYD\DiLink` (not in the
+repo): `/system/etc/someip/someip_stack.json`, `/system/lib64/libsomeipimpl{,_proto}.so`,
+`SomeIpService.apk` (gateway), `BydLaunchermap.apk` (571 MB factory map), `AmapService.apk`,
+`VehicleDialog.apk`. openbyd's decompiled sources: `%LOCALAPPDATA%\Temp\bydw\openbyd-jadx`.
 
-## What worked out of the box
+## 1. Verified in the car (dev.2 logs, streamed)
 
-- `com.ts.car.someip.service` exists; BYDMate binds it, `registerCallback rc=0`,
-  `startService(0xb010a00010000) rc=0`, status "HUD output active".
-- The helper daemon self-grants the accessibility service; the a11y feed reads Waze while
-  Waze is in the foreground (a maneuver was held in the hub and expired 30 s after BYDMate's own
-  window covered Waze). `ro.vehicle.type = DiLink150_7.0UI`.
+| step | result |
+|---|---|
+| bind `com.ts.car.someip.service` | ok, `registerCallback rc=0` |
+| `startService(0xb010a00010000)` | rc=0; the daemon logs `OFFER(0101): [010a.0001:1.0]` and `REGISTER EVENT [010a.0001.8001/8002/8003]` |
+| a11y read of Waze (foreground, Ukrainian) | `gaode=0 dist=80 road='вул. Центральна Садова …' eta=540s total=6500`, then `Waze visual maneuver=RIGHT gaode=2` |
+| frames | `frame #33 rc=0 dialect=AR_HUD bytes=1392 gaode=2 f28=2 dist=80 icon=1244` every 300 ms for two minutes |
+| glass | nothing |
+| export warning | closes by itself (dismisser fix 9feea63) - confirmed by the user |
 
-## The service is right, the key and the field semantics are not
+So the accessibility side, the gateway binding and the bus offer all work. The daemon even parses
+our protobuf: it re-encodes `HudRoadInfoNotifyStruct` into CommonAPI-SomeIP for the bus (the
+`HudNaviInfoService_server` plugin in `libsomeipimpl.so`), so field order does not matter there.
+What was not seen: any `REMOTE SUBSCRIBE … [010a.0001.1101]` from the HUD unit (192.168.195.x)
+in the two-second windows captured; the full-buffer grep did not finish before the car locked.
 
-`someip_stack.json` defines service **266 (0x010A) instance 1**, UDP 52001, events
-0x8001..0x8003 in eventgroup 0x1101 - the `HudNaviInfoService` (application ids 0x0101 server /
-0x0106 client). The proto (`someip.hud.navi.info.service.proto`, compiled into
-`libsomeipimpl_proto.so` and as Java lite classes inside the map app) is the schema upstream
-already hand-encodes:
+**Correction of an earlier draft:** I claimed the Tang L map opens a different service key
+(`0xB010A00020000`). That was an arithmetic slip: `3097367205183488` is `0xB010A00010000`, the
+key the SDK publishes as `HUD_NAVI_INFO_SERVICE_SERVICE_ID` (`ts.car.someip.plugin.SomeIpTopic`)
+and the one the map app, openbyd and BYDMate all use. The invented key came back `rc=5` with no
+offer, which is exactly what an unknown key should do. dev.2 tried it first (harmless); dev.3
+does not.
 
-| field | name | type | Tang L map fills it with |
+## 2. The HUD service and its schema
+
+`someip_stack.json`: service **266 (0x010A) instance 1**, UDP 52001, events 0x8001..0x8003 in
+eventgroup 0x1101; applications `HudNaviInfoService_server` (0x0101) and `_client` (0x0106). The
+proto `someip.hud.navi.info.service.proto` (`libsomeipimpl_proto.so`, Java lite classes in the
+map app) is what upstream hand-encodes:
+
+| field | name | type | Tang L map (`PlatformHudImpl`) fills it with |
 |---|---|---|---|
 | 1 | checksum | int | never |
 | 2 | counter | int | constant 2 (1 in one branch) |
-| 3 | car_2_dest | int | route remaining, m |
-| 4 | time_of_car_2_dest | int | route remaining, s |
+| 3 / 4 | car_2_dest / time_of_car_2_dest | int | route remaining m / s |
 | 5 | num_of_lanes | int | lanes |
 | 6 | current_road_level | int | road class |
 | 7 | permissible_direction | bytes | lane image |
@@ -39,88 +53,115 @@ already hand-encodes:
 | 11 / 15 | current_max_speed_limit / speed_limit | int | limit |
 | 12 / 21 | current_speed / vehicle_speed | int | speed |
 | 16 | navigating_status | int | 2 navigating, 1 idle |
-| 19 / 20 / 22 / 32 | lon / lat / altitude / heading | double, int | GNSS |
-| 26 | eta_info_time | string | arrival "HH:mm" |
-| 27 | eta_info_remain_time | string | remaining time text |
+| 19 / 20 / 22 / 32 | lon / lat / altitude / heading | double, int, double | GNSS |
+| 24 / 25 | poi_information / reach_the_destination | string | JSON, "" |
+| 26 / 27 | eta_info_time / eta_info_remain_time | string | arrival "HH:mm" / remaining text |
 | 28 | recommendedDrivingDirectionsId | int | **raw Gaode maneuver code** |
 | 29 / 30 / 31 | lanesPermissibleDirectionId / guideline / guidepoint | string | JSON |
 | 33 | navigatingRatio | double | progress 0..1 |
 
-Event topic for this struct: `0x4010a00018001` (`HudRoadInfo_EG`, event 0x8001) - identical to
-BYDMate's `TOPIC_NAVI`. Event 0x8003 (`HudNavigationmap`) carries a base64 JPEG/PNG of the map
-for the AR overlay, event 0x8002 the path info.
+Topics: `0x4010a00018001` HudRoadInfo_EG (this struct), `…8002` HudMappathInfo_EG,
+`…8003` HudNavigationmap (base64 JPEG/PNG of the map for the AR overlay; the daemon has a special
+`hanldeHudNavigationmap` path for it).
 
-### Difference 1: the service key
+Arrow codes: the map sends the Gaode code itself through table `k.h.j.e.b.a`
+`{0,0,1,2,3,5,7,8,9,11,45,13,24,46,47,48,49,14,23,10,12,15,18,20,22,16,17,19,21}`: 1 left, 2
+right, 3 slight left, 5 slight right, 7/8 sharp, 9 U-turn, 11 straight, 13 enter / 24 exit
+roundabout, 45 waypoint, 46 service area, 47 toll, 48 destination, 49 tunnel. Upstream's classic
+`gaodeToF28` (4 -> 5, 7/8 -> 1/2, 9/10 -> 7/8, roundabouts -> 99) is the older glass's enum.
 
-The gateway's `startService(long)` takes a key `0xB << 48 | (service << 16 | low) << 16`.
-Upstream (Atto 3 / Seal / Sea Lion, byd-hud donor) opens `0xB010A00010000` (low word 1). The
-Tang L map (`BydLaunchermap`, class `SomeIPDataHudManager`, log tag "Launcher150Pro :
-PlatformHudImpl") opens **`0xB010A00020000`** (low word 2) before firing on the same topic, and
-closes it with `stopSomeIpService` when guidance ends. Which SOME/IP attribute the low word is
-(instance, major version) could not be read from the closed daemon; the fix mirrors the car.
+Speed sign: upstream puts a rendered PNG into f7 with f6 = 6; on the Tang L f7 is the lane image
+and f6 the road class. Clear frame: upstream f2 counter / f6 255 / f16 1; the map sends every
+field at its default with f16 = 1, f2 = 2, then `stopSomeIpService`.
 
-### Difference 2: the arrow
+## 3. What openbyd 2.4.3 actually sends (the app that works on this glass)
 
-Upstream maps Gaode codes to the classic glass enum (`gaodeToF28`: 4 -> 5, 7/8 -> 1/2,
-9/10 -> 7/8, roundabouts and destination -> 99 blank). The Tang L map sends the Gaode code itself,
-via table `k.h.j.e.b.a` (Amap icon type -> Gaode code):
-`{0,0,1,2,3,5,7,8,9,11,45,13,24,46,47,48,49,14,23,10,12,15,18,20,22,16,17,19,21}`,
-i.e. 1 left, 2 right, 3 slight left, 5 slight right, 7/8 sharp, 9 U-turn, 11 straight, 13 enter
-roundabout, 24 exit roundabout, 45 waypoint, 46 service area, 47 toll, 48 destination, 49 tunnel.
-The AR-HUD has glyphs for roundabouts and the destination.
+Its HUD test page calls `HudController.updateNavigation`, which always runs
+`CanBydFidStrategy`: **two channels at once**.
 
-### Difference 3: the speed-sign trick
+**Channel A - instrument-panel features over the autoservice ("CAN")**, pref
+`hud_send_can_messages` default on (`CarControlImpl`, `BYDAutoInstrumentDevice`):
+navi status 1138753594 = 2 (active) / 4 (stopped); guide icon 1139806224 and dual icon
+1139806256 = Gaode code; distance 1139806232; next road name 1140461576 (bytes); rest route
+mileage 1139810344 / hour 1139810320 / minute 1139810328; expected arrival minute 1139839008;
+secondary icon 1139834896 / distance 1139834904.
 
-Upstream puts a rendered speed-limit PNG into f7 with f6 = 6. On the Tang L f7 is the lane
-image and f6 the road class; the glass draws its own limit from f11/f15. The AR-HUD dialect omits
-both and sends the limit twice.
+**Channel B - SOME/IP**, pref `someip_hud_version`, default `LAUNCHER_MAP_CN`:
 
-### Clear frame
+- `LauncherMapCnStrategy` (default) never fires the HUD road-info topic. It replays the
+  launcher-map context sniffed from the factory map: NavigationStatus_LinkInfo (service 7:
+  state 101, traffic info with route remaining and lon/lat), SdMapInform (0x8202:
+  naviActionAndCamera = icon, main action, distance; lanes), Obstacle_LaneLine (0xC),
+  PilotStatus_AlarmInfo (0xD), PlanningLine (0xE, route id), HeaderInfo (0xF). Session markers
+  are constants (2641158014, 1729875789, 3592003832, 3817498742, 4073768758, six doubles).
+- `AlternativeUi7Strategy`: road-info frame only, with an incrementing counter, lon/lat (f19/f20),
+  guide line (f30, a synthetic 10-point polyline) and guide point (f31), lanes (f5/f29).
+- `AlternativeCnD5Strategy`: road-info with every field (f1..f33) plus the six context services.
 
-Upstream: f2 counter, f6 = 255, f16 = 1. Tang L map: all fields at defaults, f16 = 1, f2 = 2
-(`clearAndSendNullData`), then `stopSomeIpService`.
+Every strategy opens the same HUD key. openbyd ignores `startService` return codes.
 
-## What BYDMate does now (v3.15.0-dev.2)
+## 4. Why BYDMate showed nothing: the candidates
 
-`HudDialect` (Settings -> Display -> HUD -> HUD type: Auto / Classic / AR-HUD):
+The HUD frame we sent (dev.1: classic layout; dev.2: Tang L layout) lacked the vehicle position
+block and the guide line, and we sent nothing on the other channels. On an AR glass the TBT
+widget may be anchored to the position, or the visible guidance may be rendered by the scene
+renderer (`com.byd.sr`, GritPlayer, which consumes the SdMapInform / NavigationStatus data) rather
+than by the HUD unit from HudRoadInfo, or the glass may take its TBT from the instrument features.
+Any of the three explains openbyd's success; the field test decides.
 
-- Auto resolves AR-HUD when `ro.vehicle.type` contains `DiLink150`.
-- AR-HUD opens both keys (`0x...0002...` first, then the classic one), builds the Tang L field
-  set (`HudProtobufBuilder.buildArHudFrame`, `gaodeToArHudId`), and sends the Tang L clear frame.
-- Field diagnostics at info level survive the release build: `HudPushLoop` logs the first frame
-  of a session and every 33rd frame with rc, dialect, code, distance and road; `NavA11yFeed`
-  logs each changed Waze read; `HudController` logs the resolved dialect and the keys opened.
+## 5. What BYDMate v3.15.0-dev.3 does
 
-Verify on the car with Waze navigating in the foreground:
+`HudDialect` AR-HUD (auto on `DiLink150`) now has three switchable sub-channels, all on by
+default so the first run reproduces openbyd's full behaviour:
+
+1. **HUD frame** (`HudProtobufBuilder.buildArHudFrame`): Tang L field set plus f12/f21 speed,
+   f19/f20 lon/lat, f22 altitude, f24/f25 "[]", f30 guide line, f31 guide point, f32 heading from
+   the last GNSS fix (`HudVehicleState`, fed by TrackingService).
+2. **Factory-map context** (`HudLauncherMapContext`): port of openbyd's `LauncherMapCnStrategy`
+   with BYDMate's guidance values; opens the six extra service keys.
+3. **Instrument-panel features** (`HudInstrumentFids`): port of openbyd's CAN channel through the
+   helper daemon (`HelperClient.write(1007, fid, value)`), values written on change; the road-name
+   bytes feature is skipped until the daemon offers byte writes.
+
+Settings -> Display -> HUD shows the three switches under the AR-HUD type. Logs (info level,
+survive release): `HudPushLoop` frame lines now include `roadInfo=… ctx=on/events/rc fids=on/writes/fail fix=…`;
+`HudLauncherMapCtx` and `HudInstrumentFids` log session start/stop.
+
+## 6. Car test plan (bisection)
 
 ```bash
-adb -s 192.168.0.166:5555 logcat -v time HudController:I HudSomeIpBridge:I HudPushLoop:I NavA11yFeed:I NavGuidanceHub:I VehicleDialogDismisser:I *:S
+adb connect 192.168.0.166:5555
+adb -s 192.168.0.166:5555 logcat -G 8M
+adb -s 192.168.0.166:5555 logcat -v time HudController:I HudSomeIpBridge:I HudPushLoop:I HudLauncherMapCtx:I HudInstrumentFids:I NavA11yFeed:I NavGuidanceHub:I *:S
 ```
 
-## Export warning ("This car is not from official export")
+1. Waze route in the foreground, all three switches on -> does the glass show the turn?
+2. If yes: switch off "Factory-map context", wait 10 s, check; switch it back on, switch off
+   "Guidance to the instrument panel", check; then "HUD frame". The one whose removal blanks the
+   glass is the channel it reads.
+3. If no: in openbyd, set `someip_hud_version` to `ALTERNATIVE_UI7` and turn off
+   `hud_send_can_messages`, run its test; then the other way round. Report which combination
+   shows, and capture `logcat | grep -E 'OFFER|SUBSCRIBE|010a'` during a BYDMate session to see
+   whether the HUD unit ever subscribes to `[010a.0001.1101]`.
 
-`com.byd.vehicledialog` (`NotOfficialExportedManager`): an `AlertDialog` from `BydAlertBuilder`,
-window type 2008 (`TYPE_SYSTEM_DIALOG`), cancelable, closed-on-touch-outside, one positive button
-that only dismisses. Shown when `BODYWORK_POWER_LEVEL` becomes 2 (power on) and the SIM's MCC is
-not in `assets/mccWhitelist.properties`; `DialogManager` dismisses it itself when AVC/ADS comes to
-the foreground. The a11y window therefore has the app's label as title and
-`com.byd.vehicledialog` as root package - matched by `VehicleDialogDismisser` since 9feea63
-(label, package or warning text), which clicks the button or sends BACK (the dialog is cancelable).
+Note: the gateway app crashed once (`SomeIpServerService.onUnbind` NPE, `intent: null`) at
+00:02:38 while both apps were bound; it restarted by itself and BYDMate re-registered. Avoid
+toggling the HUD type repeatedly while openbyd is bound.
 
-Why the warning cannot simply be whitelisted: `isWhitelistMcc()` compares the system property
-`persist.radio.byd.last_mcc` (written by the radio stack from the SIM's network, 255 = Ukraine)
-against `assets/mccWhitelist.properties` inside the signed system APK on the read-only `/system`
-partition (China 460, HK/Macau 454-457, Russia 250, Belarus 257, Kazakhstan 401, Uzbekistan 434,
-Azerbaijan 400, Georgia 282, Armenia 283, Middle East and North Africa 4xx/6xx). Editing the asset
-needs root; the property belongs to the radio SELinux domain, so neither the app nor the ADB shell
-user (which is what the helper daemon runs as) may set it, and the modem rewrites it on every
-network registration anyway. The check passes only when the property is absent (-1) or listed.
-Closing the dialog through the accessibility service stays the practical route.
+## 7. Export warning ("This car is not from official export")
 
-## Open questions
+`com.byd.vehicledialog` (`NotOfficialExportedManager`): an `AlertDialog` (`BydAlertBuilder`,
+window type 2008 `TYPE_SYSTEM_DIALOG`, cancelable, one button that only dismisses), shown when
+`BODYWORK_POWER_LEVEL` becomes 2 (power on) and the MCC is not whitelisted. The a11y window has
+the app label as title and `com.byd.vehicledialog` as root package; `VehicleDialogDismisser`
+(9feea63) matches label, package or warning text and clicks the button or sends BACK. Confirmed
+working in the car.
 
-- Whether the low word of the service key is the SOME/IP instance or the major version.
-- Whether the AR-HUD also wants `HudNavigationmap` (0x8003) frames to show the guidance strip at
-  all, or renders the TBT block from `HudRoadInfo_EG` alone (the map sends both while navigating).
-- `arhud_open_status` (map setting) and `getHudConfig() == 2` gate the map's sender; BYDMate
-  ignores both.
+Why it cannot simply be whitelisted: `isWhitelistMcc()` compares `persist.radio.byd.last_mcc`
+(255 = Ukraine on this car, written by the radio stack from the network; the SIM itself is
+Chinese, 46009) against `assets/mccWhitelist.properties` inside the signed system APK on the
+read-only `/system` partition (China 460, HK/Macau 454-457, Russia 250, Belarus 257, Kazakhstan
+401, Uzbekistan 434, Azerbaijan 400, Georgia 282, Armenia 283, Middle East and North Africa
+4xx/6xx). Editing the asset needs root; the property belongs to the radio SELinux domain
+(`setprop` from the ADB shell user fails), and the modem rewrites it on every registration. The
+check passes only when the property is absent (-1) or listed.

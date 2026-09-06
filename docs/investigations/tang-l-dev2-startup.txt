@@ -1,0 +1,44 @@
+--------- beginning of main
+09-06 23:57:05.266 I/NavPhraseTables(11894): loaded 5 navigator languages: en, ru, cs, zh, uk; phrases=173 exitRegexes=3 probe[en=4, ru=2, uk=1, cs=7, zh=11]
+09-06 23:57:05.428 I/TrackingService(11894): onCreate: starting TrackingService
+09-06 23:57:05.442 I/TrackingService(11894): Location provider: gps=true
+09-06 23:57:05.448 I/TrackingService(11894): requestLocationUpdates(GPS_PROVIDER) registered
+09-06 23:57:05.453 I/TrackingService(11894): lastKnownLocation: provider=gps age=0s
+09-06 23:57:05.455 I/TrackingService(11894): Restored session: startedAt=1788725328332, lastActiveTs=1788728219247, baselinesOk=true
+09-06 23:57:05.464 I/TrackingService(11894): HelperBootstrap.ensureRunning → true
+09-06 23:57:05.467 I/TrackingService(11894): Starting polling via SharedAdaptiveLoop
+09-06 23:57:05.785 I/TrackingService(11894): GET_USAGE_STATS appop grant: true
+09-06 23:57:05.883 I/TrackingService(11894): Sync: Без изменений
+09-06 23:57:05.963 I/VehicleDialogDismisser(11894): a11y service connected, auto-dismiss enabled
+09-06 23:57:06.033 I/HudSomeIpBridge(11894): bind server rc=true path=explicit attempt=0
+09-06 23:57:06.033 I/HudSomeIpBridge(11894): registerCallback rc=0
+09-06 23:57:06.035 I/HudSomeIpBridge(11894): startService(0xb010a00020000) rc=5
+09-06 23:57:06.037 I/HudSomeIpBridge(11894): re-startService(0xb010a00020000) rc=5
+09-06 23:57:06.037 I/HudSomeIpBridge(11894): server connected ComponentInfo{com.ts.car.someip.service/com.ts.car.someip.service.manager.SomeIpServerService}
+09-06 23:57:06.044 I/HudSomeIpBridge(11894): startService(0xb010a00010000) rc=0
+09-06 23:57:06.044 I/HudController(11894): dialect=AR_HUD vehicle='DiLink150_7.0UI' keys=0xb010a00020000, 0xb010a00010000
+09-06 23:57:06.050 I/HudController(11894): HUD output active
+09-06 23:57:06.079 I/TrackingService(11894): Autoservice catch-up: NO_DELTA (attempt 1)
+09-06 23:57:06.100 I/TrackingService(11894): Widget session: id=1788725328332, bufferRows=3, newestKm=30651.4, recentAvg=28.26 kWh/100, shortAvg=—, display=28.6, trend=NONE, socCarry=0.000 kWh, powerState=2
+09-06 23:57:06.100 I/TrackingService(11894): Range live: sessionKm=0.0, liveAvg=— kWh/100, samples=1
+09-06 23:57:06.432 I/VehicleDialogDismisser(11894): a11y service connected, auto-dismiss enabled
+09-06 23:57:10.963 I/VehicleDialogDismisser(11894): no export warning among 0 windows: 
+09-06 23:57:11.437 I/VehicleDialogDismisser(11894): no export warning among 4 windows: 'Панель навігації'/com.android.systemui | '-'/com.android.systemui | '-'/com.bydmate.app.waze | 'Map'/com.byd.launchermap
+09-06 23:57:15.965 I/VehicleDialogDismisser(11894): no export warning among 0 windows: 
+09-06 23:57:16.436 I/VehicleDialogDismisser(11894): no export warning among 4 windows: 'Панель навігації'/com.android.systemui | '-'/com.android.systemui | '-'/com.bydmate.app.waze | 'Map'/com.byd.launchermap
+09-06 23:57:25.962 I/VehicleDialogDismisser(11894): no export warning among 0 windows: 
+09-06 23:57:26.494 I/VehicleDialogDismisser(11894): no export warning among 5 windows: 'Панель навігації'/com.android.systemui | '-'/com.android.systemui | '-'/com.bydmate.app.waze | 'Disable self-start'/com.byd.appstartmanagement | 'Map'/com.byd.launchermap
+09-06 23:57:35.154 I/NavGuidanceHub(11894): guidance active (source=A11Y)
+09-06 23:57:35.154 I/NavA11yFeed(11894): a11y read: com.waze gaode=0 dist=80 road='вул. Центральна Садова (Русанівські сади)' eta=540s total=6500 limit=0
+09-06 23:57:35.221 I/HudPushLoop(11894): frame #1 rc=0 dialect=AR_HUD bytes=145 gaode=0 f28=0 dist=80 total=6500 eta=540s limit=0 icon=0 road='вул. Центральна Садова (Русанівські сади) | 00:09 мин | 00:06'
+09-06 23:57:35.239 I/NavA11yFeed(11894): Waze visual maneuver=RIGHT gaode=2
+09-06 23:57:38.409 I/NavA11yFeed(11894): a11y read: com.waze window without guidance widgets
+09-06 23:57:38.428 I/TrackingService(11894): onTaskRemoved: scheduling restart via WorkManager
+09-06 23:57:45.055 I/HudPushLoop(11894): frame #33 rc=0 dialect=AR_HUD bytes=1392 gaode=2 f28=2 dist=80 total=6500 eta=540s limit=0 icon=1244 road='вул. Центральна Садова (Русанівські сади) | 00:09 мин | 00:06'
+09-06 23:57:45.962 I/VehicleDialogDismisser(11894): no export warning among 0 windows: 
+09-06 23:57:46.482 I/VehicleDialogDismisser(11894): no export warning among 5 windows: 'Панель навігації'/com.android.systemui | '-'/com.android.systemui | '-'/com.bydmate.app.waze | 'Launcher3'/com.android.launcher3 | 'Map'/com.byd.launchermap
+09-06 23:57:48.396 I/NavGuidanceHub(11894): guidance inactive: route ended (no-guidance deadline)
+09-06 23:57:48.397 I/HudPushLoop(11894): guidance ended, clear frame sent rc=0 dialect=AR_HUD after 43 frames
+09-06 23:58:05.520 I/NavGuidanceHub(11894): maneuver expired: no maneuver read for 30s
+09-06 23:58:06.168 I/TrackingService(11894): Widget session: id=1788725328332, bufferRows=3, newestKm=30651,4, recentAvg=28,26 kWh/100, shortAvg=—, display=28,6, trend=NONE, socCarry=0,000 kWh, powerState=2
+09-06 23:58:06.168 I/TrackingService(11894): Range live: sessionKm=0,0, liveAvg=— kWh/100, samples=13

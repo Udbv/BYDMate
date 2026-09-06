@@ -271,13 +271,37 @@ class HudProtobufBuilderTest {
 
     // ---- DiLink 150 AR-HUD dialect (Tang L 2025) ----
 
+    @Test fun `ar-hud frame carries the vehicle position block when a fix exists`() {
+        HudVehicleState.set(HudVehicleState.Fix(lat = 50.45, lon = 30.52, bearing = 90.0, speedKmh = 42, altitudeM = 120, timeMs = 1L))
+        try {
+            val f = unwrap(HudProtobufBuilder.buildFrameSafe(
+                maneuverGaode = 2, distanceMeters = 80, road = "A", etaString = null,
+                totalDistMeters = 1000, speedLimit = 0, maneuverIconPng = null, speedSignPng = null,
+                dialect = HudDialect.AR_HUD,
+            ))
+            assertEquals(42L, f[12]!![0] as Long)
+            assertEquals(30.52, Double.fromBits(f[19]!![0] as Long), 1e-12)
+            assertEquals(50.45, Double.fromBits(f[20]!![0] as Long), 1e-12)
+            assertEquals(42L, f[21]!![0] as Long)
+            assertEquals(120L, f[22]!![0] as Long)
+            assertTrue(String(f[30]!![0] as ByteArray).startsWith("[[30.52,50.45,0],"))
+            assertTrue(String(f[31]!![0] as ByteArray).endsWith(",0"))
+            assertEquals(90.0, Double.fromBits(f[32]!![0] as Long), 1e-12)
+            assertEquals("[]", String(f[24]!![0] as ByteArray))
+        } finally {
+            HudVehicleState.set(null)
+        }
+    }
+
     @Test fun `ar-hud frame carries the Tang L map field set and no speed-sign trick`() {
+        HudVehicleState.set(null)
         val f = unwrap(HudProtobufBuilder.buildFrameSafe(
             maneuverGaode = 7, distanceMeters = 250, road = "Садова",
             etaString = "23:34", totalDistMeters = 6500, speedLimit = 50,
             maneuverIconPng = byteArrayOf(0x01, 0x02), speedSignPng = byteArrayOf(0x09),
             dialect = HudDialect.AR_HUD, etaSeconds = 540, remainString = "9 хв",
         ))
+        assertNull(f[19]); assertNull(f[30])         // no fix -> no position block
         assertEquals(2L, f[2]!![0] as Long)          // constant counter, like PlatformHudImpl
         assertEquals(6500L, f[3]!![0] as Long)       // car2Dest
         assertEquals(540L, f[4]!![0] as Long)        // timeOfCar2Dest

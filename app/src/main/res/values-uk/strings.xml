@@ -1327,6 +1327,12 @@
     <string name="settings_hud_dialect_classic">Класичний</string>
     <string name="settings_hud_dialect_arhud">AR-HUD (Tang L)</string>
     <string name="hud_eta_remaining_minutes">%1$d хв</string>
+    <string name="settings_hud_arhud_roadinfo_title">Кадр HUD (HudNaviInfo)</string>
+    <string name="settings_hud_arhud_roadinfo_desc">Підказка на сервіс HUD по шині SOME/IP, як штатна карта</string>
+    <string name="settings_hud_arhud_launcher_title">Контекст штатної карти</string>
+    <string name="settings_hud_arhud_launcher_desc">Повідомлення «карта веде маршрут» для ADAS та AR-шару (як openbyd). Вимикайте по одному, щоб знайти канал, який читає скло</string>
+    <string name="settings_hud_arhud_fids_title">Підказки в приладову панель</string>
+    <string name="settings_hud_arhud_fids_desc">Значок, відстань і залишок маршруту через функції приладової панелі (канал CAN в openbyd)</string>
     <string name="settings_display_card_export_dialog_title">Автозакриття вікна «не офіційний експорт»</string>
     <string name="settings_display_card_export_dialog_sub">Попередження BYD про експорт закривається саме. %1$s</string>
     <string name="settings_export_dialog_hint">Вікно «This car is not from official export» закривається натисканням його єдиної кнопки через службу спеціальних можливостей: без фіксованих координат і незалежно від мови. Вікно розпізнається за заголовком vehicledialog</string>

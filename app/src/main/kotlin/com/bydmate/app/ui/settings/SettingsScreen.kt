@@ -1329,6 +1329,34 @@ private fun DisplaySection() {
                     }
                 },
             )
+            val resolvedDialect = com.bydmate.app.hud.HudDialect.fromPref(hudDialectPref)
+                ?: com.bydmate.app.hud.HudDialect.detect()
+            if (resolvedDialect == com.bydmate.app.hud.HudDialect.AR_HUD) {
+                // Sub-channels of the AR-HUD dialect: together they reproduce what openbyd sends
+                // on the Tang L; the car test switches them off one by one.
+                var arRoadInfo by remember { mutableStateOf(hudController.isArHudRoadInfoEnabled()) }
+                var arLauncherCtx by remember { mutableStateOf(hudController.isArHudLauncherContextEnabled()) }
+                var arFids by remember { mutableStateOf(hudController.isArHudFidsEnabled()) }
+                SettingDivider()
+                SettingToggleRow(
+                    title = stringResource(R.string.settings_hud_arhud_roadinfo_title),
+                    description = stringResource(R.string.settings_hud_arhud_roadinfo_desc),
+                    checked = arRoadInfo,
+                    onCheckedChange = { arRoadInfo = it; hudController.setArHudRoadInfoEnabled(it) },
+                )
+                SettingToggleRow(
+                    title = stringResource(R.string.settings_hud_arhud_launcher_title),
+                    description = stringResource(R.string.settings_hud_arhud_launcher_desc),
+                    checked = arLauncherCtx,
+                    onCheckedChange = { arLauncherCtx = it; hudController.setArHudLauncherContextEnabled(it) },
+                )
+                SettingToggleRow(
+                    title = stringResource(R.string.settings_hud_arhud_fids_title),
+                    description = stringResource(R.string.settings_hud_arhud_fids_desc),
+                    checked = arFids,
+                    onCheckedChange = { arFids = it; hudController.setArHudFidsEnabled(it) },
+                )
+            }
             SettingDivider()
             SettingStatusRow(
                 title = when (hudStatus) {

@@ -1162,6 +1162,7 @@ class TrackingService : Service(), LocationListener {
 
     override fun onLocationChanged(location: Location) {
         _lastLocation.value = location
+        com.bydmate.app.hud.HudVehicleState.update(location)
         // AC-06: never log raw coordinates in release — logcat is readable on DiLink
         // and ends up in user-shared diagnostic dumps.
         if (BuildConfig.DEBUG) {

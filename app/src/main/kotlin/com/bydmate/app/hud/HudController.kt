@@ -53,6 +53,12 @@ class HudController @Inject constructor(
         const val KEY_ENABLED = "hud_enabled"
         const val KEY_SUPPORTED = "hud_supported"
         const val KEY_SPEED_SIGN = "hud_speed_sign"
+        /** AR-HUD sub-channels, all on by default: together they reproduce what openbyd 2.4.3
+         *  sends on the Tang L (the configuration seen working on that glass); switch them off
+         *  one at a time in the car to find the channel the glass actually reads. */
+        const val KEY_ARHUD_ROAD_INFO = "hud_arhud_road_info"
+        const val KEY_ARHUD_LAUNCHER_CTX = "hud_arhud_launcher_ctx"
+        const val KEY_ARHUD_FIDS = "hud_arhud_fids"
     }
 
     /** Single lane: stop()/startIfEnabled() launched across a service restart must
@@ -98,12 +104,29 @@ class HudController @Inject constructor(
         }
     }
 
-    /** Gateway service keys to open for [d], primary first. The AR-HUD opens the classic key
-     *  too: harmless on that firmware and it keeps the older glass working when "auto" guesses
-     *  wrong on an unknown DiLink 150 trim. */
+    fun isArHudRoadInfoEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_ROAD_INFO, true)
+    fun isArHudLauncherContextEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_LAUNCHER_CTX, true)
+    fun isArHudFidsEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_FIDS, true)
+
+    fun setArHudRoadInfoEnabled(on: Boolean) { prefs().edit().putBoolean(KEY_ARHUD_ROAD_INFO, on).apply() }
+    fun setArHudFidsEnabled(on: Boolean) { prefs().edit().putBoolean(KEY_ARHUD_FIDS, on).apply() }
+
+    /** The context topics need their services opened on the gateway: re-open the channel. */
+    fun setArHudLauncherContextEnabled(on: Boolean) {
+        prefs().edit().putBoolean(KEY_ARHUD_LAUNCHER_CTX, on).apply()
+        if (isEnabled()) {
+            NavA11yFeed.enabled = false
+            scope.launch { stopSequence(); startSequence() }
+        }
+    }
+
+    /** Gateway service keys to open for [d], the HUD service first. Both glass families use
+     *  the one SDK key for it; the AR-HUD adds the launcher-map context services when that
+     *  channel is on. */
     internal fun serviceIdsFor(d: HudDialect): List<Long> = when (d) {
         HudDialect.CLASSIC -> listOf(HudSomeIpBridge.SERVICE_ID_NAVI)
-        HudDialect.AR_HUD -> listOf(HudSomeIpBridge.SERVICE_ID_NAVI_ARHUD, HudSomeIpBridge.SERVICE_ID_NAVI)
+        HudDialect.AR_HUD -> listOf(HudSomeIpBridge.SERVICE_ID_NAVI) +
+            (if (isArHudLauncherContextEnabled()) HudLauncherMapContext.SERVICE_KEYS else emptyList())
     }
 
     fun diag(): HudDiag? = loop?.let { l ->
@@ -115,7 +138,9 @@ class HudController @Inject constructor(
             amapCapable = l.amap?.capable ?: false,
             amapFramesSent = l.amap?.framesSent ?: 0,
             amapStopsSent = l.amap?.stopsSent ?: 0,
-            dialect = "${dialect()} (pref=${dialectPref()}, vehicle='${HudDialect.readVehicleType()}')",
+            dialect = "${dialect()} (pref=${dialectPref()}, vehicle='${HudDialect.readVehicleType()}') " +
+                "roadInfo=${isArHudRoadInfoEnabled()} launcherCtx=${isArHudLauncherContextEnabled()}/${l.launcherContext?.eventsSent ?: 0} " +
+                "fids=${isArHudFidsEnabled()}/${l.instrumentFids?.writes ?: 0}/fail${l.instrumentFids?.failures ?: 0} fix=${HudVehicleState.fix != null}",
         )
     }
 
@@ -187,7 +212,12 @@ class HudController @Inject constructor(
                     dialect = { dialect() },
                     remainFormatter = { minutes ->
                         context.getString(com.bydmate.app.R.string.hud_eta_remaining_minutes, minutes)
-                    })
+                    },
+                    roadInfoEnabled = { isArHudRoadInfoEnabled() },
+                    launcherContext = HudLauncherMapContext(b),
+                    launcherContextEnabled = { isArHudLauncherContextEnabled() },
+                    instrumentFids = HudInstrumentFids(helperClient, scope),
+                    instrumentFidsEnabled = { isArHudFidsEnabled() })
                     .also { it.start(scope) }
                 _status.value = Status.ON
                 Log.i(TAG, "HUD output active")

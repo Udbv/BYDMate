@@ -1,0 +1,35 @@
+--------- beginning of main
+09-06 23:57:35.834 W/.someip.service( 1673): Reducing the number of considered missed Gc histogram windows from 148 to 100
+09-06 23:58:55.854 I/TsSomeIpServiceApp( 1673): <<SomeIpServerService#onUnbind:159>> onUnbind, intent: com.bydmate.app.waze
+09-06 23:58:58.573 I/TsSomeIpServiceApp( 1673): <<SomeIpServerService#onUnbind:159>> onUnbind, intent: com.bydmate.app.waze
+09-06 23:59:00.323 I/TsSomeIpServiceApp( 1673): <<SomeIpServerService#onUnbind:159>> onUnbind, intent: com.bydmate.app.waze
+09-06 23:59:17.457 I/TsSomeIpServiceApp( 1673): <<SomeIpServerService#onUnbind:159>> onUnbind, intent: com.bydmate.app.waze
+--------- beginning of system
+09-06 23:59:17.600 W/Looper  ( 1673): Slow dispatch took 143ms main h=android.app.ActivityThread$H c=null m=122
+09-07 00:02:13.309 I/TsSomeIpServiceApp( 1673): <<SomeIpServerService#onUnbind:159>> onUnbind, intent: com.bydmate.app.waze
+09-07 00:02:38.803 I/TsSomeIpServiceApp( 1673): <<SomeIpServerService#onUnbind:159>> onUnbind, intent: null
+09-07 00:02:38.804 D/AndroidRuntime( 1673): Shutting down VM
+--------- beginning of crash
+09-07 00:02:38.804 E/AndroidRuntime( 1673): FATAL EXCEPTION: main
+09-07 00:02:38.804 E/AndroidRuntime( 1673): Process: com.ts.car.someip.service, PID: 1673
+09-07 00:02:38.804 E/AndroidRuntime( 1673): java.lang.RuntimeException: Unable to unbind to service com.ts.car.someip.service.manager.SomeIpServerService@3689652 with Intent { act=com.ts.car.someip.SomeIpServerService pkg=com.ts.car.someip.service }: java.lang.NullPointerException
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at android.app.ActivityThread.handleUnbindService(ActivityThread.java:4766)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at android.app.ActivityThread.-$$Nest$mhandleUnbindService(Unknown Source:0)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2286)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at android.os.Looper.loopOnce(Looper.java:224)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at android.os.Looper.loop(Looper.java:321)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at android.app.ActivityThread.main(ActivityThread.java:8468)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at java.lang.reflect.Method.invoke(Native Method)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:569)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1015)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): Caused by: java.lang.NullPointerException
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at java.util.Objects.requireNonNull(Objects.java:220)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at com.ts.car.someip.service.manager.SomeIpServerService.lambda$onUnbind$1(SomeIpServerService.java:162)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at com.ts.car.someip.service.manager.SomeIpServerService.$r8$lambda$VMz6oTrH-fjxvGL9TkI8stdFu7c(Unknown Source:0)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at com.ts.car.someip.service.manager.SomeIpServerService$$ExternalSyntheticLambda0.accept(Unknown Source:8)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at java.util.concurrent.ConcurrentHashMap.forEach(ConcurrentHashMap.java:1608)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at com.ts.car.someip.service.manager.SomeIpServerService.onUnbind(SomeIpServerService.java:161)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	at android.app.ActivityThread.handleUnbindService(ActivityThread.java:4750)
+09-07 00:02:38.804 E/AndroidRuntime( 1673): 	... 9 more
+09-07 00:02:38.814 I/Process ( 1673): Sending signal. PID: 1673 SIG: 9

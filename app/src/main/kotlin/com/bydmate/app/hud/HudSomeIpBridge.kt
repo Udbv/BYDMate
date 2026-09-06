@@ -50,10 +50,10 @@ class HudSomeIpBridge(
         private const val TX_FIRE_EVENT = IBinder.FIRST_CALL_TRANSACTION + 5
 
         const val TOPIC_NAVI = 0x4010a00018001L
+        /** `HUD_NAVI_INFO_SERVICE_SERVICE_ID` in BYD's SDK (ts.car.someip.plugin.SomeIpTopic):
+         *  the same key on the classic glass and on the DiLink 150 AR-HUD (Tang L map app,
+         *  openbyd) - verified in the car, docs/investigations/tang-l-hud-someip.md. */
         const val SERVICE_ID_NAVI = 0xB010A00010000L
-        /** Service key the DiLink 150 map app (Tang L) opens before it fires on [TOPIC_NAVI]:
-         *  same service 0x010A, low word 2 instead of 1 (docs/investigations/tang-l-hud-someip.md). */
-        const val SERVICE_ID_NAVI_ARHUD = 0xB010A00020000L
 
         /** Cheap capability probe - MUST run before any binding or helper-daemon work:
          *  cars without the SOME/IP gateway (no factory HUD) take this exit (Codex fix 1). */

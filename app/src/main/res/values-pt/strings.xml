@@ -1169,6 +1169,12 @@
     <string name="settings_hud_dialect_classic">Clássico</string>
     <string name="settings_hud_dialect_arhud">AR-HUD (Tang L)</string>
     <string name="hud_eta_remaining_minutes">%1$d min</string>
+    <string name="settings_hud_arhud_roadinfo_title">Quadro HUD (HudNaviInfo)</string>
+    <string name="settings_hud_arhud_roadinfo_desc">Orientação no serviço HUD por SOME/IP, como o mapa de fábrica</string>
+    <string name="settings_hud_arhud_launcher_title">Contexto do mapa de fábrica</string>
+    <string name="settings_hud_arhud_launcher_desc">Mensagens \"o mapa está a navegar\" para o ADAS e a camada AR (como o openbyd). Desligue uma de cada vez para encontrar o canal que o vidro lê</string>
+    <string name="settings_hud_arhud_fids_title">Orientação para o painel de instrumentos</string>
+    <string name="settings_hud_arhud_fids_desc">Ícone, distância e rota restante pelas funções do painel (canal CAN do openbyd)</string>
     <string name="settings_display_card_export_dialog_title">Fechar automaticamente a janela “not official export”</string>
     <string name="settings_display_card_export_dialog_sub">O aviso de exportação da BYD fecha sozinho. %1$s</string>
     <string name="settings_export_dialog_hint">A janela “This car is not from official export” é fechada premindo o seu único botão através do serviço de acessibilidade: sem coordenadas fixas, em qualquer idioma. A janela é reconhecida pelo título vehicledialog</string>
