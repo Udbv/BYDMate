@@ -1154,14 +1154,14 @@
     <!-- HUD navigation -->
     <string name="settings_hud_header">HUD (head-up display)</string>
     <string name="settings_hud_title">Navigation on HUD</string>
-    <string name="settings_hud_desc">Yandex Navigator guidance on the head-up display: maneuver, distance, street, arrival</string>
+    <string name="settings_hud_desc">Navigator guidance (Yandex Navigator, Yandex Maps or Waze) on the head-up display: maneuver, distance, street, arrival</string>
     <string name="settings_hud_speed_sign_title">Speed sign under the arrow</string>
     <string name="settings_hud_speed_sign_desc">Red speed-limit sign in the lower HUD slot</string>
     <string name="settings_hud_status_unsupported">SOME/IP bus not found: HUD output is unavailable on this car</string>
     <string name="settings_hud_status_connecting">Connecting to the bus…</string>
     <string name="settings_hud_status_on">Streaming to the HUD</string>
     <string name="settings_hud_status_bind_failed">Could not connect to the SOME/IP bus</string>
-    <string name="settings_hud_hint">Requires a trim with the head-up display. Data comes from the Yandex Navigator window</string>
+    <string name="settings_hud_hint">Requires a trim with the head-up display. Data comes from the navigator window (Yandex Navigator, Yandex Maps or Waze)</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">Blind spots</string>
     <string name="settings_blindspot_title">Camera on turn signal</string>

@@ -21,6 +21,14 @@ object NavA11yExtractor {
         if (root == null) return ReadResult.NotNavigator
         val pkg = root.packageName?.toString() ?: return ReadResult.NotNavigator
         if (pkg !in NavPackages.GUIDANCE_SOURCES) return ReadResult.NotNavigator
+        if (NavPackages.isWazePackage(pkg)) {
+            // Waze has an unrelated widget tree; census is recorded here because this is the
+            // single chosen root the guidance feed actually consumes.
+            val fields = WazeAccessibilityReader.read(root, recordCensus = true)
+                ?: return ReadResult.NoGuidance
+            val parsed = WazeGuidanceParser.parse(fields) ?: return ReadResult.NoGuidance
+            return ReadResult.Guidance(parsed)
+        }
         val raw = NavGuidanceParser.RawFields(
             maneuverDesc = descOf(root, "$pkg:id/image_maneuverballoon_maneuver"),
             exitNumber = textOf(root, "$pkg:id/exit_number_text"),

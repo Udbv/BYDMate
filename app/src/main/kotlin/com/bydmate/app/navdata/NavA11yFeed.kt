@@ -50,10 +50,27 @@ object NavA11yFeed {
     @Volatile private var lastDumpedGaode = NO_MANEUVER
     @Volatile internal var lastDumpMs = 0L
 
+    /** Waze event-carried maneuver (see [WazeAccessibilityReader.maneuverFromEvent]): several
+     *  Waze layouts update the distance node first and emit the arrow as a separate event whose
+     *  semantic value is gone by the time the debounced window read runs. Consumed by the next
+     *  Guidance read that has no maneuver of its own; expires after [EVENT_MANEUVER_TTL_MS]. */
+    private const val EVENT_MANEUVER_TTL_MS = 10_000L
+    @Volatile private var pendingEventManeuverGaode = 0
+    @Volatile private var pendingEventManeuverMs = 0L
+
     fun onEvent(service: SteeringWheelKeyService, event: AccessibilityEvent?) {
         if (!enabled) return
         val nowMs = System.currentTimeMillis()
-        if (!shouldProcess(event?.packageName?.toString(), event?.eventType ?: 0, nowMs, lastProcessMs)) return
+        val pkg = event?.packageName?.toString()
+        if (NavPackages.isWazePackage(pkg) && (event?.eventType ?: 0) != 0) {
+            // Runs BEFORE the debounce on purpose: the arrow event is often the one dropped by it.
+            val hint = runCatching { WazeAccessibilityReader.maneuverFromEvent(event) }.getOrDefault(0)
+            if (hint > 0) {
+                pendingEventManeuverGaode = hint
+                pendingEventManeuverMs = nowMs
+            }
+        }
+        if (!shouldProcess(pkg, event?.eventType ?: 0, nowMs, lastProcessMs)) return
         lastProcessMs = nowMs
         // An unreachable window says NOTHING about the route: the navigator may be
         // minimized, covered by another pane, or projected onto a private VirtualDisplay
@@ -86,8 +103,10 @@ object NavA11yFeed {
         try {
             when (val result = NavA11yExtractor.read(root)) {
                 is NavA11yExtractor.ReadResult.Guidance -> {
-                    NavGuidanceHub.update(result.data, NavGuidanceHub.Source.A11Y, nowMs)
-                    dumpTreeOnManeuverChange(root, result.data.maneuverGaode, nowMs)
+                    val data = withWazeManeuverHint(root, result.data, nowMs)
+                    NavGuidanceHub.update(data, NavGuidanceHub.Source.A11Y, nowMs)
+                    dumpTreeOnManeuverChange(root, data.maneuverGaode, nowMs)
+                    if (data.maneuverGaode == 0) requestWazeVisualManeuver(service, root)
                 }
                 is NavA11yExtractor.ReadResult.NoGuidance ->
                     NavGuidanceHub.markNoGuidance(nowMs)
@@ -113,8 +132,9 @@ object NavA11yFeed {
             // embeds the Navigator, and a foreign root reads as NotNavigator.
             val result = NavA11yExtractor.read(root)
             if (result !is NavA11yExtractor.ReadResult.Guidance) return false
-            NavGuidanceHub.update(result.data, NavGuidanceHub.Source.A11Y, nowMs)
-            dumpTreeOnManeuverChange(root, result.data.maneuverGaode, nowMs)
+            val data = withWazeManeuverHint(root, result.data, nowMs)
+            NavGuidanceHub.update(data, NavGuidanceHub.Source.A11Y, nowMs)
+            dumpTreeOnManeuverChange(root, data.maneuverGaode, nowMs)
             return true
         } finally {
             @Suppress("DEPRECATION")
@@ -177,6 +197,44 @@ object NavA11yFeed {
                 @Suppress("DEPRECATION")
                 runCatching { child.recycle() }
             }
+        }
+    }
+
+    // -- Waze arrow fallbacks -------------------------------------------------------------
+    // Waze draws its arrow as an image; the tree read often yields distance + street but no
+    // maneuver. Two fallbacks, both Waze-only and both hints for an ALREADY active route:
+    // (1) a maneuver carried by a recent a11y event, (2) a bounded screenshot of the arrow
+    // ImageView classified by shape (WazeVisualManeuverReader, needs canTakeScreenshot).
+
+    /** Fills a missing Waze maneuver from the pending event hint when it is still fresh. */
+    private fun withWazeManeuverHint(
+        root: AccessibilityNodeInfo,
+        data: NavGuidance,
+        nowMs: Long,
+    ): NavGuidance {
+        if (data.maneuverGaode != 0) return data
+        if (!NavPackages.isWazePackage(runCatching { root.packageName?.toString() }.getOrNull())) return data
+        val hint = pendingEventManeuverGaode
+        if (hint <= 0 || nowMs - pendingEventManeuverMs > EVENT_MANEUVER_TTL_MS) return data
+        return data.copy(maneuverGaode = hint)
+    }
+
+    private fun requestWazeVisualManeuver(service: SteeringWheelKeyService, root: AccessibilityNodeInfo) {
+        if (!NavPackages.isWazePackage(runCatching { root.packageName?.toString() }.getOrNull())) return
+        // request() reads the tree synchronously (the caller recycles root afterwards) and
+        // classifies on the service executor; only the resulting code reaches the hub.
+        runCatching {
+            WazeVisualManeuverReader.request(service, root) { gaode ->
+                if (enabled) applyVisualManeuver(gaode)
+            }
+        }
+    }
+
+    /** Applies one classified arrow. Logs edges only: the classifier re-reads the same arrow
+     *  about once a second for the whole approach to a turn. */
+    internal fun applyVisualManeuver(gaode: Int, nowMs: Long = System.currentTimeMillis()) {
+        if (NavGuidanceHub.updateManeuverHint(gaode, NavGuidanceHub.Source.A11Y, nowMs)) {
+            Log.i(TAG, "Waze visual maneuver=${NavManeuverCodes.codeName(gaode)} gaode=$gaode")
         }
     }
 

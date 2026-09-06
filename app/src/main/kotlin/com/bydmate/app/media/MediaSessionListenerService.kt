@@ -52,6 +52,10 @@ class MediaSessionListenerService : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         runCatching {
             if (sbn.packageName !in NavPackages.GUIDANCE_SOURCES) return
+            // Waze guidance is read from its accessibility tree only (WazeAccessibilityReader):
+            // its ongoing notification carries no maneuver semantics (openbyd 2.4.3 ignores it
+            // too), and the Yandex RemoteViews parsers below would only feed noise into the hub.
+            if (NavPackages.isWazePackage(sbn.packageName)) return
             val notification = sbn.notification
             val pkg = sbn.packageName
             if (isMediaNotification(notification)) return
@@ -74,6 +78,7 @@ class MediaSessionListenerService : NotificationListenerService() {
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         runCatching {
             if (sbn.packageName !in NavPackages.GUIDANCE_SOURCES) return
+            if (NavPackages.isWazePackage(sbn.packageName)) return  // never mirrored, nothing to clear
             // Donor removal semantics: never deactivate immediately - Navigator
             // flickers its notification on refresh. The debounced grace check runs
             // on the lane; the raw-text holder clears right away as before.

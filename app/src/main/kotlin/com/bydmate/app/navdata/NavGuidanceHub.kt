@@ -112,6 +112,26 @@ object NavGuidanceHub {
         return s
     }
 
+    /**
+     * Maneuver-only hint for an ACTIVE route (Waze arrow classified from an a11y screenshot or
+     * carried by a single a11y event). Never activates a route by itself: a hint without a live
+     * distance/street would put a bare arrow on the glass. Returns true when the rendered
+     * maneuver actually changed, so callers log edges rather than every 1 Hz re-confirmation.
+     */
+    @Synchronized
+    fun updateManeuverHint(
+        maneuverGaode: Int,
+        source: Source,
+        nowMs: Long = System.currentTimeMillis(),
+    ): Boolean {
+        if (maneuverGaode <= 0) return false
+        val current = snapshot(nowMs)
+        if (!current.active) return false
+        // Field-wise merge: zeros keep every other field, only the maneuver (and its freshness) moves.
+        update(NavGuidance(maneuverGaode = maneuverGaode), source, nowMs)
+        return current.maneuverGaode != maneuverGaode
+    }
+
     @Synchronized
     fun update(data: NavGuidance, source: Source, nowMs: Long = System.currentTimeMillis()) {
         noGuidanceSinceMs = 0L

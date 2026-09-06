@@ -1,6 +1,8 @@
 package com.bydmate.app.navdata
 
-/** Yandex guidance app package variants (donor YANDEX_PKGS split into two sets). */
+/** Navigation packages whose window/notification data may feed the guidance hub, the HUD and
+ *  the voice agent. Yandex sets come from the donor (YANDEX_PKGS split in two); Waze is read by
+ *  its own extractor (WazeAccessibilityReader) because its widget tree is unrelated. */
 object NavPackages {
     val YANDEX_NAVI = setOf(
         "ru.yandex.yandexnavi",
@@ -15,6 +17,13 @@ object NavPackages {
         "ru.yandex.yandexmaps.rustore",
     )
 
+    val WAZE = setOf("com.waze")
+
     /** All packages treated as guidance sources (a11y feed, notification mirror, HUD). */
-    val GUIDANCE_SOURCES = YANDEX_NAVI + YANDEX_MAPS
+    val GUIDANCE_SOURCES = YANDEX_NAVI + YANDEX_MAPS + WAZE
+
+    fun isWazePackage(packageName: String?): Boolean = packageName in WAZE
+
+    fun isYandexPackage(packageName: String?): Boolean =
+        packageName in YANDEX_NAVI || packageName in YANDEX_MAPS
 }
