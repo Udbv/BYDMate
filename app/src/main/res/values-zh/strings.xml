@@ -185,6 +185,10 @@
     <string name="settings_autostart_open_button">自启动设置</string>
     <string name="settings_update_check_toggle_label">检查更新</string>
     <string name="settings_update_check_toggle_description">启动 30 秒后检查 GitHub 并提示更新</string>
+    <string name="settings_update_channel_title">更新渠道</string>
+    <string name="settings_update_channel_stable">稳定版</string>
+    <string name="settings_update_channel_dev">开发版</string>
+    <string name="settings_update_channel_desc">稳定版：仅正式发布的版本。开发版：还包括带有新功能的预发布构建（可能含有错误）</string>
     <string name="settings_update_check_button">立即检查更新</string>
 
     <!-- Settings: Autoservice status -->
@@ -1277,9 +1281,9 @@
     <string name="settings_hud_status_on">正在向 HUD 传输</string>
     <string name="settings_hud_status_bind_failed">无法连接 SOME/IP 总线</string>
     <string name="settings_hud_hint">需要配备抬头显示的车型。数据来自 Yandex 导航窗口</string>
-    <string name="settings_display_card_export_dialog_title">èªå¨å³é­âéå®æ¹åºå£âçªå£</string>
-    <string name="settings_display_card_export_dialog_sub">BYD åºå£è­¦åçªå£ä¼èªå¨å³é­ã%1$s</string>
-    <string name="settings_export_dialog_hint">éè¿æ éç¢æå¡ç¹å»âThis car is not from official exportâçªå£çå¯ä¸æé®æ¥å³é­å®ï¼ä¸ä¾èµåºå®åæ ï¼ä¸è¯­è¨æ å³ãè¯¥çªå£ææ é¢ vehicledialog è¯å«</string>
+    <string name="settings_display_card_export_dialog_title">自动关闭“非官方出口”窗口</string>
+    <string name="settings_display_card_export_dialog_sub">BYD 出口警告窗口会自动关闭。%1$s</string>
+    <string name="settings_export_dialog_hint">通过无障碍服务点击“This car is not from official export”窗口的唯一按钮来关闭它：不依赖固定坐标，与语言无关。该窗口按标题 vehicledialog 识别</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">盲区</string>
     <string name="settings_blindspot_title">转向灯触发摄像头</string>
@@ -1407,4 +1411,6 @@
     <string name="tech_hint_motors">电机及其驱动逆变器的温度。日常行驶在 60…80° 以内。长时间加速或拖挂时温度更高，车辆会自行降低功率直到冷却。</string>
     <string name="tech_hint_compressor">空调与热泵压缩机消耗多少瓦。它是除电机之外的主要用电设备：夏天酷热、冬天严寒时会明显缩短续航。</string>
     <string name="tech_hint_tyres">来自胎压传感器的每个车轮的压力和温度。行驶中轮胎升温后压力会升高 0,2…0,3 bar，属于正常。若某个车轮明显低于其他，请检查是否漏气。</string>
+    <string name="dashboard_trip1_label">TRIP 1</string>
+    <string name="dashboard_trip2_label">TRIP 2</string>
 </resources>

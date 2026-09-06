@@ -135,7 +135,7 @@ class AdbOnDeviceClientImpl @Inject constructor(
 
     override suspend fun grantUsageStatsAppop(packageName: String): Boolean = withContext(Dispatchers.IO) {
         // Only permit our own package — never grant appops to anything else.
-        require(packageName.matches(PACKAGE_NAME_REGEX)) {
+        require(packageName == ctx.packageName) {
             "grantUsageStatsAppop: refused package $packageName"
         }
         val cmd = "appops set $packageName GET_USAGE_STATS allow"
@@ -182,7 +182,7 @@ class AdbOnDeviceClientImpl @Inject constructor(
                 "CLASSPATH=${ctx.packageCodePath} setsid app_process /system/bin " +
                 "--nice-name=$HELPER_PROCESS_NAME com.bydmate.app.helper.HelperDaemon " +
                 "${android.os.Process.myUid()} $token </dev/null >$HELPER_LOG_PATH 2>&1 & " +
-                "for i in 1 2 3; do { service list 2>/dev/null | grep -q $HELPER_PROCESS_NAME || " +
+                "for i in 1 2 3; do { service list 2>/dev/null | grep -q $HELPER_SERVICE_NAME || " +
                 "grep -q READY $HELPER_LOG_PATH 2>/dev/null; } && break; sleep 1; done"
             // exec() returns null only on a dead/disconnected socket (AdbProtocolClient.exec) — an
             // honest false here matters: HelperBootstrap.ensureRunningLocked() persists the spawned
@@ -246,15 +246,14 @@ class AdbOnDeviceClientImpl @Inject constructor(
         // Rejects tx=6 (setInt), tx=8 (setBuffer), and arbitrary shell.
         private val WRITE_BARRIER_REGEX = Regex("""^service call autoservice [579] i32 \d+ i32 -?\d+$""")
 
-        // Narrow whitelist for grantUsageStatsAppop — only our own package.
-        private val PACKAGE_NAME_REGEX = Regex("""^com\.bydmate\.app$""")
-
         // Spawn token shape — alphanumeric only, so it can never break out of the spawn
         // command line. HelperBootstrap generates 32 hex characters.
         private val SPAWN_TOKEN_REGEX = Regex("""^[A-Za-z0-9]{16,64}$""")
 
-        // Helper daemon — hardcoded so neither caller can inject paths/cmdlines.
-        private const val HELPER_PROCESS_NAME = "bydmate_helper"
-        private const val HELPER_LOG_PATH = "/data/local/tmp/bydmate_helper.log"
+        // Helper daemon names come from HelperBinderProtocol: fixed per distribution flavor
+        // (official / waze), never caller-controlled, so shell arguments stay non-injectable.
+        private val HELPER_PROCESS_NAME = com.bydmate.app.helper.HelperBinderProtocol.PROCESS_NAME
+        private val HELPER_SERVICE_NAME = com.bydmate.app.helper.HelperBinderProtocol.SERVICE_NAME
+        private val HELPER_LOG_PATH = com.bydmate.app.helper.HelperBinderProtocol.LOG_PATH
     }
 }

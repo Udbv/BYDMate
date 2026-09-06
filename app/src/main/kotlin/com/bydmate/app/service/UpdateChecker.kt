@@ -23,12 +23,56 @@ class UpdateChecker @Inject constructor(
     private val httpClient: OkHttpClient
 ) {
     companion object {
-        private const val GITHUB_API = "https://api.github.com/repos/AndyShaman/BYDMate/releases/latest"
+        /** GitHub repository whose releases feed this build (per distribution flavor). */
+        private val REPO = com.bydmate.app.BuildConfig.UPDATE_REPO
         private const val PREFS_NAME = "update_prefs"
         private const val KEY_LAST_CHECK = "last_check"
         private const val KEY_AUTO_CHECK = "auto_check_enabled"
         private const val KEY_LAST_SEEN_VERSION = "last_seen_version"
+        private const val KEY_CHANNEL = "update_channel"
+        const val CHANNEL_STABLE = "stable"
+        const val CHANNEL_DEV = "dev"
         private const val CHECK_INTERVAL_MS = 10 * 60 * 1000L // 10 minutes (protects only against repeated launches within one session)
+
+        /** Stable = latest non-prerelease GitHub release; dev = newest release including prereleases. */
+        fun getChannel(context: Context): String =
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(KEY_CHANNEL, CHANNEL_STABLE) ?: CHANNEL_STABLE
+
+        fun setChannel(context: Context, channel: String) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().putString(KEY_CHANNEL, channel).remove(KEY_LAST_CHECK).apply()
+        }
+
+        /**
+         * Version order for tags like `3.15.0`, `3.15.1-dev.2`, `v3.16.0`: numeric triple first;
+         * for an equal triple a final release beats any pre-release, and pre-releases order by
+         * their trailing number. Anything unparsable is never "newer".
+         */
+        internal fun isNewer(remote: String, local: String): Boolean {
+            val r = parseVersion(remote) ?: return false
+            val l = parseVersion(local) ?: return true
+            for (i in 0 until 3) {
+                if (r.nums[i] > l.nums[i]) return true
+                if (r.nums[i] < l.nums[i]) return false
+            }
+            // same triple: final > pre-release; pre-release vs pre-release by build number
+            if (r.pre == null && l.pre != null) return true
+            if (r.pre != null && l.pre == null) return false
+            if (r.pre != null && l.pre != null) return r.pre > l.pre
+            return false
+        }
+
+        private data class Version(val nums: IntArray, val pre: Int?)
+
+        private val VERSION_RE = Regex("""^v?(\d+)\.(\d+)(?:\.(\d+))?(?:-[a-z]+[.-]?(\d+)?)?""", RegexOption.IGNORE_CASE)
+
+        private fun parseVersion(s: String): Version? {
+            val m = VERSION_RE.find(s.trim()) ?: return null
+            val nums = intArrayOf(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toIntOrNull() ?: 0)
+            val pre = if (m.value.contains('-')) (m.groupValues[4].toIntOrNull() ?: 0) else null
+            return Version(nums, pre)
+        }
 
         fun isAutoCheckEnabled(context: Context): Boolean =
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -64,8 +108,13 @@ class UpdateChecker @Inject constructor(
 
         prefs.edit().putLong(KEY_LAST_CHECK, now).apply()
 
+        val dev = getChannel(context) == CHANNEL_DEV
+        // Stable: GitHub's "latest" excludes pre-releases and drafts. Dev: the newest release of
+        // any kind (pre-releases are how the development channel is published).
+        val url = if (dev) "https://api.github.com/repos/$REPO/releases?per_page=10"
+            else "https://api.github.com/repos/$REPO/releases/latest"
         val request = Request.Builder()
-            .url(GITHUB_API)
+            .url(url)
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "BYDMate-UpdateCheck")
             .build()
@@ -76,7 +125,12 @@ class UpdateChecker @Inject constructor(
             response.body?.string() ?: throw Exception("Пустой ответ от GitHub")
         }
 
-        val json = JSONObject(body)
+        val json = if (dev) {
+            val list = org.json.JSONArray(body)
+            (0 until list.length()).map { list.getJSONObject(it) }
+                .firstOrNull { !it.optBoolean("draft", false) }
+                ?: throw Exception("Нет релизов в $REPO")
+        } else JSONObject(body)
         val tagName = json.optString("tag_name", "").removePrefix("v")
         val currentVersion = getAppVersion(context)
 
@@ -222,15 +276,4 @@ class UpdateChecker @Inject constructor(
         }
     }
 
-    private fun isNewer(remote: String, local: String): Boolean {
-        val r = remote.split(".").mapNotNull { it.toIntOrNull() }
-        val l = local.split(".").mapNotNull { it.toIntOrNull() }
-        for (i in 0 until maxOf(r.size, l.size)) {
-            val rv = r.getOrElse(i) { 0 }
-            val lv = l.getOrElse(i) { 0 }
-            if (rv > lv) return true
-            if (rv < lv) return false
-        }
-        return false
-    }
 }

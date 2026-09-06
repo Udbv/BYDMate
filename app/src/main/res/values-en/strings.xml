@@ -199,6 +199,10 @@
     <string name="settings_autostart_open_button">Autostart setting</string>
     <string name="settings_update_check_toggle_label">Check for updates</string>
     <string name="settings_update_check_toggle_description">Check GitHub 30 seconds after startup and suggest updating</string>
+    <string name="settings_update_channel_title">Update channel</string>
+    <string name="settings_update_channel_stable">Stable</string>
+    <string name="settings_update_channel_dev">Development</string>
+    <string name="settings_update_channel_desc">Stable: released versions only. Development: also pre-release builds with new features (may contain bugs)</string>
     <string name="settings_update_check_button">Check for updates now</string>
     <string name="settings_autoservice_disconnected_title">not connected</string>
     <string name="settings_autoservice_disconnected_detail">restart the app if ADB is enabled in Developer settings</string>
@@ -1162,9 +1166,9 @@
     <string name="settings_hud_status_on">Streaming to the HUD</string>
     <string name="settings_hud_status_bind_failed">Could not connect to the SOME/IP bus</string>
     <string name="settings_hud_hint">Requires a trim with the head-up display. Data comes from the navigator window (Yandex Navigator, Yandex Maps or Waze)</string>
-    <string name="settings_display_card_export_dialog_title">Auto-close the ânot official exportâ window</string>
+    <string name="settings_display_card_export_dialog_title">Auto-close the “not official export” window</string>
     <string name="settings_display_card_export_dialog_sub">The BYD export warning closes by itself. %1$s</string>
-    <string name="settings_export_dialog_hint">The âThis car is not from official exportâ window is closed by pressing its single button through the accessibility service: no fixed coordinates, any language. Behaviour ported from RoamingManager; the window is recognized by its vehicledialog title</string>
+    <string name="settings_export_dialog_hint">The “This car is not from official export” window is closed by pressing its single button through the accessibility service: no fixed coordinates, any language. The window is recognized by its vehicledialog title</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">Blind spots</string>
     <string name="settings_blindspot_title">Camera on turn signal</string>
@@ -1293,4 +1297,6 @@
     <string name="tech_hint_motors">Temperature of the electric motors and of the inverters that drive them. In ordinary driving up to 60…80°. During long acceleration or towing they get hotter and the car reduces power itself until they cool down.</string>
     <string name="tech_hint_compressor">How many watts the air conditioning and heat pump compressor draws. It is the main consumer besides the motors: in summer heat and in winter frost it noticeably eats into the range.</string>
     <string name="tech_hint_tyres">Pressure and temperature of each wheel from the sensors in the tyres. Pressure rises by 0.2…0.3 bar as the tyres warm up on a trip, that is normal. If one wheel is noticeably lower than the others, check whether it is losing air.</string>
+    <string name="dashboard_trip1_label">TRIP 1</string>
+    <string name="dashboard_trip2_label">TRIP 2</string>
 </resources>

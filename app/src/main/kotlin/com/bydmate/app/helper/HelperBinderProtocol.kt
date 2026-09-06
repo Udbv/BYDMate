@@ -65,8 +65,14 @@ import android.os.IBinder
  * status/value carry the raw autoservice transact result (see HelperDaemon).
  */
 object HelperBinderProtocol {
-    const val SERVICE_NAME = "bydmate_helper"
-    const val PROCESS_NAME = "bydmate_helper"   // app_process --nice-name + ps lookup
+    // Per distribution flavor (app/build.gradle.kts): the `waze` flavor is installed beside the
+    // official app, so every global shell/system identifier has to be distinct as well. The
+    // official flavor keeps the historical names. Linux process names are limited to 15
+    // visible characters; heartbeat/kill match the exact process name.
+    val SERVICE_NAME: String = com.bydmate.app.BuildConfig.HELPER_SERVICE
+    val PROCESS_NAME: String = com.bydmate.app.BuildConfig.HELPER_PROCESS   // app_process --nice-name + ps lookup
+    val LOCK_PATH: String = "/data/local/tmp/$SERVICE_NAME.lock"
+    val LOG_PATH: String = "/data/local/tmp/$SERVICE_NAME.log"
     const val DESCRIPTOR = "com.bydmate.app.helper.IHelper"
 
     /**
@@ -327,15 +333,15 @@ object HelperBinderProtocol {
     const val PANE_TYPE_RECENTS = 3
 
     /** Our own package — target of the narrow grantOverlayPermission appops call. */
-    const val APP_PACKAGE = "com.bydmate.app"
+    val APP_PACKAGE: String = com.bydmate.app.BuildConfig.APPLICATION_ID
 
     /**
      * Flattened ComponentName of our steering-wheel accessibility service — appended
      * (never clobbering existing entries) to Settings.Secure enabled_accessibility_services
      * by the narrow enableAccessibilityService daemon op, since DiLink has no a11y settings UI.
      */
-    const val ACCESSIBILITY_SERVICE_COMPONENT =
-        "com.bydmate.app/com.bydmate.app.cluster.SteeringWheelKeyService"
+    val ACCESSIBILITY_SERVICE_COMPONENT: String =
+        "$APP_PACKAGE/com.bydmate.app.cluster.SteeringWheelKeyService"
 
     /**
      * Flattened ComponentName of our notification-listener stub — granted by the narrow
@@ -344,6 +350,6 @@ object HelperBinderProtocol {
      * Settings.Secure enabled_notification_listeners on firmwares without cmd notification.
      * Grants MediaSessionManager.getActiveSessions() access to our process for Yandex Music.
      */
-    const val NOTIFICATION_LISTENER_COMPONENT =
-        "com.bydmate.app/com.bydmate.app.media.MediaSessionListenerService"
+    val NOTIFICATION_LISTENER_COMPONENT: String =
+        "$APP_PACKAGE/com.bydmate.app.media.MediaSessionListenerService"
 }

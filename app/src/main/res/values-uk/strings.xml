@@ -136,14 +136,14 @@
 
     <!-- Settings: Integrations section -->
     <string name="settings_abrp_section_header">ABRP - телеметрія</string>
-    <string name="settings_abrp_telemetry_label">Живі дані -> A Better Route Planner</string>
-    <string name="settings_abrp_telemetry_description">Живі дані (SOC, потужність, температури, одометр, тиск у шинах) надсилаються в Iternio Telemetry API для актуального плану в ABRP. GPS за замовчуванням не передається.</string>
+    <string name="settings_abrp_telemetry_label">Онлайн дані -> A Better Route Planner</string>
+    <string name="settings_abrp_telemetry_description">Онлайн дані (SOC, потужність, температури, одометр, тиск у шинах) надсилаються в Iternio Telemetry API для актуального плану в ABRP. GPS за замовчуванням не передається.</string>
     <string name="settings_abrp_token_label">Токен живих даних з ABRP</string>
     <string name="settings_abrp_location_label">Надсилати координати в ABRP</string>
     <string name="settings_abrp_location_description">Додає GPS-позицію і курс машини в телеметрію. За замовчуванням вимкнено: ABRP на ДіЛінку читає координати сам. Увімкніть, якщо стрілка машини в ABRP відстає від реального положення.</string>
     <string name="settings_abrp_save_button">Зберегти ABRP</string>
     <string name="settings_webhook_section_header">Вебхук - телеметрія</string>
-    <string name="settings_webhook_label">Живі дані -> свій сервер</string>
+    <string name="settings_webhook_label">Онлайн дані -> свій сервер</string>
     <string name="settings_webhook_description">Той самий JSON, що йде в ABRP (SOC, потужність, температури, одометр, тиск у шинах, заряджання), надсилається POST-запитом на ваш URL: раз на секунду в русі, раз на 8 секунд на заряджанні, раз на 30 секунд на стоянці. Координати за замовчуванням не передаються.</string>
     <string name="settings_webhook_url_label">URL (https://)</string>
     <string name="settings_webhook_secret_label">Секрет (заголовок Authorization: Bearer), необов\'язково</string>
@@ -217,6 +217,10 @@
     <string name="settings_autostart_open_button">Налаштування автозапуску</string>
     <string name="settings_update_check_toggle_label">Перевіряти оновлення</string>
     <string name="settings_update_check_toggle_description">Через 30 секунд після запуску перевіряти GitHub і пропонувати оновитися</string>
+    <string name="settings_update_channel_title">Канал оновлень</string>
+    <string name="settings_update_channel_stable">Стабільний</string>
+    <string name="settings_update_channel_dev">Розробка</string>
+    <string name="settings_update_channel_desc">Стабільний: лише випущені версії. Розробка: також попередні збірки з новими функціями (можуть містити помилки)</string>
     <string name="settings_update_check_button">Перевірити оновлення зараз</string>
 
     <!-- Settings: Autoservice status -->
@@ -615,8 +619,8 @@
     <string name="dashboard_unit_kwh">кВт·год</string>
     <string name="dashboard_range_label">розрахунковий пробіг</string>
     <!-- Trip 1/2 dashboard counters -->
-    <string name="dashboard_trip1_label" translatable="false">TRIP 1</string>
-    <string name="dashboard_trip2_label" translatable="false">TRIP 2</string>
+    <string name="dashboard_trip1_label">Поїздка 1</string>
+    <string name="dashboard_trip2_label">Поїздка 2</string>
     <string name="dashboard_trip_since">з %1$s · %2$d дн.</string>
     <string name="dashboard_trip_since_all_time">за весь час</string>
     <string name="dashboard_trip_count_label">Поїздок</string>
@@ -1317,9 +1321,9 @@
     <string name="settings_hud_status_on">Передача на HUD активна</string>
     <string name="settings_hud_status_bind_failed">Не вдалося підключитися до шини SOME/IP</string>
     <string name="settings_hud_hint">Потрібна комплектація з проєкційним дисплеєм. Дані беруться з вікна навігатора (Яндекс Навігатор, Яндекс Карти або Waze)</string>
-    <string name="settings_display_card_export_dialog_title">ÐÐ²ÑÐ¾Ð·Ð°ÐºÑÐ¸ÑÑÑ Ð²ÑÐºÐ½Ð° Â«Ð½Ðµ Ð¾ÑÑÑÑÐ¹Ð½Ð¸Ð¹ ÐµÐºÑÐ¿Ð¾ÑÑÂ»</string>
-    <string name="settings_display_card_export_dialog_sub">ÐÐ¾Ð¿ÐµÑÐµÐ´Ð¶ÐµÐ½Ð½Ñ BYD Ð¿ÑÐ¾ ÐµÐºÑÐ¿Ð¾ÑÑ Ð·Ð°ÐºÑÐ¸Ð²Ð°ÑÑÑÑÑ ÑÐ°Ð¼Ðµ. %1$s</string>
-    <string name="settings_export_dialog_hint">ÐÑÐºÐ½Ð¾ Â«This car is not from official exportÂ» Ð·Ð°ÐºÑÐ¸Ð²Ð°ÑÑÑÑÑ Ð½Ð°ÑÐ¸ÑÐºÐ°Ð½Ð½ÑÐ¼ Ð¹Ð¾Ð³Ð¾ ÑÐ´Ð¸Ð½Ð¾Ñ ÐºÐ½Ð¾Ð¿ÐºÐ¸ ÑÐµÑÐµÐ· ÑÐ»ÑÐ¶Ð±Ñ ÑÐ¿ÐµÑÑÐ°Ð»ÑÐ½Ð¸Ñ Ð¼Ð¾Ð¶Ð»Ð¸Ð²Ð¾ÑÑÐµÐ¹: Ð±ÐµÐ· ÑÑÐºÑÐ¾Ð²Ð°Ð½Ð¸Ñ ÐºÐ¾Ð¾ÑÐ´Ð¸Ð½Ð°Ñ Ñ Ð½ÐµÐ·Ð°Ð»ÐµÐ¶Ð½Ð¾ Ð²ÑÐ´ Ð¼Ð¾Ð²Ð¸. ÐÐµÑÐµÐ²ÑÑÐµÐ½Ð¾ Ð´Ð¾Ð½Ð¾ÑÐ¾Ð¼ RoamingManager; Ð²ÑÐºÐ½Ð¾ ÑÐ¾Ð·Ð¿ÑÐ·Ð½Ð°ÑÑÑÑÑ Ð·Ð° Ð·Ð°Ð³Ð¾Ð»Ð¾Ð²ÐºÐ¾Ð¼ vehicledialog</string>
+    <string name="settings_display_card_export_dialog_title">Автозакриття вікна «не офіційний експорт»</string>
+    <string name="settings_display_card_export_dialog_sub">Попередження BYD про експорт закривається саме. %1$s</string>
+    <string name="settings_export_dialog_hint">Вікно «This car is not from official export» закривається натисканням його єдиної кнопки через службу спеціальних можливостей: без фіксованих координат і незалежно від мови. Вікно розпізнається за заголовком vehicledialog</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">Сліпі зони</string>
     <string name="settings_blindspot_title">Камера за поворотником</string>

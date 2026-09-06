@@ -28,8 +28,8 @@ android {
         // on DiLink Android 12 (requestLegacyExternalStorage works).
         // targetSdk 30+ would break listFiles() on /storage/emulated/0/energydata/
         targetSdk = 29
-        versionCode = 437
-        versionName = "3.14.1"
+        versionCode = 438
+        versionName = "3.15.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -39,6 +39,27 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a")
             if (project.findProperty("bydmate.emulatorAbi") == "true") abiFilters += "x86_64"
+        }
+    }
+
+    // Distribution flavors. `official` is the upstream app id. `waze` installs BESIDE it as a
+    // separate app (own uid, data, services, helper daemon names) and self-updates from the
+    // Udbv/BYDMate fork releases; the helper process name must stay under 15 characters.
+    flavorDimensions += "dist"
+    productFlavors {
+        create("official") {
+            dimension = "dist"
+            isDefault = true
+            buildConfigField("String", "UPDATE_REPO", "\"AndyShaman/BYDMate\"")
+            buildConfigField("String", "HELPER_SERVICE", "\"bydmate_helper\"")
+            buildConfigField("String", "HELPER_PROCESS", "\"bydmate_helper\"")
+        }
+        create("waze") {
+            dimension = "dist"
+            applicationIdSuffix = ".waze"
+            buildConfigField("String", "UPDATE_REPO", "\"Udbv/BYDMate\"")
+            buildConfigField("String", "HELPER_SERVICE", "\"bydmate_helper_waze\"")
+            buildConfigField("String", "HELPER_PROCESS", "\"bydmate_waze\"")
         }
     }
 
@@ -69,7 +90,7 @@ android {
         val variant = this
         variant.outputs.all {
             val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output.outputFileName = "BYDMate-v${variant.versionName}.apk"
+            output.outputFileName = if (variant.flavorName == "waze") "BYDMate-Waze-v${variant.versionName}.apk" else "BYDMate-v${variant.versionName}.apk"
         }
     }
 

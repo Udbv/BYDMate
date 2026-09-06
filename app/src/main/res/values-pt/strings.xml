@@ -196,6 +196,10 @@
     <string name="settings_autostart_open_button">Configuração de inicialização automática</string>
     <string name="settings_update_check_toggle_label">Verificar atualizações</string>
     <string name="settings_update_check_toggle_description">Verificar no GitHub 30 segundos após a inicialização e sugerir atualização</string>
+    <string name="settings_update_channel_title">Canal de atualizações</string>
+    <string name="settings_update_channel_stable">Estável</string>
+    <string name="settings_update_channel_dev">Desenvolvimento</string>
+    <string name="settings_update_channel_desc">Estável: apenas versões lançadas. Desenvolvimento: também compilações prévias com novas funções (podem conter erros)</string>
     <string name="settings_update_check_button">Verificar atualizações agora</string>
     <string name="settings_autoservice_disconnected_title">não conectado</string>
     <string name="settings_autoservice_disconnected_detail">reinicie o aplicativo se o ADB estiver ativado nas Opções do desenvolvedor</string>
@@ -1159,9 +1163,9 @@
     <string name="settings_hud_status_on">Transmissão para o HUD ativa</string>
     <string name="settings_hud_status_bind_failed">Falha ao conectar ao barramento SOME/IP</string>
     <string name="settings_hud_hint">Requer versão com head-up display. Os dados vêm da janela do Yandex Navigator</string>
-    <string name="settings_display_card_export_dialog_title">Fechar automaticamente a janela ânot official exportâ</string>
-    <string name="settings_display_card_export_dialog_sub">O aviso de exportaÃ§Ã£o da BYD fecha sozinho. %1$s</string>
-    <string name="settings_export_dialog_hint">A janela âThis car is not from official exportâ Ã© fechada premindo o seu Ãºnico botÃ£o atravÃ©s do serviÃ§o de acessibilidade: sem coordenadas fixas, em qualquer idioma. A janela Ã© reconhecida pelo tÃ­tulo vehicledialog</string>
+    <string name="settings_display_card_export_dialog_title">Fechar automaticamente a janela “not official export”</string>
+    <string name="settings_display_card_export_dialog_sub">O aviso de exportação da BYD fecha sozinho. %1$s</string>
+    <string name="settings_export_dialog_hint">A janela “This car is not from official export” é fechada premindo o seu único botão através do serviço de acessibilidade: sem coordenadas fixas, em qualquer idioma. A janela é reconhecida pelo título vehicledialog</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">Pontos cegos</string>
     <string name="settings_blindspot_title">Câmera pela seta</string>
@@ -1289,4 +1293,6 @@
     <string name="tech_hint_motors">Temperatura dos motores elétricos e dos inversores que os comandam. Na condução normal até 60…80°. Em acelerações longas ou a rebocar aquecem mais, e o carro reduz a potência sozinho até arrefecerem.</string>
     <string name="tech_hint_compressor">Quantos watts consome o compressor do ar condicionado e da bomba de calor. É o principal consumidor além dos motores: no calor do verão e no frio do inverno reduz bastante a autonomia.</string>
     <string name="tech_hint_tyres">Pressão e temperatura de cada roda a partir dos sensores nos pneus. A pressão sobe 0,2…0,3 bar à medida que os pneus aquecem durante a viagem, é normal. Se uma roda estiver bastante abaixo das outras, verifique se está a perder ar.</string>
+    <string name="dashboard_trip1_label">TRIP 1</string>
+    <string name="dashboard_trip2_label">TRIP 2</string>
 </resources>

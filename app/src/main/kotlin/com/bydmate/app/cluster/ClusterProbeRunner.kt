@@ -278,7 +278,7 @@ class ClusterProbeRunner(
         }
 
     companion object {
-        const val ACTION_PROBE = "com.bydmate.app.CLUSTER_PROBE"
+        val ACTION_PROBE = "${com.bydmate.app.BuildConfig.APPLICATION_ID}.CLUSTER_PROBE"
 
         internal const val EXTRA_CMD = "cmd"
         internal const val EXTRA_HOLD = "hold"

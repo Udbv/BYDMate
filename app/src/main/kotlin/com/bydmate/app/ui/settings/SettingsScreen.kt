@@ -2226,9 +2226,23 @@ private fun AppSection(state: SettingsUiState, viewModel: SettingsViewModel) {
                 checked = state.autoCheckUpdates,
                 onCheckedChange = { viewModel.setAutoCheckUpdates(it) },
             )
+            val channels = listOf(
+                com.bydmate.app.service.UpdateChecker.CHANNEL_STABLE,
+                com.bydmate.app.service.UpdateChecker.CHANNEL_DEV,
+            )
+            SettingChipRow(
+                title = stringResource(R.string.settings_update_channel_title),
+                description = stringResource(R.string.settings_update_channel_desc),
+                options = listOf(
+                    stringResource(R.string.settings_update_channel_stable),
+                    stringResource(R.string.settings_update_channel_dev),
+                ),
+                selectedIndex = channels.indexOf(state.updateChannel).coerceAtLeast(0),
+                onSelect = { idx -> viewModel.setUpdateChannel(channels[idx]) },
+            )
             SettingActionRow(
                 title = stringResource(R.string.settings_update_check_button),
-                description = "BYDMate v${state.appVersion}",
+                description = "${stringResource(R.string.app_name)} v${state.appVersion}",
                 buttonLabel = stringResource(R.string.settings_update_check_button),
                 onClick = { viewModel.showUpdateDialog() },
             )

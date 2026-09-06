@@ -1442,7 +1442,7 @@ class TrackingService : Service(), LocationListener {
         serviceScope.launch {
             try {
                 if (adbOnDeviceClient.connect().isSuccess) {
-                    val granted = adbOnDeviceClient.grantUsageStatsAppop("com.bydmate.app")
+                    val granted = adbOnDeviceClient.grantUsageStatsAppop(packageName)
                     Log.i(TAG, "GET_USAGE_STATS appop grant: $granted")
                 } else {
                     Log.w(TAG, "ADB connect refused — camera detection may be inactive until appop is granted manually")
@@ -1618,7 +1618,7 @@ class TrackingService : Service(), LocationListener {
             PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("BYDMate")
+            .setContentTitle(getString(R.string.app_name))
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setContentIntent(pendingIntent)

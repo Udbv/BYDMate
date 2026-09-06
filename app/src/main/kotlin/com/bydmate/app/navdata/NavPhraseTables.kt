@@ -109,7 +109,16 @@ object NavPhraseTables {
         val languages = (manifest["languages"] as List<*>).map { it as String }
         val tables = languages.map { tag -> parseLanguage(tag, reader(tag)) }
         compiled = Compiled(tables)
-        Log.i(TAG, "loaded ${tables.size} navigator languages: ${tables.joinToString { it.lang }}")
+        // Self-check in the log: pattern counts plus one probe per language, so a pack that
+        // loads but fails to match (escaping, regex dialect, charset) is visible in the field.
+        val c = compiled
+        val probes = mapOf("en" to "keep right", "ru" to "поверните направо", "uk" to "поверніть ліворуч",
+            "cs" to "ostře vlevo", "zh" to "直行")
+        val probeSummary = probes.filterKeys { it in c.languages }.entries.joinToString { (lang, text) ->
+            "$lang=${NavManeuverCodes.fromInstructionText(text)}"
+        }
+        Log.i(TAG, "loaded ${tables.size} navigator languages: ${tables.joinToString { it.lang }}; " +
+            "phrases=${c.phrasePatterns.size} exitRegexes=${c.numberedExitPatterns.size} probe[$probeSummary]")
     }
 
     internal fun parseLanguage(tag: String, json: String): LanguageTable {

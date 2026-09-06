@@ -25,7 +25,7 @@ import java.nio.channels.OverlappingFileLockException
 import kotlin.system.exitProcess
 
 // Lock path on the device filesystem (writable by shell uid).
-private const val LOCK_PATH = "/data/local/tmp/bydmate_helper.lock"
+private val LOCK_PATH: String = HelperBinderProtocol.LOCK_PATH   // per distribution flavor
 
 // SELinux domain of the running process; the daemon must land in the shell domain to be
 // allowed to addService. Unreadable on some firmwares — never fatal.

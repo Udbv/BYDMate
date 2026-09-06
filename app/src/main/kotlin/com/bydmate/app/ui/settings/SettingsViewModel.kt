@@ -129,6 +129,8 @@ data class SettingsUiState(
     val aliceEnabled: Boolean = false,
     val aliceSaveStatus: String? = null,
     val autoCheckUpdates: Boolean = true,
+    /** UpdateChecker.CHANNEL_STABLE or CHANNEL_DEV. */
+    val updateChannel: String = UpdateChecker.CHANNEL_STABLE,
     val abrpTelemetryEnabled: Boolean = false,
     val abrpApiKey: String = "",
     val abrpUserToken: String = "",
@@ -289,7 +291,8 @@ class SettingsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(SettingsUiState(
         appVersion = getVersion(),
-        autoCheckUpdates = UpdateChecker.isAutoCheckEnabled(appContext)
+        autoCheckUpdates = UpdateChecker.isAutoCheckEnabled(appContext),
+        updateChannel = UpdateChecker.getChannel(appContext),
     ))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
@@ -1992,6 +1995,12 @@ class SettingsViewModel @Inject constructor(
     fun setAutoCheckUpdates(enabled: Boolean) {
         UpdateChecker.setAutoCheckEnabled(appContext, enabled)
         _uiState.update { it.copy(autoCheckUpdates = enabled) }
+    }
+
+    /** Stable (GitHub "latest" release) or Development (newest release incl. pre-releases). */
+    fun setUpdateChannel(channel: String) {
+        UpdateChecker.setChannel(appContext, channel)
+        _uiState.update { it.copy(updateChannel = channel) }
     }
 
     /** Check for app updates on GitHub. */

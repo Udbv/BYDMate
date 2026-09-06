@@ -53,3 +53,6 @@ docs/superpowers/**/handoff-*
 # Local Claude Code tooling (never committed)
 .claude/
 .mcp.json
+
+# Kotlin compiler session files
+.kotlin/

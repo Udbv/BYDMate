@@ -53,8 +53,10 @@ class AutomationEngine @Inject constructor(
         private const val CONFIRM_TIMEOUT_MS = 30_000L
         private const val NOTIF_BASE_ID = 5000
 
-        const val ACTION_CONFIRM = "com.bydmate.app.AUTOMATION_CONFIRM"
-        const val ACTION_CANCEL = "com.bydmate.app.AUTOMATION_CANCEL"
+        // Prefixed with the real application id so the official and waze flavors never
+        // answer each other's confirmation broadcasts.
+        val ACTION_CONFIRM = "${com.bydmate.app.BuildConfig.APPLICATION_ID}.AUTOMATION_CONFIRM"
+        val ACTION_CANCEL = "${com.bydmate.app.BuildConfig.APPLICATION_ID}.AUTOMATION_CANCEL"
         const val EXTRA_NOTIF_ID = "notif_id"
 
         // How long after the first evaluate() the service_start trigger stays

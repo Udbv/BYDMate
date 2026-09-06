@@ -30,8 +30,16 @@ object WazeGuidanceParser {
     /** Null when no maneuver-bar field is visible: ETA alone (preview/search UI) is not guidance. */
     fun parse(f: WazeAccessibilityReader.Fields): NavGuidance? {
         if (f.maneuver == null && f.maneuverDistance == null && f.street == null) return null
+        val maneuverGaode = resolveManeuver(f.maneuver, f.exitNumber)
+        if (maneuverGaode == 0 && !f.maneuver.isNullOrBlank()) {
+            // Field diagnostic (no text logged): a maneuver string the packs did not recognize.
+            val t = NavPhraseTables.current
+            android.util.Log.i("WazeGuidanceParser", "maneuver text unrecognized: len=${f.maneuver.length} " +
+                "packs=${t.languages} phrases=${t.phrasePatterns.size} loadedFrom=${NavPhraseTables.loadedFrom} " +
+                "probe=${NavManeuverCodes.fromInstructionText("keep right")}")
+        }
         return NavGuidance(
-            maneuverGaode = resolveManeuver(f.maneuver, f.exitNumber),
+            maneuverGaode = maneuverGaode,
             distanceMeters = resolveDistance(f.maneuverDistance),
             road = f.street.orEmpty(),
             etaSeconds = parseDurationSeconds(f.remainingTime),
