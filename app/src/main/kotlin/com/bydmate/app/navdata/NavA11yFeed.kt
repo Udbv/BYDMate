@@ -89,6 +89,36 @@ object NavA11yFeed {
         }
         if (!shouldProcess(pkg, event?.eventType ?: 0, nowMs, lastProcessMs)) return
         lastProcessMs = nowMs
+        readWindow(service, event, nowMs)
+    }
+
+    /** Waze redraws nothing while the car waits at a light, so no event arrives, no read
+     *  happens, and the hub expires the maneuver after 30 s (the arrow blinked off the Tang L
+     *  glass, 2026-09-07). After every successful read a re-read is armed for [KEEP_ALIVE_MS]
+     *  later; it runs only when no event-driven read happened in between and guidance is still
+     *  active, and goes through the same path (so the visual arrow classifier refreshes too). */
+    private const val KEEP_ALIVE_MS = 20_000L
+    private val keepAliveHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+    private val keepAliveTask = Runnable {
+        if (!enabled) return@Runnable
+        val service = com.bydmate.app.cluster.SteeringWheelKeyService.instance ?: return@Runnable
+        val nowMs = System.currentTimeMillis()
+        if (nowMs - lastProcessMs < KEEP_ALIVE_MS - 1_000) return@Runnable
+        if (!NavGuidanceHub.snapshot(nowMs).active) return@Runnable
+        lastProcessMs = nowMs
+        Log.i(TAG, "keep-alive read: no navigator events for ${KEEP_ALIVE_MS / 1000}s")
+        runCatching { readWindow(service, null, nowMs) }
+    }
+
+    private fun armKeepAlive() {
+        runCatching {
+            keepAliveHandler.removeCallbacks(keepAliveTask)
+            keepAliveHandler.postDelayed(keepAliveTask, KEEP_ALIVE_MS)
+        }
+    }
+
+    private fun readWindow(service: SteeringWheelKeyService, event: AccessibilityEvent?, nowMs: Long) {
+        val pkg = event?.packageName?.toString() ?: "keep-alive"
         // An unreachable window says NOTHING about the route: the navigator may be
         // minimized, covered by another pane, or projected onto a private VirtualDisplay
         // while guidance keeps running (field-confirmed, issue #144). Only a REACHABLE
@@ -125,6 +155,7 @@ object NavA11yFeed {
                     logRead(pkg, data, nowMs)
                     dumpTreeOnManeuverChange(root, data.maneuverGaode, nowMs)
                     if (data.maneuverGaode == 0) requestWazeVisualManeuver(service, root)
+                    armKeepAlive()
                 }
                 is NavA11yExtractor.ReadResult.NoGuidance -> {
                     NavGuidanceHub.markNoGuidance(nowMs)

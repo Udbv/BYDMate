@@ -253,6 +253,9 @@ class HudController @Inject constructor(
             // completion (no suspension points after bind()) - re-clear (final-review fix 3).
             NavA11yFeed.enabled = false
             loop?.stop()
+            // Await the instrument reset here: a fire-and-forget stop could run after the next
+            // startSequence's first "active" write and blank the glass (seen 2026-09-07 08:53).
+            loop?.instrumentFids?.let { runCatching { it.stopNow() } }
             loop = null
             bridge?.let {
                 // Leave the HUD clean before tearing the channel down (Codex fix 4).

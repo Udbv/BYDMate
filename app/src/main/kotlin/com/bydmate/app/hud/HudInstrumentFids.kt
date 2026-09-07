@@ -96,17 +96,21 @@ class HudInstrumentFids(
 
     /** Route ended: guidance cleared, navigation status back to stopped (donor `turnOffNavi`). */
     fun stop() {
-        scope.launch {
-            mutex.withLock {
-                if (!active) return@withLock
-                write(FID_GUIDE_ICON, 0)
-                write(FID_GUIDE_ICON_DUAL, 0)
-                write(FID_GUIDE_DISTANCE, 0)
-                val ok = write(FID_NAVI_STATUS, NAVI_STOPPED)
-                Log.i(TAG, "navi status -> stopped ok=$ok writes=$writes failures=$failures")
-                active = false
-                lastIcon = -1; lastDistance = -1; lastHour = -1; lastMinute = -1; lastMileage = -1L
-            }
+        scope.launch { stopNow() }
+    }
+
+    /** Same, awaited: the controller calls this before it re-opens the channel so the old
+     *  session's "stopped" can never land after the new session's "active". */
+    suspend fun stopNow() {
+        mutex.withLock {
+            if (!active) return
+            write(FID_GUIDE_ICON, 0)
+            write(FID_GUIDE_ICON_DUAL, 0)
+            write(FID_GUIDE_DISTANCE, 0)
+            val ok = write(FID_NAVI_STATUS, NAVI_STOPPED)
+            Log.i(TAG, "navi status -> stopped ok=$ok writes=$writes failures=$failures")
+            active = false
+            lastIcon = -1; lastDistance = -1; lastHour = -1; lastMinute = -1; lastMileage = -1L
         }
     }
 }
