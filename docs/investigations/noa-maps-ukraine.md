@@ -1,72 +1,81 @@
-# NOA on a Chinese-market Tang L outside China: can the built-in map be replaced or extended?
+# NOA on a Chinese-market Tang L outside China: consolidated assessment
 
-Question from the user (2026-09-07): the car is a Chinese-market Tang L EV 2025 (DiLink 150,
-DiPilot / "God's Eye" with NOA). The built-in map (`com.byd.launchermap`, an Amap/Gaode based
-"Launcher150Pro" build) has no coverage of Ukraine, so Navigate-on-Autopilot never has a route.
-Can the map be overridden or extended so NOA can be used here?
+Question (2026-09-07): the car is a Chinese-market Tang L EV 2025 (DiLink 150, God's Eye B /
+DiPilot 300 with LiDAR, Momenta stack). The built-in navigation (`com.byd.launchermap`, a
+customised Amap build) has no coverage of Ukraine, so Navigate-on-Autopilot never becomes
+available. Can the map be overridden or extended so NOA can be used here?
 
-Everything below comes from the firmware pulled from the car (`D:\BYD\DiLink`) and openbyd's
-sources; nothing was tried on the road.
+Three detailed reports back this note; read them for evidence and file:line references:
 
-## How the map feeds the driving-assistance side
+- [noa-map-app-analysis.md](noa-map-app-analysis.md): the map app's own NOA logic (decompiled).
+- [noa-someip-contract.md](noa-someip-contract.md): the bus contract map <-> driving computer,
+  message by message, from the proto descriptors in `libsomeipimpl_proto.so`.
+- [noa-outside-china-research.md](noa-outside-china-research.md): public sources, owner reports,
+  OTA timeline, export markets.
 
-The map app does not just draw a route. Its `SomeIPMatrixManager` (dex `classes7`, class
-`k.k.a0.c.c.a.f0`) streams route context on the SOME/IP bus to the ADAS / scene-rendering side
-(`com.byd.sr`, GritPlayer, log tag `DiHmiLaneBeh OnSomeipNewLaneLineDataNotify`) and, through the
-vehicle Ethernet, to the driving computer:
+## 1. How NOA is wired on this car (facts from the firmware)
 
-| service | messages the map sends (proto in `libsomeipimpl_proto.so`) |
-|---|---|
-| NavigationStatus_LinkInfo (7) | `NavigationStatus_LinkInfoNotify` (state 100/101), `TrafficInfoNotify` (congestion, construction, road speed, camera speed), `genernalNavigationNotify` (ODD region start/end) |
-| SdMapInform (0x8202) | `sdVehicleLocationNotify` (lon/lat, speed, course, **pathId, curSegIdx, curLinkIdx, segOffset, linkOffset**, road class), `naviActionAndCameraNotify` (icon, distance, main/assistant action, camera), `nextIntersectionLanesInfoNotify`, `aheadIntersectionsLanesInfoNotify` (3 km of lanes as JSON), `mixForkInfoListNotify`, `roadFacilitiesNotify`, `sdTrafficLightNotify`, `serviceAreaAndTollStationNotify`, `tidalLaneNotify`, `tunnelNotify`, `intersectionNotify`, `regionalAndWeatherNotify`, `speedIntersectionInformationNotify` |
-| NavigationSDLink2 (0x2B), NavigationPathMatchStatus (0x2C), NaviPathUserSelectSts (0x2D) | SD-map link data of the matched path, path-match status, the user's path choice |
-| HPAMapData (0x18), PlanningLine (0xE), Obstacle_LaneLine (0xC), PilotStatus_AlarmInfo (0xD) | parking / planning / perception exchange with the driving computer |
+**Availability is decided by the driving computer, not the map.** The map only reads ADAS
+feature ids over the autoservice: `ADAS_HNP_CONFIG` / `ADAS_UNP_CONFIG` / `ADAS_E2E_CONFIG`
+(0 = equipped), `*_SWITCH_STATE`, `ADAS_ASSIST_DRIVE_MODE_STATUS` (3 highway NOA, 4 city NOA),
+`ADAS_NOA_UI_TYPE`, sleep mode, an MNOA self-learning signal. Two cloud flags (`NOA_CARD`,
+`NOA_ODD`, default true) only hide UI. There is **no country, MCC, SIM or GPS check** anywhere in
+the NOA code of the map app; the "not from official export" dialog is unrelated.
 
-The messages carry Amap link identities (pathId, segment and link indexes, road class, lane
-topology). The driving computer matches its own perception and its map data against them. That is
-the "NOA needs the navigation route" dependency: without a route in *this* map, there is no path,
-no link ids and no lane preview, and the NOA entry condition is never met.
+**The route hand-off is a JSON of Amap link identities.** When a route is planned the map sends,
+on NavigationSDLink2 (service 0x2B, event 0x8002, TCP, chunked), a JSON with `pathID` and, per
+link, `linkID` (Amap 64-bit topology id), `roadclass`, `formway`, `linktype`, `laneNum`,
+`adminCode`, actions, point indices and the polyline; then `pathID_req` on 0x2D. Every second it
+streams the map-matched position `sdVehicleLocation {curSDRouteID, curStepId, curLinkId,
+linkOffset, matched lat/lon}` on SDMapInform (0x8202/0x8008) plus lanes, cameras, traffic lights,
+facilities, all from Amap data. The driving computer answers on NavigationPathMatchStatus (0x2C):
+per-`pathID` matched ranges with `routeBeginIdx/EndIdx/statusCode`, and a confirm with
+`status_code 200` as the only explicit "route accepted".
 
-## Options, honestly assessed
+**City-NOA area lists are keyed on Amap ids too.** The driving computer supplies the list of
+open cities (`ODDRegionCodeReq/Resp` on 0x0D); the map matches it against Amap `URID` admin codes
+of the route's links and reports the distance to the ODD boundary (`noODDRegionDist`) back.
 
-1. **Map data for Ukraine inside the Amap engine.** Not available. Amap's offline packs cover
-   mainland China (plus HK/Macau/Taiwan); the engine has no world coverage, and the app checks the
-   region against the SD map. No legitimate way to add a country.
+**Memory NOA (记忆领航) is designed but compiled out** in this map build: the learning state
+machine, ids and failure reasons exist, but the senders return empty payloads and nothing parses
+the responses ("当前不支持MNOA"). BYD promised it for God's Eye A/B by end-2025; no source
+confirms it shipped on the Tang L.
 
-2. **Replace the map app with an export-market BYD map.** BYD's export DiLink builds ship a
-   different navigation stack (HERE-based "BYD Map" in Europe on DiLink 4/5), but those firmwares
-   are for different hardware/software baselines and their NOA integration is not the same
-   `SomeIPMatrixManager`; export markets do not get NOA at all. Sideloading a system app from
-   another firmware onto DiLink 150 would require root, signature matching and the matching
-   `libsomeipimpl` plugin; not realistic, and it would still not provide link ids the driving
-   computer's map data knows.
+**Public evidence agrees.** Highway and city NOA on God's Eye B need an active route in the
+built-in customised navigation; "无图" means no HD map, the SD route and lane attributes still
+come from the map. No export BYD ships NOA (Indonesia "2026 or 2027", Brazil "2027", Australia's
+Sealion 8 = Tang L without LiDAR/NOA). The one first-hand grey-import report (Tang L in
+Kazakhstan): ICC works, NOA does not, no navigation map. Amap's in-car international SDK
+(2025-11, HERE data) is an OEM export product without a lane/ADAS layer, not installable here.
 
-3. **A third-party app that plays the map's role on the bus** (what openbyd's
-   `LauncherMapCnStrategy` does for the HUD/cluster, in miniature): build the route from
-   OpenStreetMap or Waze, then stream `NavigationStatus`, `sdVehicleLocation`,
-   `naviActionAndCamera`, lanes and the SD link messages. Technically the protos are known and the
-   gateway accepts any client (the HUD work proves it). But the driving computer expects link
-   identities that exist in its own map database and validates path matching
-   (`NavigationPathMatchStatusService`); synthetic ids from OSM cannot match anything. At best
-   the car would behave as "navigating without map data" (what it does already), at worst it would
-   receive lane topology and speed limits that do not correspond to the road. Feeding a
-   driver-assistance system fabricated map data is a safety problem, and I recommend not building
-   it. Map-less city NOA on God's Eye B still uses the SD map for route intent; "NOA without a
-   map" in BYD's marketing means no HD map, not no map.
+## 2. Options, assessed against the firmware
 
-4. **What is realistic on this car:** everything downstream of "the map has a route" that does
-   *not* require the driving computer to accept the route: HUD/cluster guidance (this project),
-   speed-limit and camera prompts from Waze on the glass, and possibly the AR overlay's lane
-   rendering if it is driven by `naviActionAndCamera` alone (test plan in
-   `tang-l-hud-someip.md`). NOA itself will stay unavailable outside Amap's coverage.
+| option | verdict | why |
+|---|---|---|
+| Add Ukraine to the built-in Amap | not possible | Amap has no data outside China; DiLink offline packs are China-only; region is checked against the SD map. |
+| Transplant an export-market map app | not realistic | needs root, matching signatures and `libsomeipimpl` plugin; export maps have no NOA integration and no Amap link ids. |
+| Third-party route provider on the bus (an app that plays the map's role, like the HUD work) | technically reachable, **not advisable** | The gateway accepts any client and the JSON schema is known, so a route with self-made `pathID` and indices can be sent. But `linkID`, `adminCode`, `roadclass`/`formway`, `laneNum` and the matched position are Amap-derived; the driving computer's validation of them is not in any file we have. Faking motorway/ramp classification and lane counts for a road the ADAS has no map for directly influences where it believes NOA is permitted. That is feeding fabricated map data to a Level-2 driving system. |
+| Memory NOA as a map-free path | not available | compiled out in this build; when it ships it still records the Amap `PathInfo`. |
+| Live with what works | realistic | ACC/ICC, lane centering (LCC/ICA), lane change on demand, AEB, parking work without navigation per owner reports and per the code (none of them read the route). |
 
-## If you still want to dig
+## 3. What can still be done safely, next time the car is on Wi-Fi
 
-- Decompile `com.byd.sr` (`/system/app/BydSR/BydSR.apk`) and the DiPilot-side consumer of
-  `NavigationPathMatchStatusService` to see what the driving computer checks before it enables
-  NOA (look for `pathId`, `matchStatus`, `oddRegion`).
-- Sniff the bus with openbyd's `SomeIpSniffer` (client interface `com.ts.car.someip.SomeIpClientService`)
-  while the factory map navigates in China-like conditions (impossible here) or replay a recorded
-  Chinese session to learn the exact entry conditions.
-- Track BYD's export firmware: if a DiLink 150 export build with NOA and HERE data ever ships,
-  that is the only supported path.
+1. **Read the ADAS configuration** through the helper daemon (read-only feature ids): whether
+   the driving computer reports HNP/UNP/E2E as equipped and switched, the NOA UI type, the
+   algorithm supplier, and the ODD city list it holds. This tells us whether NOA is merely
+   route-starved or also configuration-blocked. Needs the numeric ids from a FID dump
+   (Settings -> Service & data -> FID dump, or the daemon's `TX_DUMP_FIDS`).
+2. **Pull `/system/framework`** (the BYD auto SDK jars) for the byte-array feature write (road
+   name on the HUD) and for the exact `BYDAutoFeatureIds.Adas` values.
+3. **Sniff, never send**: bind the gateway's client interface (openbyd's `SomeIpSniffer` shows
+   how) and record 0x0D/0x2C traffic while the ADAS is awake, to learn the enum values the
+   driving computer uses. Recording is passive.
+
+## 4. Recommendation
+
+NOA on this car outside China is blocked by the map, not by a region lock, and the map's
+contract with the driving computer is built on Amap's link identities. A synthetic route provider
+is buildable but would put fabricated road classification and lane data in front of the driving
+computer, so I recommend not building it. The safe reads above are worth doing once to close the
+question with data from the ADAS itself; if BYD ships memory NOA or an export NOA stack for
+DiLink 150, that becomes the moment to revisit.
