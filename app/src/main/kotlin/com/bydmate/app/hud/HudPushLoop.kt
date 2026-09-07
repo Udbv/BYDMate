@@ -73,6 +73,12 @@ class HudPushLoop(
         job?.cancel()
         job = null
         amap?.onStop()
+        // Switch-off while guidance is active: the controller sends the SOME/IP clear frame,
+        // but the instrument panel keeps whatever was written last until the navigation status
+        // goes back to "stopped" (field-confirmed on the Tang L: the arrow stayed on the glass).
+        launcherContext?.stop()
+        instrumentFids?.stop()
+        journalledGaode = NO_MANEUVER
     }
 
     /** One tick; returns whether guidance was active (input for the next tick). */
