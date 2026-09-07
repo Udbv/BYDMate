@@ -28,7 +28,7 @@
     <string name="settings_display_mirror_title">Wyświetlanie na wskaźnikach przyciskiem kierownicy</string>
     <string name="settings_display_mirror_desc">Krótkie naciśnięcie wybranego przycisku kierownicy przenosi wybraną aplikację na wskaźniki i z powrotem.</string>
     <string name="settings_cluster_auto_container_title">Od razu pokazuj na wskaźnikach</string>
-    <string name="settings_cluster_auto_container_desc">Automatycznie przełączaj wskaźniki w tryb projekcji</string>
+    <string name="settings_cluster_auto_container_desc">Aplikacja sama przełącza wskaźniki w tryb projekcji i z powrotem (nawigacja i kamery martwego pola). Wyłącz, jeśli po tym ze wskaźników znika ADAS lub fabryczny widżet i nie wraca sam: wtedy tryb wskaźników przełączaj ręcznie, a obraz będzie widoczny w mini-mapie</string>
     <string name="settings_cluster_direct_reboot_hint">Aby asystent głosowy widział nawigację na wskaźnikach, raz zrestartuj DiLink: naciśnij i przytrzymaj pokrętło głośności. Samo zgaszenie silnika nie wystarczy. Do restartu projekcja działa, ale agent nie widzi trasy.</string>
     <string name="cluster_direct_unsupported_hint">Bezpośredni tryb jest niedostępny w oprogramowaniu tego auta, używany jest tryb zgodności</string>
     <string name="settings_projection_mode_title">Tryb projekcji</string>
@@ -1282,6 +1282,8 @@
     <string name="settings_widget_reset_position_desc">Przywróć widżet na domyślne miejsce</string>
     <string name="settings_export_csv_desc">Cała historia przejazdów w jednym pliku do folderu Download</string>
     <string name="settings_log_recording_desc">Szczegółowy dziennik działania do analizy problemów. Włączaj na prośbę dewelopera</string>
+    <string name="settings_quiet_notification_title">Ciche powiadomienie w panelu</string>
+    <string name="settings_quiet_notification_desc">Powiadomienie BYDMate trafia do zwiniętej listy bez ikony na pasku stanu. Nie da się go usunąć całkowicie: Android wymaga powiadomienia do pracy w tle</string>
     <string name="settings_config_export_desc">Kopia: historia przejazdów z GPS i klucze API otwartym tekstem, plik w folderze Download</string>
     <string name="settings_config_restore_desc">Bieżące dane i ustawienia zostaną całkowicie zastąpione zawartością kopii</string>
     <string name="settings_autostart_header">Autostart</string>
@@ -1327,8 +1329,6 @@
     <string name="hud_eta_remaining_minutes">%1$d min</string>
     <string name="settings_hud_arhud_roadinfo_title">Ramka HUD (HudNaviInfo)</string>
     <string name="settings_hud_arhud_roadinfo_desc">Wskazówki na usługę HUD przez SOME/IP, jak fabryczna mapa</string>
-    <string name="settings_hud_arhud_launcher_title">Kontekst fabrycznej mapy</string>
-    <string name="settings_hud_arhud_launcher_desc">Komunikaty „mapa prowadzi trasę” dla ADAS i warstwy AR (jak openbyd). Na Tang L niepotrzebne: szyba czyta tylko zestaw wskaźników</string>
     <string name="settings_hud_arhud_fids_title">Wskazówki do zestawu wskaźników</string>
     <string name="settings_hud_arhud_fids_desc">Ikona, odległość i pozostała trasa przez funkcje zestawu wskaźników (kanał CAN w openbyd)</string>
     <string name="settings_display_card_export_dialog_title">Automatyczne zamykanie okna „nieoficjalny eksport”</string>
@@ -1347,6 +1347,8 @@
     <string name="settings_blindspot_position_button">Ustaw położenie</string>
     <string name="settings_blindspot_position_done">Gotowe</string>
     <string name="settings_blindspot_position_drag">Przeciągnij okienko</string>
+    <string name="settings_blindspot_both_main_title">Obie kamery na ekranie głównym</string>
+    <string name="settings_blindspot_both_main_desc">Lewa kamera jest pokazywana obok prawej na tablecie, zestaw wskaźników nie jest używany</string>
     <string name="settings_blindspot_glow_title">Podświetlenie, gdy obiekt jest w martwym polu</string>
     <string name="settings_blindspot_glow_desc">Pomarańczowa ramka wokół okna, gdy czujnik widzi auto obok</string>
     <string name="settings_blindspot_hint">Potrzebna wersja wyposażenia z kamerami 360°. Jeśli nie da się wyświetlić projekcji na wskaźnikach, okienko działa na ekranie głównym.</string>
@@ -1423,7 +1425,7 @@
     <string name="tech_label_power">moc</string>
     <string name="tech_label_battery_power">moc akumulatora</string>
     <string name="tech_label_max_charge">maks. moc ładowania</string>
-    <string name="tech_label_max_discharge">maks. moc rozładowania</string>
+    <string name="tech_label_max_discharge">dostępna moc akumulatora</string>
     <string name="tech_label_motor_temp">temperatura silnika</string>
     <string name="tech_label_inverter_temp">temperatura falownika</string>
     <string name="tech_label_rpm">obroty, obr/min</string>
@@ -1450,13 +1452,14 @@
     <string name="tech_value_percent">%1$d%%</string>
     <string name="tech_value_tyre">%1$.2f bar · %2$d°</string>
     <string name="tech_value_tyre_pressure">%1$.2f bar</string>
+    <string name="tech_value_cell_scale">%1$.2f V</string>
     <string name="tech_hint_soh" formatted="false">Kondycja akumulatora: ile pojemności zostało w porównaniu z nowym. 100% w nowym samochodzie, powoli spada z latami. Wartość wylicza sam samochód.</string>
     <string name="tech_hint_hv_voltage">Napięcie akumulatora trakcyjnego. Rośnie podczas ładowania i spada w miarę rozładowania, w tym samochodzie około 450…560 V. Samo w sobie niewiele mówi, przydaje się razem z mocą.</string>
     <string name="tech_hint_motor_power">Moc na silnikach elektrycznych w tej chwili: tyle samochód oddaje na koła albo odbiera z nich podczas rekuperacji. Na postoju 0. Wartość wylicza sam samochód.</string>
     <string name="tech_hint_power">Ile energii akumulator oddaje w tej chwili. Plus: samochód zużywa (przyspieszanie, klimatyzacja). Minus: akumulator przyjmuje energię: rekuperacja przy hamowaniu albo ładowanie ze stacji. Druga liczba: jak szybko ubywa ładunku, procent na godzinę. Na postoju to zużycie przez elektronikę pokładową.</string>
     <string name="tech_hint_12v">Napięcie zwykłego akumulatora 12 V, który zasila elektronikę. Przy uruchomionym samochodzie 13…14,5 V. Jeśli na postoju spada poniżej 12 V, akumulator słabnie.</string>
     <string name="tech_hint_insulation">Rezystancja między akumulatorem wysokiego napięcia a nadwoziem. Im większa, tym lepiej: normą są pojedyncze megaomy. Spadek do 0,5 MΩ i niżej oznacza uszkodzoną gdzieś izolację, czas do serwisu.</string>
-    <string name="tech_hint_bms_limits">Ile mocy sterownik akumulatora pozwala w tej chwili przyjąć przy ładowaniu i oddać na przyspieszanie. Przy zimnym lub prawie pełnym akumulatorze limity są niższe: dlatego zimą ładowanie jest wolniejsze, a rekuperacja słabsza.</string>
+    <string name="tech_hint_bms_limits">Pułap, na który sterownik akumulatora pozwala w tej chwili: ile przyjąć przy ładowaniu (stacja może dać mniej) i ile oddać na przyspieszanie. Przy zimnym lub prawie pełnym akumulatorze obie wartości są niższe: dlatego zimą ładowanie jest wolniejsze, a rekuperacja słabsza.</string>
     <string name="tech_hint_cells">Akumulator składa się z setek ogniw. Pokazane są najsłabsze, najmocniejsze i różnica między nimi. Różnica do 20…30 mV jest normalna. Stale duża różnica oznacza, że jedno ogniwo starzeje się szybciej niż pozostałe.</string>
     <string name="tech_hint_motors">Temperatura silników elektrycznych i falowników, które nimi sterują. W zwykłej jeździe do 60…80°. Przy długim przyspieszaniu lub holowaniu grzeją się mocniej, a samochód sam obniża moc, aż ostygną.</string>
     <string name="tech_hint_compressor">Ile watów pobiera sprężarka klimatyzacji i pompy ciepła. To główny odbiornik poza silnikami: latem w upał i zimą na mrozie zauważalnie zjada zasięg.</string>

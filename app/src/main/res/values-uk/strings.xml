@@ -1329,8 +1329,6 @@
     <string name="hud_eta_remaining_minutes">%1$d хв</string>
     <string name="settings_hud_arhud_roadinfo_title">Кадр HUD (HudNaviInfo)</string>
     <string name="settings_hud_arhud_roadinfo_desc">Підказка на сервіс HUD по шині SOME/IP, як штатна карта</string>
-    <string name="settings_hud_arhud_launcher_title">Контекст штатної карти</string>
-    <string name="settings_hud_arhud_launcher_desc">Повідомлення «карта веде маршрут» для ADAS та AR-шару (як openbyd). На Tang L не потрібні: скло читає лише приладову панель</string>
     <string name="settings_hud_arhud_fids_title">Підказки в приладову панель</string>
     <string name="settings_hud_arhud_fids_desc">Значок, відстань і залишок маршруту через функції приладової панелі (канал CAN в openbyd)</string>
     <string name="settings_display_card_export_dialog_title">Автозакриття вікна «не офіційний експорт»</string>

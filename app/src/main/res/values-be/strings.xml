@@ -28,7 +28,7 @@
     <string name="settings_display_mirror_title">Вывад на прыборку кнопкай руля</string>
     <string name="settings_display_mirror_desc">Кароткае націсканне выбранай кнопкі руля пераносіць выбраную праграму на прыборку і назад.</string>
     <string name="settings_cluster_auto_container_title">Адразу паказваць на прыборцы</string>
-    <string name="settings_cluster_auto_container_desc">Аўтаматычна пераводзіць прыборку ў рэжым праекцыі</string>
+    <string name="settings_cluster_auto_container_desc">Праграма сама пераключае прыборку ў рэжым праекцыі і назад (навігатар і камеры сляпых зон). Выключыце, калі пасля гэтага з прыборкі знікае ADAS або штатны віджэт і не вяртаецца сам: тады рэжым прыборкі пераключайце ўручную, а карцінка будзе бачная ў міні-карце</string>
     <string name="settings_cluster_direct_reboot_hint">Каб галасавы агент бачыў навігатар на прыборцы, адзін раз перазагрузіце DiLink: заціскайце і ўтрымлівайце колца гучнасці. Проста заглушыць машыну недастаткова. Да перазагрузкі праекцыя працуе, але агент не бачыць маршрут.</string>
     <string name="cluster_direct_unsupported_hint">Прамы вывад недаступны на прашыўцы гэтай машыны, выкарыстоўваецца сумяшчальны рэжым</string>
     <string name="settings_projection_mode_title">Рэжым праекцыі</string>
@@ -1282,6 +1282,8 @@
     <string name="settings_widget_reset_position_desc">Вярнуць віджэт на месца па змаўчанні</string>
     <string name="settings_export_csv_desc">Уся гісторыя паездак адным файлам у папку Download</string>
     <string name="settings_log_recording_desc">Падрабязны журнал працы для разбору праблем. Уключайце па запыце распрацоўшчыка</string>
+    <string name="settings_quiet_notification_title">Ціхае апавяшчэнне ў шторцы</string>
+    <string name="settings_quiet_notification_desc">Апавяшчэнне BYDMate пераходзіць у згорнуты спіс без значка ў радку стану. Зусім прыбраць яго нельга: Android патрабуе апавяшчэнне для працы ў фоне</string>
     <string name="settings_config_export_desc">Бэкап: гісторыя паездак з GPS і API-ключы адкрытым тэкстам, файл у папцы Download</string>
     <string name="settings_config_restore_desc">Бягучыя даныя і налады будуць цалкам заменены змесцівам бэкапа</string>
     <string name="settings_autostart_header">Аўтазапуск</string>
@@ -1327,8 +1329,6 @@
     <string name="hud_eta_remaining_minutes">%1$d хв</string>
     <string name="settings_hud_arhud_roadinfo_title">Кадр HUD (HudNaviInfo)</string>
     <string name="settings_hud_arhud_roadinfo_desc">Падказка на сэрвіс HUD па шыне SOME/IP, як штатная карта</string>
-    <string name="settings_hud_arhud_launcher_title">Кантэкст штатнай карты</string>
-    <string name="settings_hud_arhud_launcher_desc">Паведамленні «карта вядзе маршрут» для ADAS і AR-слоя (як openbyd). На Tang L не патрэбныя: шкло чытае толькі прыборную панэль</string>
     <string name="settings_hud_arhud_fids_title">Падказкі ў прыборную панэль</string>
     <string name="settings_hud_arhud_fids_desc">Значок, адлегласць і рэшта маршруту праз функцыі прыборнай панэлі (канал CAN у openbyd)</string>
     <string name="settings_display_card_export_dialog_title">Аўтазакрыццё акна «не афіцыйны экспарт»</string>
@@ -1347,6 +1347,8 @@
     <string name="settings_blindspot_position_button">Наладзіць становішча</string>
     <string name="settings_blindspot_position_done">Гатова</string>
     <string name="settings_blindspot_position_drag">Перацягніце акенца</string>
+    <string name="settings_blindspot_both_main_title">Абедзве камеры на галоўны экран</string>
+    <string name="settings_blindspot_both_main_desc">Левая камера паказваецца побач з правай на планшэце, прыборка не выкарыстоўваецца</string>
     <string name="settings_blindspot_glow_title">Падсветка пры аб\'екце ў сляпой зоне</string>
     <string name="settings_blindspot_glow_desc">Аранжавая рамка вакол акна, калі датчык бачыць машыну побач</string>
     <string name="settings_blindspot_hint">Патрэбна камплектацыя з кругавым аглядам. Калі вывесці праекцыю на прыборку немагчыма, акенца працуе на галоўным экране.</string>
@@ -1423,7 +1425,7 @@
     <string name="tech_label_power">магутнасць</string>
     <string name="tech_label_battery_power">магутнасць батарэі</string>
     <string name="tech_label_max_charge">макс. магутнасць зарадкі</string>
-    <string name="tech_label_max_discharge">макс. магутнасць разрадкі</string>
+    <string name="tech_label_max_discharge">даступная магутнасць батарэі</string>
     <string name="tech_label_motor_temp">тэмпература матора</string>
     <string name="tech_label_inverter_temp">тэмпература інвертара</string>
     <string name="tech_label_rpm">абароты, аб/хв</string>
@@ -1450,13 +1452,14 @@
     <string name="tech_value_percent">%1$d%%</string>
     <string name="tech_value_tyre">%1$.2f бар · %2$d°</string>
     <string name="tech_value_tyre_pressure">%1$.2f бар</string>
+    <string name="tech_value_cell_scale">%1$.2f В</string>
     <string name="tech_hint_soh" formatted="false">Здароўе батарэі: колькі ёмістасці засталося ад новай. 100% у новай машыны, павольна зніжаецца з гадамі. Значэнне лічыць сама машына.</string>
     <string name="tech_hint_hv_voltage">Напруга цягавай батарэі. Расце пры зарадцы і падае па меры разрадкі, у гэтай машыны прыкладна 450…560 В. Сама па сабе ні пра што не гаворыць, карысна разам з магутнасцю.</string>
     <string name="tech_hint_motor_power">Магутнасць на электраматорах прама зараз: столькі машына аддае на колы або забірае з іх пры рэкуперацыі. На прыпынку 0. Значэнне лічыць сама машына.</string>
     <string name="tech_hint_power">Колькі энергіі батарэя аддае прама зараз. Плюс: машына траціць (разгон, клімат). Мінус: батарэя прымае энергію: рэкуперацыя пры тармажэнні ці зарадка ад станцыі. Другая лічба: з якой хуткасцю сыходзіць зарад, працэнтаў за гадзіну. На прыпынку гэта расход бартавой электронікі.</string>
     <string name="tech_hint_12v">Напруга звычайнага 12-вольтавага акумулятара, які сілкуе электроніку. На заведзенай машыне 13…14,5 В. Калі на стаянцы ніжэй за 12 В, акумулятар слабее.</string>
     <string name="tech_hint_insulation">Супраціў паміж высакавольтнай батарэяй і кузавам. Чым больш, тым лепш: норма адзінкі мегаом. Падае да 0,5 МОм і ніжэй: дзесьці пашкоджана ізаляцыя, пара на сэрвіс.</string>
-    <string name="tech_hint_bms_limits">Колькі магутнасці кантролер батарэі дазваляе прама зараз прыняць на зарадцы і аддаць на разгон. На халоднай ці амаль поўнай батарэі ліміты ніжэйшыя: таму зімой зарадка павольнейшая, а рэкуперацыя слабейшая.</string>
+    <string name="tech_hint_bms_limits">Столь, колькі кантролер батарэі дазваляе прама зараз: колькі прыняць на зарадцы (станцыя можа даць менш) і колькі аддаць на разгон. На халоднай ці амаль поўнай батарэі абодва значэнні ніжэйшыя: таму зімой зарадка павольнейшая, а рэкуперацыя слабейшая.</string>
     <string name="tech_hint_cells">Батарэя складаецца з сотняў ячэек. Паказаны самая слабая і самая моцная і розніца паміж імі. Розніца да 20…30 мВ у норме. Пастаянна вялікая розніца: адна з ячэек старэе хутчэй за іншыя.</string>
     <string name="tech_hint_motors">Тэмпература электраматораў і інвертараў, якія імі кіруюць. У звычайнай яздзе да 60…80°. Пры доўгім разгоне ці буксіроўцы грэюцца мацней, і машына сама зніжае магутнасць, пакуль яны не астынуць.</string>
     <string name="tech_hint_compressor">Колькі ватаў спажывае кампрэсар кандыцыянера і цеплавой помпы. Гэта галоўны спажывец акрамя матораў: улетку ў спёку і зімой у мароз ён прыкметна з’ядае запас ходу.</string>

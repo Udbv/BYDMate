@@ -27,11 +27,14 @@ class HudPushLoop(
     /** Remaining minutes -> localized "9 min" for the AR-HUD f27 slot; null = omit. */
     private val remainFormatter: (Int) -> String? = { null },
     /** AR-HUD sub-channels (docs/investigations/tang-l-hud-someip.md): the road-info frame on
-     *  the HUD service, the launcher-map context topics, the instrument-panel features. Each
-     *  gate is read per tick so the settings switches apply without a restart. */
+     *  the HUD service and the instrument-panel display features. Each gate is read per tick so
+     *  the settings switches apply without a restart.
+     *
+     *  Both targets are display surfaces. BYDMate never emits on the services the driving
+     *  computer consumes for guidance (NavigationStatus_LinkInfo, SDMapInform, the SD route):
+     *  a channel that did was removed before 3.15.0 — it changed nothing on the Tang L glass
+     *  and those services feed the driving domain. */
     private val roadInfoEnabled: () -> Boolean = { true },
-    internal val launcherContext: HudLauncherMapContext? = null,
-    private val launcherContextEnabled: () -> Boolean = { false },
     internal val instrumentFids: HudInstrumentFids? = null,
     private val instrumentFidsEnabled: () -> Boolean = { false },
 ) {
@@ -45,7 +48,6 @@ class HudPushLoop(
 
     private var job: Job? = null
     private var counter = 0   // clear frames only; guidance frames carry the constant 2 in f2
-    private var ctxCounter = 0   // launcher-map context header counter, 0..255 like the donor
 
     // Last journalled maneuver state; NO_MANEUVER means "nothing recorded yet in this guidance
     // session", so the first frame of a new session is always written.
@@ -76,7 +78,6 @@ class HudPushLoop(
         // Switch-off while guidance is active: the controller sends the SOME/IP clear frame,
         // but the instrument panel keeps whatever was written last until the navigation status
         // goes back to "stopped" (field-confirmed on the Tang L: the arrow stayed on the glass).
-        launcherContext?.stop()
         instrumentFids?.stop()
         journalledGaode = NO_MANEUVER
     }
@@ -89,7 +90,6 @@ class HudPushLoop(
             if (wasActive) {
                 val rc = sink.fireEvent(HudSomeIpBridge.TOPIC_NAVI, HudProtobufBuilder.buildClearFrame(counter++, d))
                 Log.i(TAG, "guidance ended, clear frame sent rc=$rc dialect=$d after $framesSent frames")
-                launcherContext?.stop()
                 instrumentFids?.stop()
             }
             amap?.onSnapshot(null)
@@ -124,8 +124,6 @@ class HudPushLoop(
         lastRc = rc
         if (rc != 0) nonZeroRcCount++
         if (d == HudDialect.AR_HUD) {
-            ctxCounter = (ctxCounter + 1) and 0xFF
-            if (launcherContextEnabled()) launcherContext?.send(s, ctxCounter)
             if (instrumentFidsEnabled()) instrumentFids?.update(s)
         }
         if (!wasActive || framesSent % LOG_EVERY_FRAMES == 0L) {
@@ -133,7 +131,7 @@ class HudPushLoop(
                 "f28=${if (d == HudDialect.AR_HUD) HudProtobufBuilder.gaodeToArHudId(s.maneuverGaode) else HudProtobufBuilder.gaodeToF28(s.maneuverGaode)} " +
                 "dist=${s.distanceMeters} total=${s.totalDistMeters} eta=${s.etaSeconds}s limit=${s.speedLimit} " +
                 "icon=${(if (cameraActive) s.cameraIconPng ?: baseIcon else baseIcon)?.size ?: 0} road='${runningLine(s)}'" +
-                (if (d == HudDialect.AR_HUD) " roadInfo=$roadInfo ctx=${launcherContextEnabled()}/${launcherContext?.eventsSent ?: 0}/rc${launcherContext?.lastRc ?: 0} " +
+                (if (d == HudDialect.AR_HUD) " roadInfo=$roadInfo " +
                     "fids=${instrumentFidsEnabled()}/${instrumentFids?.writes ?: 0}/fail${instrumentFids?.failures ?: 0} fix=${HudVehicleState.fix != null}" else ""))
         }
         amap?.onSnapshot(s)

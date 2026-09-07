@@ -56,7 +56,6 @@ class HudController @Inject constructor(
         /** AR-HUD sub-channels. The bisection in the car (2026-09-07) showed the Tang L glass
          *  reads only the instrument-panel features; the other two are kept as switches. */
         const val KEY_ARHUD_ROAD_INFO = "hud_arhud_road_info"
-        const val KEY_ARHUD_LAUNCHER_CTX = "hud_arhud_launcher_ctx"
         const val KEY_ARHUD_FIDS = "hud_arhud_fids"
     }
 
@@ -104,31 +103,19 @@ class HudController @Inject constructor(
     }
 
     // Field result 2026-09-07 (Tang L): only the instrument-panel features reach the glass; the
-    // SOME/IP frame and the launcher-map context change nothing there. They stay available for
-    // other DiLink 150 trims, off by default.
+    // SOME/IP HUD frame changes nothing there. It stays available for other DiLink 150 trims,
+    // off by default.
     fun isArHudRoadInfoEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_ROAD_INFO, false)
-    fun isArHudLauncherContextEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_LAUNCHER_CTX, false)
     fun isArHudFidsEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_FIDS, true)
 
     fun setArHudRoadInfoEnabled(on: Boolean) { prefs().edit().putBoolean(KEY_ARHUD_ROAD_INFO, on).apply() }
     fun setArHudFidsEnabled(on: Boolean) { prefs().edit().putBoolean(KEY_ARHUD_FIDS, on).apply() }
 
-    /** The context topics need their services opened on the gateway: re-open the channel. */
-    fun setArHudLauncherContextEnabled(on: Boolean) {
-        prefs().edit().putBoolean(KEY_ARHUD_LAUNCHER_CTX, on).apply()
-        if (isEnabled()) {
-            NavA11yFeed.enabled = false
-            scope.launch { stopSequence(); startSequence() }
-        }
-    }
-
-    /** Gateway service keys to open for [d], the HUD service first. Both glass families use
-     *  the one SDK key for it; the AR-HUD adds the launcher-map context services when that
-     *  channel is on. */
+    /** Gateway service key to open for [d]: the HUD service, and only that one. Both glass
+     *  families use the same SDK key. BYDMate deliberately opens no service that the driving
+     *  computer consumes for guidance. */
     internal fun serviceIdsFor(d: HudDialect): List<Long> = when (d) {
-        HudDialect.CLASSIC -> listOf(HudSomeIpBridge.SERVICE_ID_NAVI)
-        HudDialect.AR_HUD -> listOf(HudSomeIpBridge.SERVICE_ID_NAVI) +
-            (if (isArHudLauncherContextEnabled()) HudLauncherMapContext.SERVICE_KEYS else emptyList())
+        HudDialect.CLASSIC, HudDialect.AR_HUD -> listOf(HudSomeIpBridge.SERVICE_ID_NAVI)
     }
 
     fun diag(): HudDiag? = loop?.let { l ->
@@ -141,7 +128,7 @@ class HudController @Inject constructor(
             amapFramesSent = l.amap?.framesSent ?: 0,
             amapStopsSent = l.amap?.stopsSent ?: 0,
             dialect = "${dialect()} (pref=${dialectPref()}, vehicle='${HudDialect.readVehicleType()}') " +
-                "roadInfo=${isArHudRoadInfoEnabled()} launcherCtx=${isArHudLauncherContextEnabled()}/${l.launcherContext?.eventsSent ?: 0} " +
+                "roadInfo=${isArHudRoadInfoEnabled()} " +
                 "fids=${isArHudFidsEnabled()}/${l.instrumentFids?.writes ?: 0}/fail${l.instrumentFids?.failures ?: 0} fix=${HudVehicleState.fix != null}",
         )
     }
@@ -216,8 +203,6 @@ class HudController @Inject constructor(
                         context.getString(com.bydmate.app.R.string.hud_eta_remaining_minutes, minutes)
                     },
                     roadInfoEnabled = { isArHudRoadInfoEnabled() },
-                    launcherContext = HudLauncherMapContext(b),
-                    launcherContextEnabled = { isArHudLauncherContextEnabled() },
                     instrumentFids = HudInstrumentFids(helperClient, scope),
                     instrumentFidsEnabled = { isArHudFidsEnabled() })
                     .also { it.start(scope) }

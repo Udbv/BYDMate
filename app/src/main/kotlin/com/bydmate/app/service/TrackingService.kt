@@ -211,6 +211,11 @@ class TrackingService : Service(), LocationListener {
             name = "star a11y",
             isGranted = ::starServiceRunning,
             reassert = { helperBootstrap.ensureRunning() && helperClient.enableAccessibilityService() },
+            // Android 10 (DiLink 3.0/4.0): a re-assert never clears AOSP Q's stuck mBindingServices
+            // (field logs: 0/12 successes), and a healthy bind lands by try 2; hand over to the
+            // daemon force-stop recovery after ~10 s instead of ~35 s.
+            attempts = if (android.os.Build.VERSION.SDK_INT <= 29) A11Y_ATTEMPTS_ANDROID10
+            else GrantSelfHeal.ATTEMPTS,
         )
     }
 
@@ -239,7 +244,14 @@ class TrackingService : Service(), LocationListener {
     companion object {
         private const val TAG = "TrackingService"
         private const val NOTIFICATION_ID = 1
+        private const val A11Y_ATTEMPTS_ANDROID10 = 2
         private const val CHANNEL_ID = "bydmate_tracking"
+        // Opt-in "quiet" channel (IMPORTANCE_MIN): the mandatory foreground notification collapses
+        // into the shade's silent list with no status-bar icon. Off by default - existing users keep
+        // the LOW channel untouched (#86). Pref lives in the cluster_projection file next to the other
+        // car/system toggles the settings screen edits.
+        private const val QUIET_CHANNEL_ID = "bydmate_tracking_quiet"
+        const val KEY_QUIET_NOTIFICATION = "quiet_notification"
         // Throttle autoservice gun-state read so we don't hit Binder/ADB on every
         // poll tick. 5 ticks ≈ 15 s — fast enough that the user sees a row
         // appear within ~half a minute of unplugging, gentle enough not to
@@ -1172,6 +1184,14 @@ class TrackingService : Service(), LocationListener {
         }
     }
 
+    // Declared explicitly: default interface methods on compileSdk 34, but ABSTRACT on API 29 -
+    // without them Android 10 (DiLink 3.0/4.0) throws AbstractMethodError from LocationManager's
+    // ListenerTransport whenever the GPS provider toggles (ignition off/on), killing the process.
+    override fun onProviderEnabled(provider: String) { /* no-op */ }
+    override fun onProviderDisabled(provider: String) { /* no-op */ }
+    @Deprecated("Deprecated in Java")
+    override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) { /* no-op */ }
+
     private fun startPolling() {
         Log.i(TAG, "Starting polling via SharedAdaptiveLoop")
         pollingJob = serviceScope.launch {
@@ -1558,6 +1578,31 @@ class TrackingService : Service(), LocationListener {
      * that: verify-and-retry, gated on the TRUE liveness signal (SteeringWheelKeyService.isConnected)
      * plus the framework's running list, so a healthy service is never disturbed.
      */
+    // Diagnostic (DiLink 4 / Android 10): once the stuck state is named, poll the service state
+    // for ten minutes so a field log shows WHEN it clears (e.g. after the user taps a third-party
+    // launcher's privilege button) and whether our process survived (pid). Read-only, one at a time.
+    @Volatile private var a11yStuckWatch: kotlinx.coroutines.Job? = null
+    private fun startA11yStuckWatch() {
+        if (a11yStuckWatch?.isActive == true) return
+        a11yStuckWatch = serviceScope.launch {
+            val t0 = System.currentTimeMillis()
+            var wasRunning = false
+            repeat(60) { i ->
+                val running = starServiceRunning()
+                val listHasUs = runCatching {
+                    android.provider.Settings.Secure.getString(contentResolver, "enabled_accessibility_services")
+                        ?.contains(packageName) == true
+                }.getOrDefault(false)
+                Log.i(TAG, "a11y stuck watch +${(System.currentTimeMillis() - t0) / 1000}s: running=$running " +
+                    "enabledListHasUs=$listHasUs pid=${android.os.Process.myPid()}")
+                if (running && !wasRunning && i > 0) Log.w(TAG, "a11y stuck watch: service came back without our re-assert")
+                wasRunning = running
+                if (running) return@launch
+                kotlinx.coroutines.delay(10_000L)
+            }
+        }
+    }
+
     private suspend fun ensureStarServiceRunning(reason: String) {
         val prefs = getSharedPreferences(ClusterProjectionManager.PREFS_NAME, Context.MODE_PRIVATE)
         val mirrorEnabled = prefs.getBoolean(ClusterProjectionManager.KEY_MIRROR_ENABLED, false)
@@ -1574,6 +1619,33 @@ class TrackingService : Service(), LocationListener {
         val dialogDismiss = com.bydmate.app.cluster.VehicleDialogDismisser.isEnabled(this)
         if (!mirrorEnabled && !voiceEnabled && !knobEnabled && !dialogDismiss && !hudController.requiresA11y()) return
         starGrant.ensure(reason)
+        // Android 10 (DiLink 3.0/4.0): once our process died while bound, AccessibilityManagerService
+        // parks the component in mBindingServices and skips it on every settings rewrite until a
+        // package update, force-stop or reboot (AOSP Q updateServicesLocked, "wait for the binding").
+        // The daemon's remove+re-add then reports success while the framework never binds. Name the
+        // state only when every re-assert succeeded (daemon path healthy) and the service still is
+        // not running - all-false re-asserts mean a broken daemon, not a stuck framework.
+        val last = GrantSelfHeal.history().lastOrNull { it.name == "star a11y" }
+        val daemonOkButUnbound = last != null && !last.granted &&
+            last.reasserts.isNotEmpty() && last.reasserts.all { it }
+        if (android.os.Build.VERSION.SDK_INT <= 29 && daemonOkButUnbound && !starServiceRunning()) {
+            Log.w(TAG, "star a11y stuck in binding state ($reason): daemon re-asserted the setting " +
+                "${last.reasserts.size}x OK but the framework did not bind (AOSP Q mBindingServices)")
+            startA11yStuckWatch()
+            // Only in-framework way out: IActivityManager.forceStopPackage on ourselves, which runs
+            // PackageMonitor.onHandleForceStop and clears mBindingServices. The daemon does it and
+            // restarts us, so this call kills our own process - mark the attempt BEFORE it.
+            val nowElapsed = android.os.SystemClock.elapsedRealtime()
+            if (A11yRecoveryGate.shouldAttempt(prefs, nowElapsed)) {
+                if (A11yRecoveryGate.markAttempt(prefs, nowElapsed)) {
+                    Log.w(TAG, "star a11y recovery: asking daemon to force-stop + re-bind " +
+                        "(streak=${prefs.getInt(A11yRecoveryGate.KEY_FAIL_STREAK, 0)})")
+                    helperClient.recoverAccessibilityService()
+                } else {
+                    Log.w(TAG, "star a11y recovery: skipped, could not persist the rate-limit mark")
+                }
+            }
+        }
     }
 
     private fun notificationListenerGranted(): Boolean {
@@ -1608,8 +1680,23 @@ class TrackingService : Service(), LocationListener {
             description = "Trip and charge tracking"
             setShowBadge(false)
         }
+        val quiet = NotificationChannel(
+            QUIET_CHANNEL_ID,
+            "BYDMate Tracking (quiet)",
+            NotificationManager.IMPORTANCE_MIN
+        ).apply {
+            description = "Trip and charge tracking, collapsed in the shade"
+            setShowBadge(false)
+        }
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(channel)
+        nm.createNotificationChannel(quiet)
+    }
+
+    private fun activeChannelId(): String {
+        val quiet = getSharedPreferences(ClusterProjectionManager.PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_QUIET_NOTIFICATION, false)
+        return if (quiet) QUIET_CHANNEL_ID else CHANNEL_ID
     }
 
     private fun buildNotification(text: String): Notification {
@@ -1618,7 +1705,9 @@ class TrackingService : Service(), LocationListener {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        // Upstream's quiet-notification channel, with the flavor-aware title so the
+        // waze build shows "BYDMate Waze" instead of the hard-coded name.
+        return NotificationCompat.Builder(this, activeChannelId())
             .setContentTitle(getString(R.string.app_name))
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_compass)

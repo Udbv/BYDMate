@@ -362,7 +362,13 @@ class LogRecorder internal constructor(
             "FidSubscription:*", "CameraProbe:*", "BlindSpot:*",
             // Split-screen wave: session/watchdog decisions, pill+picker overlay, widget tap.
             "SplitSessionMgr:*", "SplitOverlayCtrl:*", "SplitPillView:*",
-            "WidgetController:*"
+            "WidgetController:*",
+            // DiLink 4 a11y stuck-binding diagnostics: who force-stops / kills our process
+            // ("Force stopping com.bydmate.app", "Killing ...") and the framework's own
+            // accessibility bookkeeping around ignition off/on.
+            "ActivityManager:I", "AccessibilityManagerService:*",
+            // #180: the "decode rejected" line lives on this tag and was missing from the filter.
+            "NativeParsReader:*"
         )
     }
 }

@@ -28,8 +28,8 @@ android {
         // on DiLink Android 12 (requestLegacyExternalStorage works).
         // targetSdk 30+ would break listFiles() on /storage/emulated/0/energydata/
         targetSdk = 29
-        versionCode = 443
-        versionName = "3.15.0-dev.6"   // development pre-release; stable X.Y.Z only after a real-car test
+        versionCode = 444
+        versionName = "3.15.0"   // first stable of the Waze fork; cut after the real-car test
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

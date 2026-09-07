@@ -27,6 +27,7 @@ import com.bydmate.app.cluster.ClusterJournal
 import com.bydmate.app.cluster.ClusterMode
 import com.bydmate.app.cluster.ClusterProjectionManager
 import com.bydmate.app.cluster.MAX_PROJECTION_PCT
+import com.bydmate.app.cluster.cameraNeedsCompositor
 import com.bydmate.app.cluster.geometryFor
 import com.bydmate.app.data.remote.DiParsData
 import com.bydmate.app.data.autoservice.SentinelDecoder
@@ -40,6 +41,7 @@ import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -100,6 +102,9 @@ class BlindSpotController @Inject constructor(
     /** True while [clusterWindow] is the mirrored PiP on the main screen (this car has no
      *  projection display) — the cluster compositor must stay untouched then. */
     private var clusterOnMainScreen = false
+
+    /** Whether the attached windows were built with the "both on the main screen" opt-in on. */
+    private var mirrorByChoice = false
     /** Geometry the PiP window currently carries; a mismatch with the settings re-applies it. */
     private var appliedPipRect: Rect? = null
     /** Projection-overlay attach counter as of our own attach; a later value means the overlay
@@ -188,6 +193,14 @@ class BlindSpotController @Inject constructor(
         if (!prefs.enabled) {
             awaitTeardown("feature switched off")
             cancelFastLoop()
+            return
+        }
+
+        // The screen preference can flip mid-drive too, and the routing is decided once, at
+        // attach time. Comparing against the preference the attached windows were built from
+        // keeps this off the display manager on every tick.
+        if ((clusterWindow != null || pipWindow != null) && mirrorByChoice != prefs.bothOnMain) {
+            awaitTeardown("blind-spot screen preference changed")
             return
         }
 
@@ -348,10 +361,14 @@ class BlindSpotController @Inject constructor(
         // up as a mismatch on the next tick, which costs one redundant re-attach — the other
         // order would miss it and leave the camera buried under the overlay.
         lastOverlayEpoch = ClusterProjectionManager.overlayEpoch()
-        // No projection display (non-Leopard-3 trims, or the cluster is not fissioned): the left
-        // camera falls back to a mirrored window on the main screen, and setClusterContainerMode
-        // is never called — powering a compositor that does not exist would black the cluster out.
-        val display = clusterDisplay()
+        // No projection display (non-Leopard-3 trims, or the cluster is not fissioned), or the
+        // driver asked for both cameras on the main screen (#183): the left camera falls back to a
+        // mirrored window there, and setClusterContainerMode is never called — powering a
+        // compositor that does not exist, or that the driver opted out of, would black the cluster
+        // out.
+        mirrorByChoice = prefs.bothOnMain
+        val panel = clusterDisplay()
+        val display = if (blindSpotUsesMirror(mirrorByChoice, panel != null)) null else panel
         if (display == null) {
             attachMirrorWindow()
         } else {
@@ -521,9 +538,14 @@ class BlindSpotController @Inject constructor(
     /** Fire-and-forget compositor switch for the show path; one job at a time. */
     private fun requestCompositor(on: Boolean) {
         if (on == compositorTarget) return
-        // Only the window that actually sits on the projection display needs the compositor;
-        // the mirrored main-screen fallback must never touch a cluster that has none.
-        if (on && (clusterWindow == null || clusterOnMainScreen)) return
+        // Only the window that actually sits on the projection display needs the compositor, and
+        // only when the user lets us drive it (auto-container on, same gate as the projection);
+        // the mirrored main-screen fallback must never touch a cluster that has none. Skipped on
+        // the way UP, the target never flips, so no power-down runs on the way back either.
+        if (on && !cameraNeedsCompositor(
+                ClusterProjectionManager.autoContainerEnabled(context),
+                clusterWindow != null,
+                clusterOnMainScreen)) return
         compositorTarget = on
         compositorJob?.cancel()
         compositorJob = ownScope.launch { applyCompositor(on) }
@@ -607,13 +629,17 @@ class BlindSpotController @Inject constructor(
                 cameraOpen = false
             }
             applyShow(BlindSpotSide.NONE)
-            compositorJob?.cancel()
+            // Join, not just cancel: the blocking binder call inside cannot be interrupted, and
+            // its confirmed result must land in compositorPowered before the check below, or a
+            // power-up that completes after we looked leaves the cluster black.
+            compositorJob?.cancelAndJoin()
             compositorJob = null
             compositorTarget = false
             if (compositorPowered) applyCompositor(false)
             releaseWindow(clusterWindow)
             clusterWindow = null
             clusterOnMainScreen = false
+            mirrorByChoice = false
             releaseWindow(pipWindow)
             pipWindow = null
             appliedPipRect = null

@@ -1335,7 +1335,6 @@ private fun DisplaySection() {
                 // Sub-channels of the AR-HUD dialect: together they reproduce what openbyd sends
                 // on the Tang L; the car test switches them off one by one.
                 var arRoadInfo by remember { mutableStateOf(hudController.isArHudRoadInfoEnabled()) }
-                var arLauncherCtx by remember { mutableStateOf(hudController.isArHudLauncherContextEnabled()) }
                 var arFids by remember { mutableStateOf(hudController.isArHudFidsEnabled()) }
                 SettingDivider()
                 SettingToggleRow(
@@ -1343,12 +1342,6 @@ private fun DisplaySection() {
                     description = stringResource(R.string.settings_hud_arhud_roadinfo_desc),
                     checked = arRoadInfo,
                     onCheckedChange = { arRoadInfo = it; hudController.setArHudRoadInfoEnabled(it) },
-                )
-                SettingToggleRow(
-                    title = stringResource(R.string.settings_hud_arhud_launcher_title),
-                    description = stringResource(R.string.settings_hud_arhud_launcher_desc),
-                    checked = arLauncherCtx,
-                    onCheckedChange = { arLauncherCtx = it; hudController.setArHudLauncherContextEnabled(it) },
                 )
                 SettingToggleRow(
                     title = stringResource(R.string.settings_hud_arhud_fids_title),
@@ -1447,6 +1440,9 @@ private fun BlindSpotCard() {
             BlindSpotPreferences.KEY_PIP_WIDTH_PCT, BlindSpotPreferences.DEFAULT_PIP_WIDTH_PCT))
     }
     var bsdGlow by remember { mutableStateOf(prefs.getBoolean(BlindSpotPreferences.KEY_BSD_GLOW, true)) }
+    var bothOnMain by remember {
+        mutableStateOf(prefs.getBoolean(BlindSpotPreferences.KEY_BOTH_ON_MAIN, false))
+    }
 
     // Drag-to-place preview: it lives in a WindowManager overlay, so leaving the screen has to
     // take it down explicitly. The flag follows the window rather than the clicks — the overlay
@@ -1537,6 +1533,17 @@ private fun BlindSpotCard() {
             ),
             onClick = {
                 if (placing) positionOverlay.hide() else placing = positionOverlay.show(context)
+            },
+            enabled = enabled,
+        )
+        SettingDivider()
+        SettingToggleRow(
+            title = stringResource(R.string.settings_blindspot_both_main_title),
+            description = stringResource(R.string.settings_blindspot_both_main_desc),
+            checked = bothOnMain,
+            onCheckedChange = {
+                bothOnMain = it
+                prefs.edit().putBoolean(BlindSpotPreferences.KEY_BOTH_ON_MAIN, it).apply()
             },
             enabled = enabled,
         )
@@ -2136,6 +2143,21 @@ private fun ServiceSection(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
+            // Quiet foreground notification: the service picks the channel up on its next
+            // notification refresh (a few seconds), no restart needed.
+            var quietNotification by remember {
+                mutableStateOf(clusterPrefs.getBoolean(com.bydmate.app.service.TrackingService.KEY_QUIET_NOTIFICATION, false))
+            }
+            SettingToggleRow(
+                title = stringResource(R.string.settings_quiet_notification_title),
+                description = stringResource(R.string.settings_quiet_notification_desc),
+                checked = quietNotification,
+                onCheckedChange = {
+                    quietNotification = it
+                    clusterPrefs.edit().putBoolean(com.bydmate.app.service.TrackingService.KEY_QUIET_NOTIFICATION, it).apply()
+                },
+            )
+            SettingDivider()
             SettingActionRow(
                 title = stringResource(R.string.settings_export_csv_button),
                 description = stringResource(R.string.settings_export_csv_desc),

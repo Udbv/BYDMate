@@ -365,7 +365,59 @@ fun main(args: Array<String>) {
 
                 HelperBinderProtocol.TX_ENABLE_ACCESSIBILITY -> runCatching {
                     val ok = enableAccessibilityService()
+                    // Only reached when the app found the service NOT running: snapshot the
+                    // framework's own view so a field log names the exact state (#a11y DiLink 4).
+                    // Off the binder thread: a slow dumpsys must not delay the reply (the client
+                    // holds its mutex and a 15 s budget; a late reply would read as reassert=false).
+                    logA11yFrameworkStateAsync(ok)
                     reply?.writeInt(if (ok) 0 else -1); reply?.writeInt(0)
+                    true
+                }.getOrElse { reply?.writeInt(-1); reply?.writeInt(0); true }
+
+                HelperBinderProtocol.TX_RECOVER_ACCESSIBILITY -> runCatching {
+                    val ok = recoverAccessibilityService()
+                    reply?.writeInt(if (ok) 0 else -1); reply?.writeInt(0)
+                    true
+                }.getOrElse { reply?.writeInt(-1); reply?.writeInt(0); true }
+
+                HelperBinderProtocol.TX_CLUSTER_DISPLAY_DIAG -> runCatching {
+                    // Reply immediately: the snapshot runs 8-9 shell commands (up to 4 s each) on
+                    // its own thread, so the binder thread and the app's HelperClient mutex are
+                    // never held behind a slow dumpsys. Rate-limited, not once-only: the user
+                    // usually retries after turning log recording on, and `logcat -c` at recording
+                    // start wipes an earlier snapshot.
+                    // Inside the rate window the cached snapshot is re-emitted instead, so a
+                    // fresh recording session still gets the full cdiag block.
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    val started = synchronized(clusterDiagLock) {
+                        val running = clusterDiagThread?.isAlive == true
+                        if (running) { clusterDiagReplayWhenDone = true; true }
+                        else if (now - clusterDiagLastMs < CLUSTER_DIAG_MIN_INTERVAL_MS) {
+                            val cached = clusterDiagCache
+                            if (cached != null) {
+                                android.util.Log.i("bydmate_helper", "cdiag: replaying cached snapshot (${cached.size} lines)")
+                                cached.forEach { android.util.Log.i("bydmate_helper", it) }
+                            }
+                            cached != null
+                        } else {
+                            clusterDiagLastMs = now
+                            clusterDiagThread = Thread({
+                                val lines = runCatching { logClusterDisplayDiag() }.getOrNull()
+                                val replay = synchronized(clusterDiagLock) {
+                                    if (lines != null) clusterDiagCache = lines
+                                    clusterDiagReplayWhenDone.also { clusterDiagReplayWhenDone = false }
+                                }
+                                // A request arrived mid-collection (typically: recording just
+                                // started and wiped logcat) - emit the whole block once more.
+                                if (replay && lines != null) {
+                                    android.util.Log.i("bydmate_helper", "cdiag: replaying snapshot after collection (${lines.size} lines)")
+                                    lines.forEach { android.util.Log.i("bydmate_helper", it) }
+                                }
+                            }, "bydmate-cdiag").apply { isDaemon = true; start() }
+                            true
+                        }
+                    }
+                    reply?.writeInt(if (started) 0 else 1); reply?.writeInt(0)
                     true
                 }.getOrElse { reply?.writeInt(-1); reply?.writeInt(0); true }
 
@@ -1395,6 +1447,112 @@ internal fun shExecMerged(script: String, vararg args: String): String {
     return out.ifEmpty { "OK" }
 }
 
+/** Snapshot rate limit (see TX_CLUSTER_DISPLAY_DIAG): one at a time, at most one per minute. */
+private val clusterDiagLock = Any()
+private var clusterDiagThread: Thread? = null
+private var clusterDiagLastMs = Long.MIN_VALUE / 2
+private var clusterDiagCache: List<String>? = null
+private var clusterDiagReplayWhenDone = false
+private const val CLUSTER_DIAG_MIN_INTERVAL_MS = 60_000L
+
+/**
+ * Bounded variant of [shExecMerged] for the read-only diagnostic snapshot: a dumpsys on an unknown
+ * firmware can print megabytes or hang, and neither may stall the daemon's binder thread. stdout is
+ * drained on a background thread into a buffer capped at [maxBytes]; if the process outlives
+ * [timeoutMs] it is killed and whatever was read is returned with a `[timeout Nms]` marker line.
+ * Used ONLY by the diagnostic snapshots ([logClusterDisplayDiag], [logA11yFrameworkState]) — the
+ * production callers stay on [shExec]/[shExecMerged].
+ */
+private fun shExecBounded(script: String, timeoutMs: Long = 4000L, maxBytes: Int = 64 * 1024): String {
+    val process = ProcessBuilder("sh", "-c", script).redirectErrorStream(true).start()
+    val buffer = StringBuilder()
+    val reader = Thread {
+        runCatching {
+            process.inputStream.reader().use { stream ->
+                val chunk = CharArray(8192)
+                var total = 0
+                while (total < maxBytes) {
+                    val n = stream.read(chunk)
+                    if (n < 0) break
+                    val take = minOf(n, maxBytes - total)
+                    synchronized(buffer) { buffer.append(chunk, 0, take) }
+                    total += take
+                }
+            }
+        }
+    }
+    reader.isDaemon = true
+    reader.start()
+    val finished = process.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+    if (!finished) process.destroyForcibly()
+    reader.join(500L)
+    val out = synchronized(buffer) { buffer.toString() }.trim()
+    return if (finished) out else (out + "\n[timeout ${timeoutMs}ms]")
+}
+
+/**
+ * Read-only cluster-display snapshot for cars where the projection display never resolves
+ * (DiLink 3/4, issue #182). Collection only: props, the DisplayManager and SurfaceFlinger display
+ * lists, the projection services and which SurfaceControl methods are visible under shell uid.
+ * Nothing is invoked or written — no auto_container command, no SurfaceControl call, no settings.
+ * Every command is individually guarded so one failure still leaves the rest of the snapshot in
+ * the log, under the daemon tag the app's log recorder already captures.
+ */
+private fun logClusterDisplayDiag(): List<String> {
+    val tag = "bydmate_helper"
+    val emitted = ArrayList<String>()
+    var cmds = 0
+    var errors = 0
+    var timeouts = 0
+    fun run(script: String, timeoutMs: Long = 4000L, maxBytes: Int = 64 * 1024): String {
+        cmds++
+        val out = runCatching { shExecBounded(script, timeoutMs, maxBytes) }
+            .getOrElse { errors++; "" }
+        if (out.contains("[timeout ")) timeouts++
+        return out
+    }
+    fun emit(line: String) {
+        val full = "cdiag: " + line.take(300)
+        emitted += full
+        android.util.Log.i(tag, full)
+    }
+
+    val propScript = ClusterDisplayDiag.PROP_KEYS.joinToString("; ") { "echo $it=$(getprop $it)" }
+    emit(ClusterDisplayDiag.propsLine(run(propScript)) + " uid=${android.os.Process.myUid()}")
+    emit(ClusterDisplayDiag.bydPropsLine(run("getprop | grep '^\\[ro\\.byd\\.'")))
+    emit(ClusterDisplayDiag.servicesLine(
+        run("service list | grep -i container"),
+        run("service check auto_container"),
+        run("service check AutoContainer"),
+        run("ls /dev/graphics 2>/dev/null | tr '\\n' ' '"),
+    ))
+
+    val displays = ClusterDisplayDiag.displayLines(run("dumpsys display"))
+    displays.kept.forEach { emit("display: $it") }
+    if (displays.dropped > 0) emit("display: +${displays.dropped} more matched lines dropped")
+
+    var sf = run("dumpsys SurfaceFlinger --displays")
+    if (ClusterDisplayDiag.surfaceFlingerFallbackNeeded(sf)) sf = run("dumpsys SurfaceFlinger")
+    val sfLines = ClusterDisplayDiag.surfaceFlingerLines(sf)
+    sfLines.kept.forEach { emit("sf: $it") }
+    if (sfLines.dropped > 0) emit("sf: +${sfLines.dropped} more matched lines dropped")
+
+    // Reflective visibility only: we report which SurfaceControl entry points this firmware has,
+    // and never call any of them. Hidden-API filtering can throw on some builds, hence the guard.
+    val probed = listOf(
+        "createDisplay", "destroyDisplay", "setDisplaySurface", "setDisplayProjection",
+        "setDisplayLayerStack", "getPhysicalDisplayIds", "getPhysicalDisplayToken", "getBuiltInDisplay",
+    )
+    runCatching {
+        val names = Class.forName("android.view.SurfaceControl").declaredMethods.map { it.name }.toSet()
+        val (present, missing) = probed.partition { it in names }
+        emit("surfacecontrol present=$present missing=$missing")
+    }.onFailure { emit("surfacecontrol unavailable: ${it.javaClass.simpleName}") }
+
+    emit("done cmds=$cmds errors=$errors timeouts=$timeouts")
+    return emitted
+}
+
 /** Single named gateway: pins all am/monkey prod callers to the merged-stream runner.
  *  Extracting a val (not an inline lambda at each site) means the wiring is detectable
  *  by tests — reverting any site back to shExec would break [ShExecMergedTest.amShell]. */
@@ -1468,6 +1626,95 @@ private fun enableAccessibilityService(): Boolean {
     // Verify read-back: our component is now listed AND accessibility is enabled.
     val after = (readSecure("enabled_accessibility_services") ?: return false).split(':').filter { it.isNotEmpty() }
     return after.any { canonicalComponent(it) == target } && readSecure("accessibility_enabled") == "1"
+}
+
+/**
+ * Recovers the a11y service on Android 10 after the firmware's quickboot force-stop parked our
+ * component in AccessibilityManagerService's UserState.mBindingServices (AOSP Q: no
+ * ACTION_PACKAGE_RESTARTED broadcast, so AMS re-binds into the dying package and the bind never
+ * completes; updateServicesLocked skips such components forever). A settings rewrite cannot leave
+ * that state — only PackageMonitor.onHandleForceStop clears it, which
+ * IActivityManager.forceStopPackage triggers. So: force-stop ourselves, re-enable, restart.
+ *
+ * The app is killed by step 1, so it never sees the reply; the daemon survives (shell uid, own
+ * process) and finishes the sequence. Kept dumb and logged — the SDK gate lives in the app.
+ */
+private fun recoverAccessibilityService(): Boolean {
+    val tag = "bydmate_helper"
+    val pkg = HelperBinderProtocol.APP_PACKAGE
+    android.util.Log.w(tag, "a11y recover: force-stopping $pkg (AOSP Q stuck binding)")
+    try {
+        forceStopPackage(pkg)
+    } catch (e: Throwable) {
+        android.util.Log.w(tag, "a11y recover: force-stop failed: ${e.javaClass.simpleName}: ${e.message}")
+        return false
+    }
+    Thread.sleep(700L)  // let AccessibilityManagerService process onHandleForceStop
+    // The app is dead from here on, so the restart goes out FIRST and does not depend on anything
+    // else in this function: a hung `settings` must not leave TrackingService stopped until boot.
+    // TrackingService is not exported, so shell uid cannot start it directly; BootReceiver is
+    // (BOOT_COMPLETED needs it) and its WorkManager chain starts the service. Explicit component +
+    // include-stopped-packages: the force-stop just put the package into the stopped state.
+    var am = ""
+    var restarted = false
+    for (attempt in 1..2) {
+        am = runCatching {
+            amShell(
+                "am broadcast --include-stopped-packages -a com.bydmate.app.action.RECOVER_START -n \"\$1\"",
+                listOf("$pkg/com.bydmate.app.service.BootReceiver"),
+            )
+        }.getOrElse { "broadcast failed: ${it.javaClass.simpleName}: ${it.message}" }
+        restarted = am.contains("Broadcast completed")
+        if (restarted) break
+        android.util.Log.w(tag, "a11y recover: restart broadcast attempt $attempt failed: ${am.take(200)}")
+        Thread.sleep(1000L)
+    }
+    // Re-assert the a11y setting: onHandleForceStop removed us from the enabled set as well.
+    val ok = try {
+        enableAccessibilityService()
+    } catch (e: Throwable) {
+        android.util.Log.w(tag, "a11y recover: re-assert failed: ${e.javaClass.simpleName}: ${e.message}")
+        false
+    }
+    android.util.Log.i(tag, "a11y recover: reassert=$ok restart=$restarted am=${am.take(200)}")
+    logA11yFrameworkStateAsync(ok)  // diagnostics only
+    return ok && restarted
+}
+
+/**
+ * Logs the framework's own accessibility bookkeeping after a re-assert, under the daemon tag the
+ * app's log recorder already captures. `dumpsys accessibility` prints the AOSP UserState sets
+ * (Bound / Enabled / Binding services) on one line each; `dumpsys activity services` shows whether
+ * ActivityManager still holds a ServiceRecord + connection for our key filter. Field evidence for
+ * the Android 10 "stuck in mBindingServices" case that a settings rewrite cannot leave.
+ * Read-only: two dumpsys calls, output trimmed to a handful of lines.
+ */
+private fun logA11yFrameworkStateAsync(reassertOk: Boolean) {
+    val t = Thread({ runCatching { logA11yFrameworkState(reassertOk) } }, "bydmate-a11ydiag")
+    t.isDaemon = true
+    t.start()
+}
+
+/** Diagnostics only; every dumpsys is time- and size-bounded so it can never wedge the daemon. */
+private fun logA11yFrameworkState(reassertOk: Boolean) {
+    val tag = "bydmate_helper"
+    val a11y = shExecBounded("dumpsys accessibility").lines()
+    val keep = a11y.filter { l ->
+        l.contains("User state[") || l.contains("services:{") || l.contains("bydmate", ignoreCase = true)
+    }.take(12)
+    android.util.Log.i(tag, "a11y state after reassert ok=$reassertOk: sdk=${android.os.Build.VERSION.SDK_INT} lines=${a11y.size}")
+    keep.forEach { android.util.Log.i(tag, "a11y: " + it.trim().take(300)) }
+    val pid = shExecBounded("pidof com.bydmate.app")
+    val stopped = shExecBounded("dumpsys package com.bydmate.app").lines()
+        .firstOrNull { it.contains("stopped=", ignoreCase = true) }?.trim()?.take(200)
+    android.util.Log.i(tag, "pkg: pid=${pid.ifEmpty { "none" }} $stopped")
+    val am = shExecBounded("dumpsys activity services com.bydmate.app").lines()
+    val start = am.indexOfFirst { it.contains("SteeringWheelKeyService") }
+    if (start < 0) {
+        android.util.Log.i(tag, "am: no ServiceRecord for SteeringWheelKeyService (lines=${am.size})")
+        return
+    }
+    am.drop(start).take(30).forEach { android.util.Log.i(tag, "am: " + it.trim().take(300)) }
 }
 
 /**

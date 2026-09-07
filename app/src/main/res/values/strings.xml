@@ -28,7 +28,7 @@
     <string name="settings_display_mirror_title">Вывод на приборку кнопкой руля</string>
     <string name="settings_display_mirror_desc">Короткое нажатие выбранной кнопки руля переносит выбранное приложение на приборку и обратно.</string>
     <string name="settings_cluster_auto_container_title">Сразу показывать на приборке</string>
-    <string name="settings_cluster_auto_container_desc">Автоматически переводить приборку в режим проекции</string>
+    <string name="settings_cluster_auto_container_desc">Приложение само переключает приборку в режим проекции и обратно (навигатор и камеры слепых зон). Выключите, если после этого с приборки пропадает ADAS или штатный виджет и не возвращается сам: тогда режим приборки переключайте вручную, а картинка будет видна в мини-карте</string>
     <string name="settings_cluster_direct_reboot_hint">Чтобы голосовой агент видел навигатор на приборке, один раз перезагрузите ДиЛинк: зажмите и удерживайте колёсико громкости. Просто заглушить машину недостаточно. До перезагрузки проекция работает, но агент не видит маршрут.</string>
     <string name="cluster_direct_unsupported_hint">Прямой вывод недоступен на прошивке этой машины, используется совместимый режим</string>
     <string name="settings_projection_mode_title">Режим проекции</string>
@@ -1284,6 +1284,8 @@
     <string name="settings_widget_reset_position_desc">Вернуть виджет на место по умолчанию</string>
     <string name="settings_export_csv_desc">Вся история поездок одним файлом в папку Download</string>
     <string name="settings_log_recording_desc">Подробный журнал работы для разбора проблем. Включайте по запросу разработчика</string>
+    <string name="settings_quiet_notification_title">Тихое уведомление в шторке</string>
+    <string name="settings_quiet_notification_desc">Уведомление BYDMate уходит в свёрнутый список без значка в строке состояния. Совсем убрать его нельзя: Android требует уведомление для работы в фоне</string>
     <string name="settings_config_export_desc">Бэкап: история поездок с GPS и API-ключи открытым текстом, файл в папке Download</string>
     <string name="settings_config_restore_desc">Текущие данные и настройки будут полностью заменены содержимым бэкапа</string>
     <string name="settings_autostart_header">Автозапуск</string>
@@ -1329,8 +1331,6 @@
     <string name="hud_eta_remaining_minutes">%1$d мин</string>
     <string name="settings_hud_arhud_roadinfo_title">Кадр HUD (HudNaviInfo)</string>
     <string name="settings_hud_arhud_roadinfo_desc">Подсказка на сервис HUD по шине SOME/IP, как штатная карта</string>
-    <string name="settings_hud_arhud_launcher_title">Контекст штатной карты</string>
-    <string name="settings_hud_arhud_launcher_desc">Сообщения «карта ведёт маршрут» для ADAS и AR-слоя (как openbyd). На Tang L не нужны: стекло читает только приборную панель</string>
     <string name="settings_hud_arhud_fids_title">Подсказки в приборную панель</string>
     <string name="settings_hud_arhud_fids_desc">Значок, дистанция и остаток маршрута через функции приборной панели (канал CAN в openbyd)</string>
     <string name="settings_display_card_export_dialog_title">Автозакрытие окна «не официальный экспорт»</string>
@@ -1349,6 +1349,8 @@
     <string name="settings_blindspot_position_button">Настроить положение</string>
     <string name="settings_blindspot_position_done">Готово</string>
     <string name="settings_blindspot_position_drag">Перетащите окошко</string>
+    <string name="settings_blindspot_both_main_title">Обе камеры на главный экран</string>
+    <string name="settings_blindspot_both_main_desc">Левая камера показывается рядом с правой на планшете, приборка не используется</string>
     <string name="settings_blindspot_glow_title">Подсветка при объекте в слепой зоне</string>
     <string name="settings_blindspot_glow_desc">Оранжевая рамка вокруг окна, когда датчик видит машину рядом</string>
     <string name="settings_blindspot_hint">Нужна комплектация с круговым обзором. Если вывести проекцию на приборку невозможно, окошко работает на главном экране.</string>
@@ -1425,7 +1427,7 @@
     <string name="tech_label_power">мощность</string>
     <string name="tech_label_battery_power">мощность батареи</string>
     <string name="tech_label_max_charge">макс. мощность заряда</string>
-    <string name="tech_label_max_discharge">макс. мощность разряда</string>
+    <string name="tech_label_max_discharge">доступная мощность батареи</string>
     <string name="tech_label_motor_temp">температура мотора</string>
     <string name="tech_label_inverter_temp">температура инвертора</string>
     <string name="tech_label_rpm">обороты, об/мин</string>
@@ -1463,13 +1465,14 @@
     <string name="tech_value_tyre">%1$.2f бар · %2$d°</string>
     <!-- %1$.2f = bar -->
     <string name="tech_value_tyre_pressure">%1$.2f бар</string>
+    <string name="tech_value_cell_scale">%1$.2f В</string>
     <string name="tech_hint_soh" formatted="false">Здоровье батареи: сколько ёмкости осталось от новой. 100% у новой машины, медленно снижается с годами. Значение считает сама машина.</string>
     <string name="tech_hint_hv_voltage">Напряжение тяговой батареи. Растёт при зарядке и падает по мере разряда, у этой машины примерно 450…560 В. Само по себе ни о чём не говорит, полезно вместе с мощностью.</string>
     <string name="tech_hint_motor_power">Мощность на электромоторах прямо сейчас: столько машина отдаёт на колёса или забирает с них при рекуперации. На стоянке 0. Значение считает сама машина.</string>
     <string name="tech_hint_power">Сколько энергии батарея отдаёт прямо сейчас. Плюс: машина тратит (разгон, климат). Минус: батарея принимает энергию: рекуперация при торможении или зарядка от станции. Второе число: с какой скоростью уходит заряд, процентов в час. На стоянке это расход бортовой электроники.</string>
     <string name="tech_hint_12v">Напряжение обычного 12-вольтового аккумулятора, который питает электронику. На заведённой машине 13…14,5 В. Если на стоянке ниже 12 В, аккумулятор слабеет.</string>
     <string name="tech_hint_insulation">Сопротивление между высоковольтной батареей и кузовом. Чем больше, тем лучше: норма единицы мегаом. Падает к 0,5 МОм и ниже: где-то повреждена изоляция, пора на сервис.</string>
-    <string name="tech_hint_bms_limits">Сколько мощности контроллер батареи разрешает прямо сейчас принять на зарядке и отдать на разгон. На холодной или почти полной батарее лимиты ниже: поэтому зимой зарядка медленнее и рекуперация слабее.</string>
+    <string name="tech_hint_bms_limits">Потолок, который контроллер батареи разрешает прямо сейчас: сколько принять на зарядке (станция может дать меньше) и сколько отдать на разгон. На холодной или почти полной батарее оба значения ниже: поэтому зимой зарядка медленнее и рекуперация слабее.</string>
     <string name="tech_hint_cells">Батарея состоит из сотен ячеек. Показаны самая слабая и самая сильная и разница между ними. Разница до 20…30 мВ в норме. Постоянно большая разница: одна из ячеек стареет быстрее других.</string>
     <string name="tech_hint_motors">Температура электромоторов и инверторов, которые ими управляют. В обычной езде до 60…80°. При долгом разгоне или буксировке греются сильнее, и машина сама снижает мощность, пока не остынут.</string>
     <string name="tech_hint_compressor">Сколько ватт потребляет компрессор кондиционера и теплового насоса. Это главный потребитель кроме моторов: летом в жару и зимой в мороз он заметно съедает запас хода.</string>

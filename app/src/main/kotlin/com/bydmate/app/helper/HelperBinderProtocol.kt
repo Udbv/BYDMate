@@ -31,6 +31,11 @@ import android.os.IBinder
  *   TX_LAUNCH_AND_FORCE : writeString(packageName), writeInt(displayId), writeInt(width), writeInt(height)
  *       -> reply: writeInt(status), writeInt(0)           // status 0 = redirection completed
  *   TX_ENABLE_ACCESSIBILITY : (no args)                   -> reply: writeInt(status), writeInt(0)  // status 0 = our a11y service enabled
+ *   TX_RECOVER_ACCESSIBILITY : (no args)                  -> reply: writeInt(status), writeInt(0)  // status 0 = re-enabled after force-stop
+ *   TX_CLUSTER_DISPLAY_DIAG : (no args)                   -> reply: writeInt(status), writeInt(0)  // 0 = snapshot thread started, 1 = already ran this daemon lifetime; snapshot is async
+ *       Side effect only: read-only cluster-display diagnostics logged under tag bydmate_helper.
+ *       The caller normally never receives this reply: the daemon force-stops the calling
+ *       package as the first step, so the client's binder call dies with its process.
  *   TX_PUT_GLOBAL_SETTING : writeString(key), writeInt(value)
  *       -> reply: writeInt(status), writeInt(0)   // status 0 = settings put global succeeded; -1 = not whitelisted / failed
  *   TX_SET_APP_HIDDEN : writeString(packageName), writeInt(hidden: 1=disable 0=enable)
@@ -296,6 +301,32 @@ object HelperBinderProtocol {
      * the split engine reads as "daemon outdated" and falls back to the move-to-fullscreen-root path.
      */
     val TX_SPLIT37_CHANGE_MODE: Int = IBinder.FIRST_CALL_TRANSACTION + 38    // 39
+
+    /**
+     * Recovers the steering-wheel accessibility service on Android 10 (DiLink 3.0/4.0) after the
+     * firmware's quickboot force-stop at ignition off: AccessibilityManagerService parks our
+     * component in UserState.mBindingServices and skips it on every settings rewrite, so
+     * TX_ENABLE_ACCESSIBILITY reports success while the framework never binds. The daemon
+     * force-stops com.bydmate.app (PackageMonitor.onHandleForceStop is the only in-framework path
+     * that clears mBindingServices), re-enables the service and restarts our foreground service.
+     *
+     * (no args) -> [int status (0 = re-enabled, -1 = failed), int 0]
+     * The caller normally never sees the reply: its own process is force-stopped mid-call, so a
+     * timeout / dead binder is the expected outcome, not an error.
+     */
+    val TX_RECOVER_ACCESSIBILITY: Int = IBinder.FIRST_CALL_TRANSACTION + 39  // 40
+
+    /**
+     * Read-only diagnostic snapshot for cars where the cluster projection display never resolves
+     * (DiLink 3/4, issue #182): firmware props, the display lists of DisplayManager and
+     * SurfaceFlinger, the projection-related services and which SurfaceControl methods exist under
+     * shell uid. Collection only — no auto_container command, no SurfaceControl invocation, no
+     * settings write. The output goes to logcat under the `bydmate_helper` tag the app's log
+     * recorder already captures, so an ordinary user log carries it.
+     *
+     * (no args) -> [int status (0 = snapshot logged, -1 = failed), int 0]
+     */
+    val TX_CLUSTER_DISPLAY_DIAG: Int = IBinder.FIRST_CALL_TRANSACTION + 40  // 41
 
     /** Status codes of the TX_SPLIT37_* verbs. Distinct from the (status, value) autoservice
      *  convention: 2 says the firmware has no native split surface at all (methods absent on the

@@ -25,7 +25,7 @@
     <string name="settings_display_mirror_title">Projeção no painel via botão do volante</string>
     <string name="settings_display_mirror_desc">Um toque curto no botão escolhido do volante move o aplicativo selecionado para o painel de instrumentos e vice-versa.</string>
     <string name="settings_cluster_auto_container_title">Mostrar no painel imediatamente</string>
-    <string name="settings_cluster_auto_container_desc">Ativar o modo de projeção do painel automaticamente</string>
+    <string name="settings_cluster_auto_container_desc">O app alterna o painel para o modo de projeção e de volta sozinho (navegador e câmeras de ponto cego). Desative se depois disso o ADAS ou o widget de fábrica sumir do painel e não voltar sozinho: então alterne o modo do painel manualmente, a imagem aparece no minimapa</string>
     <string name="settings_cluster_direct_reboot_hint">Para o agente de voz ver o navegador no painel, reinicie o DiLink uma vez: mantenha pressionado o botão de volume. Apenas desligar o carro não é suficiente. Até o reinício a projeção funciona, mas o agente não vê a rota.</string>
     <string name="cluster_direct_unsupported_hint">A saída direta não está disponível no firmware deste carro, um modo compatível é usado</string>
     <string name="settings_projection_mode_title">Modo de projeção</string>
@@ -1072,6 +1072,8 @@
     <string name="settings_widget_reset_position_desc">Retornar o widget à posição padrão</string>
     <string name="settings_export_csv_desc">Todo o histórico de viagens em um arquivo na pasta Download</string>
     <string name="settings_log_recording_desc">Registro detalhado para diagnóstico. Ative quando o desenvolvedor solicitar</string>
+    <string name="settings_quiet_notification_title">Notificação silenciosa</string>
+    <string name="settings_quiet_notification_desc">A notificação do BYDMate vai para a lista recolhida sem ícone na barra de status. Não é possível removê-la totalmente: o Android exige uma notificação para o trabalho em segundo plano</string>
     <string name="settings_config_export_desc">Backup: histórico de viagens com GPS e chaves de API em texto simples, arquivo na pasta Download</string>
     <string name="settings_config_restore_desc">Os dados e configurações atuais serão totalmente substituídos pelo conteúdo do backup</string>
     <string name="settings_autostart_header">Início automático</string>
@@ -1171,8 +1173,6 @@
     <string name="hud_eta_remaining_minutes">%1$d min</string>
     <string name="settings_hud_arhud_roadinfo_title">Quadro HUD (HudNaviInfo)</string>
     <string name="settings_hud_arhud_roadinfo_desc">Orientação no serviço HUD por SOME/IP, como o mapa de fábrica</string>
-    <string name="settings_hud_arhud_launcher_title">Contexto do mapa de fábrica</string>
-    <string name="settings_hud_arhud_launcher_desc">Mensagens \"o mapa está a navegar\" para o ADAS e a camada AR (como o openbyd). Desnecessário no Tang L: o vidro lê apenas o painel de instrumentos</string>
     <string name="settings_hud_arhud_fids_title">Orientação para o painel de instrumentos</string>
     <string name="settings_hud_arhud_fids_desc">Ícone, distância e rota restante pelas funções do painel (canal CAN do openbyd)</string>
     <string name="settings_display_card_export_dialog_title">Fechar automaticamente a janela “not official export”</string>
@@ -1191,6 +1191,8 @@
     <string name="settings_blindspot_position_button">Ajustar a posição</string>
     <string name="settings_blindspot_position_done">Pronto</string>
     <string name="settings_blindspot_position_drag">Arraste a janelinha</string>
+    <string name="settings_blindspot_both_main_title">Ambas as câmeras na tela principal</string>
+    <string name="settings_blindspot_both_main_desc">A câmera esquerda aparece ao lado da direita na tela, o painel de instrumentos não é usado</string>
     <string name="settings_blindspot_glow_title">Destaque quando houver um objeto no ponto cego</string>
     <string name="settings_blindspot_glow_desc">Moldura laranja em volta da janela enquanto o sensor detecta um carro ao lado</string>
     <string name="settings_blindspot_hint">Requer versão com câmeras de visão 360°. Quando a projeção no painel não estiver disponível, a janelinha funciona na tela principal.</string>
@@ -1267,7 +1269,7 @@
     <string name="tech_label_power">potência</string>
     <string name="tech_label_battery_power">potência da bateria</string>
     <string name="tech_label_max_charge">potência máx. de carga</string>
-    <string name="tech_label_max_discharge">potência máx. de descarga</string>
+    <string name="tech_label_max_discharge">potência disponível da bateria</string>
     <string name="tech_label_motor_temp">temperatura do motor</string>
     <string name="tech_label_inverter_temp">temperatura do inversor</string>
     <string name="tech_label_rpm">rotações, rpm</string>
@@ -1294,13 +1296,14 @@
     <string name="tech_value_percent">%1$d%%</string>
     <string name="tech_value_tyre">%1$.2f bar · %2$d°</string>
     <string name="tech_value_tyre_pressure">%1$.2f bar</string>
+    <string name="tech_value_cell_scale">%1$.2f V</string>
     <string name="tech_hint_soh" formatted="false">Saúde da bateria: quanta capacidade resta em relação à bateria nova. 100% num carro novo, desce lentamente com os anos. O valor é calculado pelo próprio carro.</string>
     <string name="tech_hint_hv_voltage">Tensão da bateria de tração. Sobe ao carregar e desce à medida que descarrega, neste carro cerca de 450…560 V. Por si só diz pouco, é útil junto com a potência.</string>
     <string name="tech_hint_motor_power">Potência nos motores elétricos agora: quanto o carro está a entregar às rodas ou a receber delas durante a regeneração. Zero quando parado. O valor é calculado pelo próprio carro.</string>
     <string name="tech_hint_power">Quanta energia a bateria está a entregar agora. Positivo: o carro está a gastar (aceleração, climatização). Negativo: a bateria está a receber energia, seja regeneração ao travar seja carregamento num carregador. Segundo número: a que velocidade a carga está a esgotar-se, por cento à hora. Quando parado é o consumo da eletrónica de bordo.</string>
     <string name="tech_hint_12v">Tensão da bateria normal de 12 volts que alimenta a eletrónica. Com o carro ligado fica entre 13…14,5 V. Se estacionado ficar abaixo de 12 V, a bateria está a enfraquecer.</string>
     <string name="tech_hint_insulation">Resistência entre a bateria de alta tensão e a carroçaria. Quanto maior, melhor: o normal são alguns megaohms. Se descer para 0,5 MΩ ou menos, há isolamento danificado nalgum ponto, é hora de ir à oficina.</string>
-    <string name="tech_hint_bms_limits">Quanta potência o controlador da bateria permite neste momento receber ao carregar e entregar na aceleração. Com a bateria fria ou quase cheia os limites são menores: por isso no inverno a carga é mais lenta e a regeneração mais fraca.</string>
+    <string name="tech_hint_bms_limits">O teto que o controlador da bateria permite neste momento: quanto receber ao carregar (a estação pode dar menos) e quanto entregar na aceleração. Com a bateria fria ou quase cheia ambos os valores são menores: por isso no inverno a carga é mais lenta e a regeneração mais fraca.</string>
     <string name="tech_hint_cells">A bateria é feita de centenas de células. São mostradas a mais fraca, a mais forte e a diferença entre elas. Uma diferença até 20…30 mV é normal. Uma diferença sempre grande significa que uma célula envelhece mais depressa do que as outras.</string>
     <string name="tech_hint_motors">Temperatura dos motores elétricos e dos inversores que os comandam. Na condução normal até 60…80°. Em acelerações longas ou a rebocar aquecem mais, e o carro reduz a potência sozinho até arrefecerem.</string>
     <string name="tech_hint_compressor">Quantos watts consome o compressor do ar condicionado e da bomba de calor. É o principal consumidor além dos motores: no calor do verão e no frio do inverno reduz bastante a autonomia.</string>
