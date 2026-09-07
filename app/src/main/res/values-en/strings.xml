@@ -1175,7 +1175,7 @@
     <string name="settings_hud_arhud_roadinfo_title">HUD frame (HudNaviInfo)</string>
     <string name="settings_hud_arhud_roadinfo_desc">Guidance on the HUD service over SOME/IP, like the factory map</string>
     <string name="settings_hud_arhud_launcher_title">Factory-map context</string>
-    <string name="settings_hud_arhud_launcher_desc">\"Map is navigating\" messages for ADAS and the AR layer (as openbyd does). Switch off one at a time to find the channel the glass reads</string>
+    <string name="settings_hud_arhud_launcher_desc">\"Map is navigating\" messages for ADAS and the AR layer (as openbyd sends). Not needed on the Tang L: its glass reads only the instrument panel</string>
     <string name="settings_hud_arhud_fids_title">Guidance to the instrument panel</string>
     <string name="settings_hud_arhud_fids_desc">Icon, distance and remaining route through instrument-panel features (the openbyd CAN channel)</string>
     <string name="settings_display_card_export_dialog_title">Auto-close the “not official export” window</string>

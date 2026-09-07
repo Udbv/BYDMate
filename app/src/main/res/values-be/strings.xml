@@ -1328,7 +1328,7 @@
     <string name="settings_hud_arhud_roadinfo_title">Кадр HUD (HudNaviInfo)</string>
     <string name="settings_hud_arhud_roadinfo_desc">Падказка на сэрвіс HUD па шыне SOME/IP, як штатная карта</string>
     <string name="settings_hud_arhud_launcher_title">Кантэкст штатнай карты</string>
-    <string name="settings_hud_arhud_launcher_desc">Паведамленні «карта вядзе маршрут» для ADAS і AR-слоя (як openbyd). Выключайце па адным, каб знайсці канал, які чытае шкло</string>
+    <string name="settings_hud_arhud_launcher_desc">Паведамленні «карта вядзе маршрут» для ADAS і AR-слоя (як openbyd). На Tang L не патрэбныя: шкло чытае толькі прыборную панэль</string>
     <string name="settings_hud_arhud_fids_title">Падказкі ў прыборную панэль</string>
     <string name="settings_hud_arhud_fids_desc">Значок, адлегласць і рэшта маршруту праз функцыі прыборнай панэлі (канал CAN у openbyd)</string>
     <string name="settings_display_card_export_dialog_title">Аўтазакрыццё акна «не афіцыйны экспарт»</string>

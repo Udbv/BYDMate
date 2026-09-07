@@ -127,7 +127,24 @@ Settings -> Display -> HUD shows the three switches under the AR-HUD type. Logs 
 survive release): `HudPushLoop` frame lines now include `roadInfo=… ctx=on/events/rc fids=on/writes/fail fix=…`;
 `HudLauncherMapCtx` and `HudInstrumentFids` log session start/stop.
 
-## 6. Car test plan (bisection)
+## 5a. Result of the bisection (2026-09-07 morning, dev.3/dev.4)
+
+The user switched the three channels one by one with Waze navigating: **only "Guidance to the
+instrument panel" puts anything on the glass**. The SOME/IP road-info frame and the launcher-map
+context change nothing on this car (the daemon offers the service and the launcher-map events
+return rc=0, but the HUD unit evidently takes its TBT block from the instrument-panel features,
+i.e. from the vehicle network, not from `HudNaviInfoService`). Since dev.6 the instrument channel
+is the only one on by default; the other two stay as switches for other DiLink 150 trims.
+
+Two more findings from the same session, fixed in dev.4/dev.5: switching the projection off left
+the last arrow on the glass (the instrument features were never reset), and the arrow blinked off
+after 30 s whenever the car stood still (no Waze redraw, no accessibility event, no re-read, hub
+expires the maneuver; now a keep-alive re-read runs after 20 s of silence).
+
+Open: the road name (feature 1140461576) is a byte-array write the helper daemon does not offer
+yet; the arrival/remaining time features are written and should be checked on the glass.
+
+## 6. Car test plan (bisection, as run)
 
 ```bash
 adb connect 192.168.0.166:5555

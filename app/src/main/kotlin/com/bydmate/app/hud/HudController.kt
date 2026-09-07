@@ -53,9 +53,8 @@ class HudController @Inject constructor(
         const val KEY_ENABLED = "hud_enabled"
         const val KEY_SUPPORTED = "hud_supported"
         const val KEY_SPEED_SIGN = "hud_speed_sign"
-        /** AR-HUD sub-channels, all on by default: together they reproduce what openbyd 2.4.3
-         *  sends on the Tang L (the configuration seen working on that glass); switch them off
-         *  one at a time in the car to find the channel the glass actually reads. */
+        /** AR-HUD sub-channels. The bisection in the car (2026-09-07) showed the Tang L glass
+         *  reads only the instrument-panel features; the other two are kept as switches. */
         const val KEY_ARHUD_ROAD_INFO = "hud_arhud_road_info"
         const val KEY_ARHUD_LAUNCHER_CTX = "hud_arhud_launcher_ctx"
         const val KEY_ARHUD_FIDS = "hud_arhud_fids"
@@ -104,8 +103,11 @@ class HudController @Inject constructor(
         }
     }
 
-    fun isArHudRoadInfoEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_ROAD_INFO, true)
-    fun isArHudLauncherContextEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_LAUNCHER_CTX, true)
+    // Field result 2026-09-07 (Tang L): only the instrument-panel features reach the glass; the
+    // SOME/IP frame and the launcher-map context change nothing there. They stay available for
+    // other DiLink 150 trims, off by default.
+    fun isArHudRoadInfoEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_ROAD_INFO, false)
+    fun isArHudLauncherContextEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_LAUNCHER_CTX, false)
     fun isArHudFidsEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_FIDS, true)
 
     fun setArHudRoadInfoEnabled(on: Boolean) { prefs().edit().putBoolean(KEY_ARHUD_ROAD_INFO, on).apply() }

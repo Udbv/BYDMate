@@ -1,0 +1,100 @@
+--------- beginning of main
+09-07 08:50:47.017 I/VehicleDialogDismisser(17677): no export warning among 0 windows: 
+09-07 08:50:49.361 I/VehicleDialogDismisser(17677): no export warning among 4 windows: 'Navigation bar'/com.android.systemui | '-'/com.android.systemui | '-'/com.bydmate.app.waze | 'Map'/com.byd.launchermap
+09-07 08:53:03.183 I/NavGuidanceHub(17677): guidance active (source=A11Y)
+09-07 08:53:03.183 I/NavA11yFeed(17677): a11y read: com.waze gaode=0 dist=80 road='вул. Центральна Садова (Русанівські сади)' eta=120s total=490 limit=0
+09-07 08:53:03.437 I/HudPushLoop(17677): frame #1 rc=0 dialect=AR_HUD bytes=609 gaode=0 f28=0 dist=80 total=490 eta=120s limit=0 icon=0 road='вул. Центральна Садова (Русанівські сади)' roadInfo=false ctx=false/0/rc0 fids=true/0/fail0 fix=true
+09-07 08:53:03.442 I/HudInstrumentFids(17677): navi status -> active ok=true
+09-07 08:53:03.450 I/HudInstrumentFids(17677): guide icon=0 dist=80 ok=true/true/true
+09-07 08:53:04.712 I/NavA11yFeed(17677): Waze visual maneuver=LEFT gaode=1
+09-07 08:53:04.967 I/HudInstrumentFids(17677): guide icon=1 dist=80 ok=true/true/true
+09-07 08:53:07.358 W/NavA11yFeed(17677): Navigator events flowing but window unreachable (a11y feed blind)
+09-07 08:53:13.132 I/HudPushLoop(17677): frame #33 rc=0 dialect=AR_HUD bytes=1885 gaode=1 f28=1 dist=80 total=490 eta=120s limit=0 icon=1271 road='вул. Центральна Садова (Русанівські сади)' roadInfo=false ctx=false/0/rc0 fids=true/11/fail0 fix=true
+09-07 08:53:23.122 I/HudPushLoop(17677): frame #66 rc=0 dialect=AR_HUD bytes=1885 gaode=1 f28=1 dist=80 total=490 eta=120s limit=0 icon=1271 road='вул. Центральна Садова (Русанівські сади)' roadInfo=false ctx=false/0/rc0 fids=true/11/fail0 fix=true
+09-07 08:53:24.094 I/HudSomeIpBridge(17677): stopService(0xb010a00010000) rc=0
+09-07 08:53:24.103 I/HudInstrumentFids(17677): navi status -> stopped ok=true writes=15 failures=0
+09-07 08:53:27.244 I/VehicleDialogDismisser(17677): a11y service connected, auto-dismiss enabled
+09-07 08:53:27.313 I/HudSomeIpBridge(17677): bind server rc=true path=explicit attempt=0
+09-07 08:53:27.313 I/HudSomeIpBridge(17677): registerCallback rc=0
+09-07 08:53:27.317 I/HudSomeIpBridge(17677): re-startService(0xb010a00010000) rc=13
+09-07 08:53:27.317 I/HudSomeIpBridge(17677): server connected ComponentInfo{com.ts.car.someip.service/com.ts.car.someip.service.manager.SomeIpServerService}
+09-07 08:53:27.320 I/HudSomeIpBridge(17677): startService(0xb010a00010000) rc=0
+09-07 08:53:27.320 I/HudController(17677): dialect=AR_HUD vehicle='DiLink150_7.0UI' keys=0xb010a00010000
+09-07 08:53:27.320 I/HudController(17677): HUD output active
+09-07 08:53:27.321 I/HudPushLoop(17677): frame #1 rc=0 dialect=AR_HUD bytes=1885 gaode=1 f28=1 dist=80 total=490 eta=120s limit=0 icon=1271 road='вул. Центральна Садова (Русанівські сади)' roadInfo=false ctx=false/0/rc0 fids=true/0/fail0 fix=true
+09-07 08:53:27.324 I/HudInstrumentFids(17677): navi status -> active ok=true
+09-07 08:53:27.328 I/HudInstrumentFids(17677): guide icon=1 dist=80 ok=true/true/true
+09-07 08:53:31.743 I/HudSomeIpBridge(17677): stopService(0xb010a00010000) rc=0
+09-07 08:53:31.743 I/HudSomeIpBridge(17677): stopService(0xb000700070000) rc=0
+09-07 08:53:31.743 I/HudSomeIpBridge(17677): stopService(0xb820282020000) rc=0
+09-07 08:53:31.743 I/HudSomeIpBridge(17677): stopService(0xb000c000c0000) rc=0
+09-07 08:53:31.743 I/HudSomeIpBridge(17677): stopService(0xb000d000d0000) rc=0
+09-07 08:53:31.744 I/HudSomeIpBridge(17677): stopService(0xb000e000e0000) rc=0
+09-07 08:53:31.744 I/HudSomeIpBridge(17677): stopService(0xb000f000f0000) rc=0
+09-07 08:53:32.047 I/VehicleDialogDismisser(17677): a11y service connected, auto-dismiss enabled
+09-07 08:53:32.110 I/HudSomeIpBridge(17677): bind server rc=true path=explicit attempt=0
+09-07 08:53:32.110 I/HudSomeIpBridge(17677): registerCallback rc=0
+09-07 08:53:32.119 I/HudSomeIpBridge(17677): re-startService(0xb010a00010000) rc=13
+09-07 08:53:32.119 I/HudSomeIpBridge(17677): startService(0xb010a00010000) rc=0
+09-07 08:53:32.119 I/HudSomeIpBridge(17677): server connected ComponentInfo{com.ts.car.someip.service/com.ts.car.someip.service.manager.SomeIpServerService}
+09-07 08:53:32.120 I/HudSomeIpBridge(17677): startService(0xb000700070000) rc=0
+09-07 08:53:32.121 I/HudSomeIpBridge(17677): startService(0xb820282020000) rc=0
+09-07 08:53:32.121 I/HudSomeIpBridge(17677): startService(0xb000c000c0000) rc=5
+09-07 08:53:32.122 I/HudSomeIpBridge(17677): startService(0xb000d000d0000) rc=5
+09-07 08:53:32.123 I/HudSomeIpBridge(17677): startService(0xb000e000e0000) rc=5
+09-07 08:53:32.124 I/HudSomeIpBridge(17677): startService(0xb000f000f0000) rc=5
+09-07 08:53:32.125 I/HudController(17677): dialect=AR_HUD vehicle='DiLink150_7.0UI' keys=0xb010a00010000, 0xb000700070000, 0xb820282020000, 0xb000c000c0000, 0xb000d000d0000, 0xb000e000e0000, 0xb000f000f0000
+09-07 08:53:32.125 I/HudController(17677): HUD output active
+09-07 08:53:32.126 I/HudLauncherMapCtx(17677): session start routeId=6932573950 keys=0xb000700070000, 0xb820282020000, 0xb000c000c0000, 0xb000d000d0000, 0xb000e000e0000, 0xb000f000f0000
+09-07 08:53:32.132 I/HudPushLoop(17677): frame #1 rc=0 dialect=AR_HUD bytes=1885 gaode=1 f28=1 dist=80 total=490 eta=120s limit=0 icon=1271 road='вул. Центральна Садова (Русанівські сади)' roadInfo=false ctx=true/10/rc11 fids=false/0/fail0 fix=true
+09-07 08:53:32.139 I/HudInstrumentFids(17677): navi status -> stopped ok=true writes=12 failures=0
+09-07 08:53:32.245 I/VehicleDialogDismisser(17677): no export warning among 0 windows: 
+09-07 08:53:34.895 I/NavGuidanceHub(17677): maneuver expired: no maneuver read for 30s
+09-07 08:53:37.116 I/VehicleDialogDismisser(17677): no export warning among 4 windows: 'Navigation bar'/com.android.systemui | '-'/com.android.systemui | 'BYDMate'/com.bydmate.app.waze | 'Map'/com.byd.launchermap
+09-07 08:53:37.245 I/VehicleDialogDismisser(17677): no export warning among 0 windows: 
+09-07 08:53:39.724 I/NavA11yFeed(17677): Waze visual maneuver=LEFT gaode=1
+09-07 08:53:42.055 I/HudPushLoop(17677): frame #33 rc=0 dialect=AR_HUD bytes=1885 gaode=1 f28=1 dist=80 total=490 eta=120s limit=0 icon=1271 road='вул. Центральна Садова (Русанівські сади)' roadInfo=true ctx=true/330/rc11 fids=false/0/fail0 fix=true
+09-07 08:53:42.056 I/VehicleDialogDismisser(17677): no export warning among 5 windows: 'Navigation bar'/com.android.systemui | '-'/com.android.systemui | '-'/com.bydmate.app.waze | 'Waze'/com.waze | 'Map'/com.byd.launchermap
+09-07 08:53:46.938 I/NavA11yFeed(17677): a11y read: com.waze window without guidance widgets
+09-07 08:53:47.556 I/VehicleDialogDismisser(17677): no export warning among 0 windows: 
+09-07 08:53:52.322 I/HudPushLoop(17677): frame #66 rc=0 dialect=AR_HUD bytes=1885 gaode=1 f28=1 dist=80 total=490 eta=120s limit=0 icon=1271 road='вул. Центральна Садова (Русанівські сади)' roadInfo=true ctx=true/660/rc11 fids=false/0/fail0 fix=true
+09-07 08:53:52.329 I/NavA11yFeed(17677): a11y read: com.waze gaode=0 dist=280 road='вул. 17-а Садова (Русанівські сади)' eta=1080s total=7100 limit=0
+09-07 08:53:52.460 I/VehicleDialogDismisser(17677): no export warning among 5 windows: 'Navigation bar'/com.android.systemui | '-'/com.android.systemui | '-'/com.bydmate.app.waze | 'Waze'/com.waze | 'Map'/com.byd.launchermap
+09-07 08:53:52.765 I/NavA11yFeed(17677): Waze visual maneuver=RIGHT gaode=2
+09-07 08:53:56.684 W/NavA11yFeed(17677): Navigator events flowing but window unreachable (a11y feed blind)
+09-07 08:54:01.000 I/HudLauncherMapCtx(17677): session stop routeId=6932573950 events=943 lastRc=11
+09-07 08:54:01.013 I/HudSomeIpBridge(17677): stopService(0xb010a00010000) rc=0
+09-07 08:54:01.306 I/VehicleDialogDismisser(17677): a11y service connected, auto-dismiss enabled
+09-07 08:54:01.366 I/HudSomeIpBridge(17677): bind server rc=true path=explicit attempt=0
+09-07 08:54:01.367 I/HudSomeIpBridge(17677): registerCallback rc=0
+09-07 08:54:01.367 I/HudSomeIpBridge(17677): server connected ComponentInfo{com.ts.car.someip.service/com.ts.car.someip.service.manager.SomeIpServerService}
+09-07 08:54:01.573 I/HudSomeIpBridge(17677): startService(0xb010a00010000) rc=0
+09-07 08:54:01.573 I/HudController(17677): dialect=AR_HUD vehicle='DiLink150_7.0UI' keys=0xb010a00010000
+09-07 08:54:01.574 I/HudController(17677): HUD output active
+09-07 08:54:01.574 I/HudPushLoop(17677): frame #1 rc=0 dialect=AR_HUD bytes=1848 gaode=2 f28=2 dist=280 total=7100 eta=1080s limit=0 icon=1244 road='вул. 17-а Садова (Русанівські сади)' roadInfo=false ctx=false/0/rc0 fids=false/0/fail0 fix=true
+09-07 08:54:03.396 I/HudInstrumentFids(17677): navi status -> active ok=true
+09-07 08:54:03.401 I/HudInstrumentFids(17677): guide icon=2 dist=280 ok=true/true/true
+09-07 08:54:06.313 I/VehicleDialogDismisser(17677): no export warning among 4 windows: 'Navigation bar'/com.android.systemui | '-'/com.android.systemui | 'BYDMate'/com.bydmate.app.waze | 'Map'/com.byd.launchermap
+09-07 08:54:07.245 I/VehicleDialogDismisser(17677): no export warning among 0 windows: 
+09-07 08:54:11.253 I/HudPushLoop(17677): frame #33 rc=0 dialect=AR_HUD bytes=1848 gaode=2 f28=2 dist=280 total=7100 eta=1080s limit=0 icon=1244 road='вул. 17-а Садова (Русанівські сади)' roadInfo=false ctx=false/0/rc0 fids=true/8/fail0 fix=true
+09-07 08:54:11.313 I/VehicleDialogDismisser(17677): no export warning among 4 windows: 'Navigation bar'/com.android.systemui | '-'/com.android.systemui | 'BYDMate'/com.bydmate.app.waze | 'Map'/com.byd.launchermap
+09-07 08:54:12.048 I/VehicleDialogDismisser(17677): no export warning among 0 windows: 
+09-07 08:54:17.533 I/VehicleDialogDismisser(17677): a11y service connected, auto-dismiss enabled
+09-07 08:54:21.239 I/HudPushLoop(17677): frame #66 rc=0 dialect=AR_HUD bytes=1848 gaode=2 f28=2 dist=280 total=7100 eta=1080s limit=0 icon=1244 road='вул. 17-а Садова (Русанівські сади)' roadInfo=false ctx=false/0/rc0 fids=true/8/fail0 fix=true
+09-07 08:54:21.307 I/VehicleDialogDismisser(17677): no export warning among 0 windows: 
+09-07 08:54:22.537 I/VehicleDialogDismisser(17677): no export warning among 4 windows: 'Navigation bar'/com.android.systemui | '-'/com.android.systemui | '-'/com.bydmate.app.waze | 'Map'/com.byd.launchermap
+09-07 08:54:24.870 I/NavGuidanceHub(17677): maneuver expired: no maneuver read for 30s
+09-07 08:54:24.882 I/HudInstrumentFids(17677): guide icon=0 dist=280 ok=true/true/true
+09-07 08:54:27.537 I/VehicleDialogDismisser(17677): no export warning among 4 windows: 'Navigation bar'/com.android.systemui | '-'/com.android.systemui | 'BYDMate'/com.bydmate.app.waze | 'Map'/com.byd.launchermap
+09-07 08:54:30.180 I/NavA11yFeed(17677): Waze visual maneuver=RIGHT gaode=2
+09-07 08:54:31.230 I/HudPushLoop(17677): frame #99 rc=0 dialect=AR_HUD bytes=1848 gaode=2 f28=2 dist=280 total=7100 eta=1080s limit=0 icon=1244 road='вул. 17-а Садова (Русанівські сади)' roadInfo=false ctx=false/0/rc0 fids=true/11/fail0 fix=true
+09-07 08:54:33.202 I/HudInstrumentFids(17677): guide icon=2 dist=280 ok=false/true/true
+09-07 08:54:33.757 W/NavA11yFeed(17677): Navigator events flowing but window unreachable (a11y feed blind)
+09-07 08:54:37.540 I/VehicleDialogDismisser(17677): no export warning among 5 windows: 'Navigation bar'/com.android.systemui | '-'/com.android.systemui | '-'/com.bydmate.app.waze | 'BYDMate'/com.bydmate.app.waze | '-'/com.bydmate.app.waze
+09-07 08:54:41.253 I/HudPushLoop(17677): frame #132 rc=0 dialect=AR_HUD bytes=1848 gaode=2 f28=2 dist=280 total=7100 eta=1080s limit=0 icon=1244 road='вул. 17-а Садова (Русанівські сади)' roadInfo=false ctx=false/0/rc0 fids=true/14/fail1 fix=true
+09-07 08:54:41.306 I/VehicleDialogDismisser(17677): no export warning among 0 windows: 
+09-07 08:54:51.253 I/HudPushLoop(17677): frame #165 rc=0 dialect=AR_HUD bytes=1848 gaode=2 f28=2 dist=280 total=7100 eta=1080s limit=0 icon=1244 road='вул. 17-а Садова (Русанівські сади)' roadInfo=false ctx=false/0/rc0 fids=true/14/fail1 fix=true
+09-07 08:54:57.574 I/VehicleDialogDismisser(17677): no export warning among 6 windows: 'Navigation bar'/com.android.systemui | '-'/com.android.systemui | '-'/com.bydmate.app.waze | 'BydLauncher_CardBarwindow'/com.android.launcher3 | 'My Car'/com.byd.mycar | '-'/com.bydmate.app.waze
+09-07 08:55:00.341 I/NavGuidanceHub(17677): maneuver expired: no maneuver read for 30s
+09-07 08:55:00.354 I/HudInstrumentFids(17677): guide icon=0 dist=280 ok=true/true/true
+09-07 08:55:01.253 I/HudPushLoop(17677): frame #198 rc=0 dialect=AR_HUD bytes=608 gaode=0 f28=0 dist=280 total=7100 eta=1080s limit=0 icon=0 road='вул. 17-а Садова (Русанівські сади)' roadInfo=false ctx=false/0/rc0 fids=true/17/fail1 fix=true

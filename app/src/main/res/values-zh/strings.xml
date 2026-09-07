@@ -1290,7 +1290,7 @@
     <string name="settings_hud_arhud_roadinfo_title">HUD 帧（HudNaviInfo）</string>
     <string name="settings_hud_arhud_roadinfo_desc">通过 SOME/IP 向 HUD 服务发送引导，与原厂地图相同</string>
     <string name="settings_hud_arhud_launcher_title">原厂地图上下文</string>
-    <string name="settings_hud_arhud_launcher_desc">向 ADAS 与 AR 层发送“地图正在导航”消息（与 openbyd 相同）。逐个关闭以找出挡风玻璃实际读取的通道</string>
+    <string name="settings_hud_arhud_launcher_desc">向 ADAS 与 AR 层发送“地图正在导航”消息（与 openbyd 相同）。唐 L 无需：挡风玻璃只读取仪表信息</string>
     <string name="settings_hud_arhud_fids_title">仪表引导信息</string>
     <string name="settings_hud_arhud_fids_desc">通过仪表功能发送图标、距离和剩余路程（openbyd 的 CAN 通道）</string>
     <string name="settings_display_card_export_dialog_title">自动关闭“非官方出口”窗口</string>
