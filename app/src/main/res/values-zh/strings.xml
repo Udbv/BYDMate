@@ -1293,6 +1293,8 @@
     <string name="settings_hud_arhud_roadinfo_desc">通过 SOME/IP 向 HUD 服务发送引导，与原厂地图相同</string>
     <string name="settings_hud_arhud_fids_title">仪表引导信息</string>
     <string name="settings_hud_arhud_fids_desc">通过仪表功能发送图标、距离和剩余路程（openbyd 的 CAN 通道）</string>
+    <string name="settings_hud_lanes_title">车道引导</string>
+    <string name="settings_hud_lanes_desc">从导航窗口读取前方路口的车道并显示在仪表上：共有几条以及路线走哪几条</string>
     <string name="settings_display_card_export_dialog_title">自动关闭“非官方出口”窗口</string>
     <string name="settings_display_card_export_dialog_sub">BYD 出口警告窗口会自动关闭。%1$s</string>
     <string name="settings_export_dialog_hint">通过无障碍服务点击“This car is not from official export”窗口的唯一按钮来关闭它：不依赖固定坐标，与语言无关。该窗口按标题 vehicledialog 识别</string>

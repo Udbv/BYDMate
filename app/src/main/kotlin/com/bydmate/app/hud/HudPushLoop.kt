@@ -37,6 +37,9 @@ class HudPushLoop(
     private val roadInfoEnabled: () -> Boolean = { true },
     internal val instrumentFids: HudInstrumentFids? = null,
     private val instrumentFidsEnabled: () -> Boolean = { false },
+    /** Lane strip on the instrument panel; null = no lane output (tests, classic glass). */
+    internal val lanes: HudLaneWriter? = null,
+    private val lanesEnabled: () -> Boolean = { false },
 ) {
     companion object {
         private const val TAG = "HudPushLoop"
@@ -79,6 +82,7 @@ class HudPushLoop(
         // but the instrument panel keeps whatever was written last until the navigation status
         // goes back to "stopped" (field-confirmed on the Tang L: the arrow stayed on the glass).
         instrumentFids?.stop()
+        lanes?.clear()
         journalledGaode = NO_MANEUVER
     }
 
@@ -91,6 +95,8 @@ class HudPushLoop(
                 val rc = sink.fireEvent(HudSomeIpBridge.TOPIC_NAVI, HudProtobufBuilder.buildClearFrame(counter++, d))
                 Log.i(TAG, "guidance ended, clear frame sent rc=$rc dialect=$d after $framesSent frames")
                 instrumentFids?.stop()
+                lanes?.clear()
+                com.bydmate.app.navdata.NavLaneState.clear()
             }
             amap?.onSnapshot(null)
             journalledGaode = NO_MANEUVER
@@ -125,6 +131,9 @@ class HudPushLoop(
         if (rc != 0) nonZeroRcCount++
         if (d == HudDialect.AR_HUD) {
             if (instrumentFidsEnabled()) instrumentFids?.update(s)
+            if (lanesEnabled()) {
+                lanes?.update(com.bydmate.app.navdata.NavLaneState.current(nowMsProvider()))
+            }
         }
         if (!wasActive || framesSent % LOG_EVERY_FRAMES == 0L) {
             Log.i(TAG, "frame #$framesSent rc=$rc dialect=$d bytes=${frame.size} gaode=${s.maneuverGaode} " +

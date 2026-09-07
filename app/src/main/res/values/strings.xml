@@ -1333,6 +1333,8 @@
     <string name="settings_hud_arhud_roadinfo_desc">Подсказка на сервис HUD по шине SOME/IP, как штатная карта</string>
     <string name="settings_hud_arhud_fids_title">Подсказки в приборную панель</string>
     <string name="settings_hud_arhud_fids_desc">Значок, дистанция и остаток маршрута через функции приборной панели (канал CAN в openbyd)</string>
+    <string name="settings_hud_lanes_title">Полосы движения</string>
+    <string name="settings_hud_lanes_desc">Полосы перед перекрёстком из окна навигатора на приборной панели: сколько их и по каким идёт маршрут</string>
     <string name="settings_display_card_export_dialog_title">Автозакрытие окна «не официальный экспорт»</string>
     <string name="settings_display_card_export_dialog_sub">Предупреждение BYD об экспорте закрывается само. %1$s</string>
     <string name="settings_export_dialog_hint">Окно «This car is not from official export» закрывается нажатием его единственной кнопки через службу специальных возможностей: без фиксированных координат и независимо от языка. Окно распознаётся по заголовку vehicledialog</string>

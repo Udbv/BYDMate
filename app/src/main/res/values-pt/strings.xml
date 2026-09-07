@@ -1175,6 +1175,8 @@
     <string name="settings_hud_arhud_roadinfo_desc">Orientação no serviço HUD por SOME/IP, como o mapa de fábrica</string>
     <string name="settings_hud_arhud_fids_title">Orientação para o painel de instrumentos</string>
     <string name="settings_hud_arhud_fids_desc">Ícone, distância e rota restante pelas funções do painel (canal CAN do openbyd)</string>
+    <string name="settings_hud_lanes_title">Faixas de rodagem</string>
+    <string name="settings_hud_lanes_desc">Faixas no cruzamento à frente, lidas da janela de navegação e desenhadas no painel: quantas são e por quais segue a rota</string>
     <string name="settings_display_card_export_dialog_title">Fechar automaticamente a janela “not official export”</string>
     <string name="settings_display_card_export_dialog_sub">O aviso de exportação da BYD fecha sozinho. %1$s</string>
     <string name="settings_export_dialog_hint">A janela “This car is not from official export” é fechada premindo o seu único botão através do serviço de acessibilidade: sem coordenadas fixas, em qualquer idioma. A janela é reconhecida pelo título vehicledialog</string>

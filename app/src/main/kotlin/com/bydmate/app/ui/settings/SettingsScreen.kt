@@ -1336,6 +1336,7 @@ private fun DisplaySection() {
                 // on the Tang L; the car test switches them off one by one.
                 var arRoadInfo by remember { mutableStateOf(hudController.isArHudRoadInfoEnabled()) }
                 var arFids by remember { mutableStateOf(hudController.isArHudFidsEnabled()) }
+                var arLanes by remember { mutableStateOf(hudController.isArHudLanesEnabled()) }
                 SettingDivider()
                 SettingToggleRow(
                     title = stringResource(R.string.settings_hud_arhud_roadinfo_title),
@@ -1348,6 +1349,12 @@ private fun DisplaySection() {
                     description = stringResource(R.string.settings_hud_arhud_fids_desc),
                     checked = arFids,
                     onCheckedChange = { arFids = it; hudController.setArHudFidsEnabled(it) },
+                )
+                SettingToggleRow(
+                    title = stringResource(R.string.settings_hud_lanes_title),
+                    description = stringResource(R.string.settings_hud_lanes_desc),
+                    checked = arLanes,
+                    onCheckedChange = { arLanes = it; hudController.setArHudLanesEnabled(it) },
                 )
             }
             SettingDivider()

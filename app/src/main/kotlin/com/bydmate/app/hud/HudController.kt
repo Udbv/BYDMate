@@ -57,6 +57,7 @@ class HudController @Inject constructor(
          *  reads only the instrument-panel features; the other two are kept as switches. */
         const val KEY_ARHUD_ROAD_INFO = "hud_arhud_road_info"
         const val KEY_ARHUD_FIDS = "hud_arhud_fids"
+        const val KEY_ARHUD_LANES = "hud_arhud_lanes"
     }
 
     /** Single lane: stop()/startIfEnabled() launched across a service restart must
@@ -108,8 +109,12 @@ class HudController @Inject constructor(
     fun isArHudRoadInfoEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_ROAD_INFO, false)
     fun isArHudFidsEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_FIDS, true)
 
+    /** Lane strip on the instrument panel, read from the navigator window. */
+    fun isArHudLanesEnabled(): Boolean = prefs().getBoolean(KEY_ARHUD_LANES, true)
+
     fun setArHudRoadInfoEnabled(on: Boolean) { prefs().edit().putBoolean(KEY_ARHUD_ROAD_INFO, on).apply() }
     fun setArHudFidsEnabled(on: Boolean) { prefs().edit().putBoolean(KEY_ARHUD_FIDS, on).apply() }
+    fun setArHudLanesEnabled(on: Boolean) { prefs().edit().putBoolean(KEY_ARHUD_LANES, on).apply() }
 
     /** Gateway service key to open for [d]: the HUD service, and only that one. Both glass
      *  families use the same SDK key. BYDMate deliberately opens no service that the driving
@@ -129,7 +134,9 @@ class HudController @Inject constructor(
             amapStopsSent = l.amap?.stopsSent ?: 0,
             dialect = "${dialect()} (pref=${dialectPref()}, vehicle='${HudDialect.readVehicleType()}') " +
                 "roadInfo=${isArHudRoadInfoEnabled()} " +
-                "fids=${isArHudFidsEnabled()}/${l.instrumentFids?.writes ?: 0}/fail${l.instrumentFids?.failures ?: 0} fix=${HudVehicleState.fix != null}",
+                "fids=${isArHudFidsEnabled()}/${l.instrumentFids?.writes ?: 0}/fail${l.instrumentFids?.failures ?: 0} fix=${HudVehicleState.fix != null} " +
+                "lanes=${isArHudLanesEnabled()}/${l.lanes?.writes ?: 0}/fail${l.lanes?.failures ?: 0} " +
+                com.bydmate.app.navdata.WazeLaneReader.diagnosticsLine(),
         )
     }
 
@@ -204,7 +211,9 @@ class HudController @Inject constructor(
                     },
                     roadInfoEnabled = { isArHudRoadInfoEnabled() },
                     instrumentFids = HudInstrumentFids(helperClient, scope),
-                    instrumentFidsEnabled = { isArHudFidsEnabled() })
+                    instrumentFidsEnabled = { isArHudFidsEnabled() },
+                    lanes = HudLaneWriter(helperClient, scope),
+                    lanesEnabled = { isArHudLanesEnabled() })
                     .also { it.start(scope) }
                 _status.value = Status.ON
                 Log.i(TAG, "HUD output active")

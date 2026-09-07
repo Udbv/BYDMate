@@ -1178,6 +1178,8 @@
     <string name="settings_hud_arhud_roadinfo_desc">Guidance on the HUD service over SOME/IP, like the factory map</string>
     <string name="settings_hud_arhud_fids_title">Guidance to the instrument panel</string>
     <string name="settings_hud_arhud_fids_desc">Icon, distance and remaining route through instrument-panel features (the openbyd CAN channel)</string>
+    <string name="settings_hud_lanes_title">Lane guidance</string>
+    <string name="settings_hud_lanes_desc">Lanes at the junction ahead, read from the navigator window and drawn on the instrument panel: how many there are and which ones the route takes</string>
     <string name="settings_display_card_export_dialog_title">Auto-close the “not official export” window</string>
     <string name="settings_display_card_export_dialog_sub">The BYD export warning closes by itself. %1$s</string>
     <string name="settings_export_dialog_hint">The “This car is not from official export” window is closed by pressing its single button through the accessibility service: no fixed coordinates, any language. The window is recognized by its vehicledialog title</string>

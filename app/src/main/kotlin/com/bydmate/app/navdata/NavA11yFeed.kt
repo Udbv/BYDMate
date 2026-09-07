@@ -155,6 +155,7 @@ object NavA11yFeed {
                     logRead(pkg, data, nowMs)
                     dumpTreeOnManeuverChange(root, data.maneuverGaode, nowMs)
                     if (data.maneuverGaode == 0) requestWazeVisualManeuver(service, root)
+                    readLanes(root)
                     armKeepAlive()
                 }
                 is NavA11yExtractor.ReadResult.NoGuidance -> {
@@ -289,6 +290,20 @@ object NavA11yFeed {
     internal fun applyVisualManeuver(gaode: Int, nowMs: Long = System.currentTimeMillis()) {
         if (NavGuidanceHub.updateManeuverHint(gaode, NavGuidanceHub.Source.A11Y, nowMs)) {
             Log.i(TAG, "Waze visual maneuver=${NavManeuverCodes.codeName(gaode)} gaode=$gaode")
+        }
+    }
+
+    /** Lane strip for the junction ahead; Waze only, and only while the HUD wants it. Logged on
+     *  change so a field dump shows whether the strip was seen at all. */
+    @Volatile private var lastLaneCount = -1
+
+    private fun readLanes(root: AccessibilityNodeInfo) {
+        if (!NavPackages.isWazePackage(runCatching { root.packageName?.toString() }.getOrNull())) return
+        val lanes = runCatching { WazeLaneReader.read(root) }.getOrDefault(NavLanes.NONE)
+        NavLaneState.update(lanes)
+        if (lanes.lanes.size != lastLaneCount) {
+            lastLaneCount = lanes.lanes.size
+            WazeLaneReader.logRead(lanes)
         }
     }
 

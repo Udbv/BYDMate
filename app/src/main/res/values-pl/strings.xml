@@ -1331,6 +1331,8 @@
     <string name="settings_hud_arhud_roadinfo_desc">Wskazówki na usługę HUD przez SOME/IP, jak fabryczna mapa</string>
     <string name="settings_hud_arhud_fids_title">Wskazówki do zestawu wskaźników</string>
     <string name="settings_hud_arhud_fids_desc">Ikona, odległość i pozostała trasa przez funkcje zestawu wskaźników (kanał CAN w openbyd)</string>
+    <string name="settings_hud_lanes_title">Pasy ruchu</string>
+    <string name="settings_hud_lanes_desc">Pasy przed skrzyżowaniem odczytane z okna nawigacji i rysowane na zestawie wskaźników: ile ich jest i którymi prowadzi trasa</string>
     <string name="settings_display_card_export_dialog_title">Automatyczne zamykanie okna „nieoficjalny eksport”</string>
     <string name="settings_display_card_export_dialog_sub">Ostrzeżenie BYD o eksporcie zamyka się samo. %1$s</string>
     <string name="settings_export_dialog_hint">Okno „This car is not from official export” jest zamykane naciśnięciem jego jedynego przycisku przez usługę ułatwień dostępu: bez stałych współrzędnych, w dowolnym języku. Okno rozpoznawane po tytule vehicledialog</string>
