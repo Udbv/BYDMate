@@ -33,20 +33,41 @@ class HudLaneWriter(
         /** Instrument-panel device of the autoservice catalog, as used for the maneuver arrow. */
         const val DEV_INSTRUMENT = HudInstrumentFids.DEV_INSTRUMENT
 
-        /** How many lanes are in use (0 clears the strip). */
-        const val FID_LANE_COUNT = 427_827_416
+        // Feature ids and their real names come from BYD's own catalogue, compiled into
+        // com.byd.feature on this car: 0x198020D8 INSTRUMENT_TOTAL_LANES_SET, and per slot
+        // 0x19802058 INSTRUMENT_LANE_n_GUIDANCE_ARROW_SET, 0x19802060 INSTRUMENT_n_LANE_LINE_TYPE_SET,
+        // 0x19802064 INSTRUMENT_IS_LANE_n_RECOMMENDED_SET, repeating every 16.
 
-        /** Per-slot features; slots are 16 apart. */
-        fun fidGlyph(slot: Int): Int = 427_827_288 + slot * 16
-        fun fidState(slot: Int): Int = 427_827_296 + slot * 16
-        fun fidValid(slot: Int): Int = 427_827_300 + slot * 16
+        /** `INSTRUMENT_TOTAL_LANES_SET`; 0 clears the strip. */
+        const val FID_LANE_COUNT = 0x198020D8
 
-        /** Slot states the panel understands. */
-        const val STATE_RECOMMENDED = 0
-        const val STATE_PLAIN = 5
-        const val STATE_UNUSED = 14
-        const val VALID = 1
-        const val INVALID = -1
+        /** `INSTRUMENT_LANE_n_GUIDANCE_ARROW_SET`: which arrow the lane draws. */
+        fun fidGlyph(slot: Int): Int = 0x19802058 + slot * 16
+
+        /** `INSTRUMENT_n_LANE_LINE_TYPE_SET`: how the lane's divider is drawn. */
+        fun fidLineType(slot: Int): Int = 0x19802060 + slot * 16
+
+        /** `INSTRUMENT_IS_LANE_n_RECOMMENDED_SET`: whether the route uses this lane. */
+        fun fidRecommended(slot: Int): Int = 0x19802064 + slot * 16
+
+        /** Line types the donor was seen to send: 0 alongside a lane the route takes, 5 for a
+         *  plain lane, 14 for an unused slot. */
+        const val LINE_TYPE_ON_ROUTE = 0
+        const val LINE_TYPE_PLAIN = 5
+        const val LINE_TYPE_UNUSED = 14
+
+        /** Recommended flag. The donor sent 1 for every lane present and -1 for unused slots,
+         *  which cannot be right for a feature named "is lane recommended", so this sends 1 only
+         *  for the lanes the route takes and 0 for the rest. The arrow glyph carries the highlight
+         *  as well, so a panel that ignores this flag still shows the right thing; if the strip
+         *  fails to render at all in the car, [RECOMMENDED_PRESENT] restores the donor's values. */
+        const val RECOMMENDED_YES = 1
+        const val RECOMMENDED_NO = 0
+        const val RECOMMENDED_ABSENT = -1
+
+        /** The donor's value for "this slot holds a lane", kept for a fallback experiment. */
+        const val RECOMMENDED_PRESENT = 1
+
         const val GLYPH_NONE = -1
 
         /** Lane codes that carry more than one direction and therefore have combined glyphs. */
@@ -99,28 +120,33 @@ class HudLaneWriter(
          * first, then the eight glyphs, the eight states and the eight validity flags. Lanes
          * beyond [NavLanes.MAX_LANES] are dropped; unused slots are switched off.
          */
-        fun buildWrites(lanes: NavLanes): List<Pair<Int, Int>> {
+        fun buildWrites(lanes: NavLanes, donorRecommendedFlag: Boolean = false): List<Pair<Int, Int>> {
             val used = lanes.lanes.take(NavLanes.MAX_LANES)
             val out = ArrayList<Pair<Int, Int>>(1 + NavLanes.MAX_LANES * 3)
             val glyphs = ArrayList<Pair<Int, Int>>(NavLanes.MAX_LANES)
-            val states = ArrayList<Pair<Int, Int>>(NavLanes.MAX_LANES)
-            val valids = ArrayList<Pair<Int, Int>>(NavLanes.MAX_LANES)
+            val lineTypes = ArrayList<Pair<Int, Int>>(NavLanes.MAX_LANES)
+            val recommended = ArrayList<Pair<Int, Int>>(NavLanes.MAX_LANES)
             out += FID_LANE_COUNT to used.size
             for (slot in 0 until NavLanes.MAX_LANES) {
                 val lane = used.getOrNull(slot)
                 if (lane == null) {
                     glyphs += fidGlyph(slot) to GLYPH_NONE
-                    states += fidState(slot) to STATE_UNUSED
-                    valids += fidValid(slot) to INVALID
+                    lineTypes += fidLineType(slot) to LINE_TYPE_UNUSED
+                    recommended += fidRecommended(slot) to RECOMMENDED_ABSENT
                 } else {
                     val code = NavLaneCodes.codeFor(lane.directions)
                     val dir = lane.recommended?.let { NavLaneCodes.dirId(it) }
                     glyphs += fidGlyph(slot) to glyphFor(code, dir)
-                    states += fidState(slot) to if (dir == null) STATE_PLAIN else STATE_RECOMMENDED
-                    valids += fidValid(slot) to VALID
+                    lineTypes += fidLineType(slot) to
+                        if (dir == null) LINE_TYPE_PLAIN else LINE_TYPE_ON_ROUTE
+                    recommended += fidRecommended(slot) to when {
+                        donorRecommendedFlag -> RECOMMENDED_PRESENT
+                        dir != null -> RECOMMENDED_YES
+                        else -> RECOMMENDED_NO
+                    }
                 }
             }
-            out += glyphs; out += states; out += valids
+            out += glyphs; out += lineTypes; out += recommended
             return out
         }
     }
