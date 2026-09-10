@@ -51,6 +51,7 @@ class BYDMateApp : Application(), Configuration.Provider {
     @Inject lateinit var insightsManager: InsightsManager
     @Inject lateinit var splitOverlayController: com.bydmate.app.split.SplitOverlayController
     @Inject lateinit var driveModeRuleMigration: DriveModeRuleMigration
+    @Inject lateinit var defaultRulesSeeder: com.bydmate.app.data.automation.DefaultRulesSeeder
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -100,6 +101,9 @@ class BYDMateApp : Application(), Configuration.Provider {
             }
             // One-shot: revive DriveMode rules saved against the old "0" = NORMAL code.
             driveModeRuleMigration.runOnce()
+            // One-shot: the two start-up rules almost every car wants, so an update never
+            // means adding them again by hand. Edits and deletions afterwards are respected.
+            defaultRulesSeeder.runOnce()
             // One-time cleanup of existing duplicates from v2.0.0
             historyImporter.cleanupDuplicates()
             // Only sync if setup is completed (prevents duplicates during first wizard run)

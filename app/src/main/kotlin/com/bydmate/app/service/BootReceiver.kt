@@ -6,6 +6,7 @@ import android.content.Intent
 import android.util.Log
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 
 /**
@@ -54,9 +55,17 @@ class BootReceiver : BroadcastReceiver() {
 
         logBootEvent(context, intent.action ?: "unknown")
 
-        // Use WorkManager — guaranteed execution (like BydConnect)
+        // Use WorkManager — guaranteed execution (like BydConnect).
+        //
+        // Expedited: a plain one-time request waits for the WorkManager scheduler, which at boot
+        // competes with everything else the head unit is starting and costs several seconds
+        // before the tracking service even begins. A boot broadcast is allowed to start a
+        // foreground service, so the request declares that as its out-of-quota policy and runs
+        // as soon as the system can rather than when the queue gets to it.
         try {
-            val request = OneTimeWorkRequestBuilder<ServiceStartWorker>().build()
+            val request = OneTimeWorkRequestBuilder<ServiceStartWorker>()
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 ServiceStartWorker.WORK_NAME,
                 ExistingWorkPolicy.KEEP,

@@ -297,6 +297,7 @@ class ActionDispatcher @Inject constructor(
             "go_home" -> goHome()
             "delay" -> dispatchDelay(action)
             "media_volume" -> setMediaVolume(action)
+            "media_play" -> dispatchMediaPlay()
             "sentry" -> dispatchSentry(action)
             "hotspot" -> dispatchHotspot(action)
             "cluster_projection" -> dispatchClusterProjection(action)
@@ -440,6 +441,12 @@ class ActionDispatcher @Inject constructor(
         else R.string.split_freeform_reboot_hint
     )
 
+
+    /** Play/pause to whichever app owns the active MediaSession - the same path the volume
+     *  knob uses. Needed after launching a player, which opens the app but starts nothing. */
+    private fun dispatchMediaPlay(): DispatchResult =
+        if (com.bydmate.app.media.KnobPlayPause.dispatch(context)) DispatchResult(true)
+        else DispatchResult(false, "Нет активного медиасеанса")
     private suspend fun dispatchDelay(action: ActionDef): DispatchResult {
         val ms = action.payload?.toLongOrNull()
             ?: return DispatchResult(false, "Длительность паузы не задана")

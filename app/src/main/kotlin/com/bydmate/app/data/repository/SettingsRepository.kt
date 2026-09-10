@@ -45,6 +45,7 @@ open class SettingsRepository @Inject constructor(
         const val KEY_IDLE_DRAIN_V2_CLEANUP = "idle_drain_v2_cleanup"
         /** DriveMode trigger value "0" (old "NORMAL") rewritten to the real NORMAL code "3". */
         const val KEY_DRIVEMODE_RULE_MIGRATION = "drivemode_rule_migration_v2"
+        const val KEY_DEFAULT_RULES_SEEDED = "default_rules_seeded_v1"
         const val KEY_OPENROUTER_API_KEY = "openrouter_api_key"
         const val KEY_OPENROUTER_MODEL = "openrouter_model"
         /** Exa (api.exa.ai) BYOK for the web_search tool. Blank = openrouter:web_search server tool
@@ -332,6 +333,12 @@ open class SettingsRepository @Inject constructor(
 
     suspend fun setIdleDrainV2CleanupDone() =
         setString(KEY_IDLE_DRAIN_V2_CLEANUP, "true")
+
+    suspend fun isDefaultRulesSeeded(): Boolean =
+        getString(KEY_DEFAULT_RULES_SEEDED, "false") == "true"
+
+    suspend fun setDefaultRulesSeeded() =
+        setString(KEY_DEFAULT_RULES_SEEDED, "true")
 
     suspend fun isDriveModeRuleMigrationDone(): Boolean =
         getString(KEY_DRIVEMODE_RULE_MIGRATION, "false") == "true"

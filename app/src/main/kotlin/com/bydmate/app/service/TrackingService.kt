@@ -250,7 +250,25 @@ class TrackingService : Service(), LocationListener {
         // into the shade's silent list with no status-bar icon. Off by default - existing users keep
         // the LOW channel untouched (#86). Pref lives in the cluster_projection file next to the other
         // car/system toggles the settings screen edits.
-        private const val QUIET_CHANNEL_ID = "bydmate_tracking_quiet"
+        internal const val QUIET_CHANNEL_ID = "bydmate_tracking_quiet"
+        /**
+         * Channel for the boot worker's short foreground notice. The worker runs before the
+         * service exists, so it creates the channel itself rather than assuming one is there.
+         */
+        fun bootWorkerChannelId(context: Context): String {
+            val nm = context.getSystemService(android.app.NotificationManager::class.java)
+            runCatching {
+                nm?.createNotificationChannel(
+                    android.app.NotificationChannel(
+                        QUIET_CHANNEL_ID,
+                        context.getString(R.string.app_name),
+                        android.app.NotificationManager.IMPORTANCE_MIN,
+                    )
+                )
+            }
+            return QUIET_CHANNEL_ID
+        }
+
         const val KEY_QUIET_NOTIFICATION = "quiet_notification"
         // Throttle autoservice gun-state read so we don't hit Binder/ADB on every
         // poll tick. 5 ticks ≈ 15 s — fast enough that the user sees a row
