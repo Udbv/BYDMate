@@ -37,7 +37,7 @@ class WebhookTelemetryClientTest {
         val result = client.send(server.url("/tlm").toString(), null, payload)
 
         assertTrue(result.isSuccess)
-        val recorded = server.takeRequest()
+        val recorded = requireNotNull(server.takeRequest(10, java.util.concurrent.TimeUnit.SECONDS)) { "no request reached the mock server" }
         assertEquals("POST", recorded.method)
         assertEquals("/tlm", recorded.path)
         assertEquals("application/json; charset=utf-8", recorded.getHeader("Content-Type"))
@@ -50,7 +50,7 @@ class WebhookTelemetryClientTest {
         val result = client.send(server.url("/tlm").toString(), "s3cret", telemetry())
 
         assertTrue(result.isSuccess)
-        assertEquals("Bearer s3cret", server.takeRequest().getHeader("Authorization"))
+        assertEquals("Bearer s3cret", requireNotNull(server.takeRequest(10, java.util.concurrent.TimeUnit.SECONDS)) { "no request reached the mock server" }.getHeader("Authorization"))
     }
 
     @Test fun `blank secret sends no Authorization header`() = runTest {
@@ -58,7 +58,7 @@ class WebhookTelemetryClientTest {
 
         client.send(server.url("/tlm").toString(), "   ", telemetry())
 
-        assertNull(server.takeRequest().getHeader("Authorization"))
+        assertNull(requireNotNull(server.takeRequest(10, java.util.concurrent.TimeUnit.SECONDS)) { "no request reached the mock server" }.getHeader("Authorization"))
     }
 
     @Test fun `non-2xx response returns failure`() = runTest {
