@@ -94,6 +94,9 @@ class HudPushLoop(
             if (wasActive) {
                 val rc = sink.fireEvent(HudSomeIpBridge.TOPIC_NAVI, HudProtobufBuilder.buildClearFrame(counter++, d))
                 Log.i(TAG, "guidance ended, clear frame sent rc=$rc dialect=$d after $framesSent frames")
+                com.bydmate.app.diagnostics.TripDebugLog.event(
+                    "HUD", "guidance ended, clear frame rc=$rc after $framesSent frames")
+                com.bydmate.app.diagnostics.TripDebugLog.drain()
                 instrumentFids?.stop()
                 lanes?.clear()
                 com.bydmate.app.navdata.NavLaneState.clear()
@@ -135,6 +138,14 @@ class HudPushLoop(
                 lanes?.update(com.bydmate.app.navdata.NavLaneState.current(nowMsProvider()))
             }
         }
+        // One line per changed maneuver rather than per frame: the trip log is meant to be read,
+        // and 300 ms frames would bury everything else.
+        com.bydmate.app.diagnostics.TripDebugLog.changed(
+            "HUD", "frame",
+            "dialect=$d gaode=${s.maneuverGaode} f28=${if (d == HudDialect.AR_HUD) HudProtobufBuilder.gaodeToArHudId(s.maneuverGaode) else HudProtobufBuilder.gaodeToF28(s.maneuverGaode)} " +
+                "limit=${s.speedLimit} roadInfoRc=$rc road='${runningLine(s)}'",
+        )
+        if (framesSent % LOG_EVERY_FRAMES == 0L) com.bydmate.app.diagnostics.TripDebugLog.drain()
         if (!wasActive || framesSent % LOG_EVERY_FRAMES == 0L) {
             Log.i(TAG, "frame #$framesSent rc=$rc dialect=$d bytes=${frame.size} gaode=${s.maneuverGaode} " +
                 "f28=${if (d == HudDialect.AR_HUD) HudProtobufBuilder.gaodeToArHudId(s.maneuverGaode) else HudProtobufBuilder.gaodeToF28(s.maneuverGaode)} " +

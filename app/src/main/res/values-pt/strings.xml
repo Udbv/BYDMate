@@ -1072,6 +1072,9 @@
     <string name="settings_widget_reset_position_desc">Retornar o widget à posição padrão</string>
     <string name="settings_export_csv_desc">Todo o histórico de viagens em um arquivo na pasta Download</string>
     <string name="settings_log_recording_desc">Registro detalhado para diagnóstico. Ative quando o desenvolvedor solicitar</string>
+    <string name="settings_trip_debug_title">Modo de depuração: registos de viagem</string>
+    <string name="settings_trip_debug_desc">O carro guarda o seu próprio registo de orientação em cada viagem: o que a navegação mostrou, o que foi escrito no painel e o que este aceitou. Os ficheiros ficam no carro, em %1$s. Regista nomes de ruas do ecrã de navegação.</string>
+    <string name="settings_trip_debug_files">Registos no carro: %1$d (mantidos os %2$d mais recentes)</string>
     <string name="settings_quiet_notification_title">Notificação silenciosa</string>
     <string name="settings_quiet_notification_desc">A notificação do BYDMate vai para a lista recolhida sem ícone na barra de status. Não é possível removê-la totalmente: o Android exige uma notificação para o trabalho em segundo plano</string>
     <string name="settings_config_export_desc">Backup: histórico de viagens com GPS e chaves de API em texto simples, arquivo na pasta Download</string>

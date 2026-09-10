@@ -477,6 +477,9 @@ class TrackingService : Service(), LocationListener {
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "onCreate: starting TrackingService")
+        // One trip log per ignition cycle: the service is created when the car wakes and
+        // destroyed when it sleeps, which is the boundary the owner thinks of as a trip.
+        com.bydmate.app.diagnostics.TripDebugLog.startTrip(applicationContext, "service start")
         ChainLog.append(this, "TrackingService onCreate")
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.service_foreground_content_starting)))
@@ -1081,6 +1084,7 @@ class TrackingService : Service(), LocationListener {
 
     override fun onDestroy() {
         Log.i(TAG, "onDestroy: stopping TrackingService")
+        com.bydmate.app.diagnostics.TripDebugLog.endTrip("service stop")
         com.bydmate.app.ui.widget.WidgetController.detach()
         ChainLog.append(this, "TrackingService onDestroy")
         pollingJob?.cancel()

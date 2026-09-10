@@ -73,6 +73,12 @@ object NavA11yFeed {
         lastLoggedReadMs = nowMs
         Log.i(TAG, "a11y read: $pkg gaode=${data.maneuverGaode} dist=${data.distanceMeters} " +
             "road='${data.road}' eta=${data.etaSeconds}s total=${data.totalDistMeters} limit=${data.speedLimit}")
+        com.bydmate.app.diagnostics.TripDebugLog.event(
+            "READ",
+            "$pkg gaode=${data.maneuverGaode} (${NavManeuverCodes.codeName(data.maneuverGaode)}) " +
+                "dist=${data.distanceMeters} road='${data.road}' eta=${data.etaSeconds}s " +
+                "total=${data.totalDistMeters} limit=${data.speedLimit}",
+        )
     }
 
     fun onEvent(service: SteeringWheelKeyService, event: AccessibilityEvent?) {

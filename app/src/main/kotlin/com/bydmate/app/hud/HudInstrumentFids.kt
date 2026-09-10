@@ -80,6 +80,10 @@ class HudInstrumentFids(
             val c = write(FID_GUIDE_DISTANCE, s.distanceMeters)
             if (icon != lastIcon) {
                 Log.i(TAG, "guide gaode=${s.maneuverGaode} -> icon=$icon dist=${s.distanceMeters} ok=$a/$b/$c")
+                com.bydmate.app.diagnostics.TripDebugLog.event(
+                    "PANEL",
+                    "guide gaode=${s.maneuverGaode} -> icon=$icon dist=${s.distanceMeters} accepted=$a/$b/$c",
+                )
             }
             lastIcon = icon
             lastDistance = s.distanceMeters

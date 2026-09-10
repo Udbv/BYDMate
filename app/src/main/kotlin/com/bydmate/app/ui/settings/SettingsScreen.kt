@@ -2177,6 +2177,31 @@ private fun ServiceSection(
                 )
             }
             SettingDivider()
+            // Trip debug log: the car keeps its own record because Wi-Fi is gone the moment it
+            // leaves the driveway, so logcat is unreachable for the drive that matters.
+            var tripDebug by remember { mutableStateOf(com.bydmate.app.diagnostics.TripDebugLog.isEnabled(context)) }
+            SettingToggleRow(
+                title = stringResource(R.string.settings_trip_debug_title),
+                description = stringResource(
+                    R.string.settings_trip_debug_desc,
+                    com.bydmate.app.diagnostics.TripDebugLog.folderPath(context),
+                ),
+                checked = tripDebug,
+                onCheckedChange = {
+                    tripDebug = it
+                    com.bydmate.app.diagnostics.TripDebugLog.setEnabled(context, it)
+                },
+            )
+            if (tripDebug) {
+                SettingHint(
+                    text = stringResource(
+                        R.string.settings_trip_debug_files,
+                        com.bydmate.app.diagnostics.TripDebugLog.files(context).size,
+                        com.bydmate.app.diagnostics.TripDebugLog.MAX_FILES,
+                    ),
+                )
+            }
+            SettingDivider()
             SettingActionRow(
                 title = stringResource(R.string.settings_log_recording_start_button),
                 description = stringResource(R.string.settings_log_recording_desc),

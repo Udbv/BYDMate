@@ -1282,6 +1282,9 @@
     <string name="settings_widget_reset_position_desc">Przywróć widżet na domyślne miejsce</string>
     <string name="settings_export_csv_desc">Cała historia przejazdów w jednym pliku do folderu Download</string>
     <string name="settings_log_recording_desc">Szczegółowy dziennik działania do analizy problemów. Włączaj na prośbę dewelopera</string>
+    <string name="settings_trip_debug_title">Tryb diagnostyczny: dzienniki podróży</string>
+    <string name="settings_trip_debug_desc">Samochód sam zapisuje dziennik nawigacji dla każdej podróży: co pokazała nawigacja, co trafiło na zestaw wskaźników i co on przyjął. Pliki zostają w aucie, w %1$s. Zapisuje nazwy ulic z ekranu nawigacji.</string>
+    <string name="settings_trip_debug_files">Dzienniki w aucie: %1$d (przechowywane ostatnie %2$d)</string>
     <string name="settings_quiet_notification_title">Ciche powiadomienie w panelu</string>
     <string name="settings_quiet_notification_desc">Powiadomienie BYDMate trafia do zwiniętej listy bez ikony na pasku stanu. Nie da się go usunąć całkowicie: Android wymaga powiadomienia do pracy w tle</string>
     <string name="settings_config_export_desc">Kopia: historia przejazdów z GPS i klucze API otwartym tekstem, plik w folderze Download</string>

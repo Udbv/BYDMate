@@ -213,5 +213,14 @@ object WazeLaneReader {
 
     internal fun logRead(lanes: NavLanes) {
         Log.i(TAG, diagnosticsLine() + " -> ${lanes.lanes.size} lanes")
+        // The raw cell labels are the thing that decides whether lanes work on a given Waze
+        // build, and they never reach logcat in release; the trip log is where they belong.
+        com.bydmate.app.diagnostics.TripDebugLog.event(
+            "LANES",
+            diagnosticsLine() + " -> " + lanes.lanes.joinToString(" | ") { lane ->
+                lane.directions.joinToString("+").ifEmpty { "?" } +
+                    (lane.recommended?.let { ">$it" } ?: "")
+            },
+        )
     }
 }

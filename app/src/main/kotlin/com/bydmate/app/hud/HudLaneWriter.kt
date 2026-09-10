@@ -192,6 +192,14 @@ class HudLaneWriter(
             writes++
             if (accepted) ok++ else { bad++; failures++ }
         }
+        com.bydmate.app.diagnostics.TripDebugLog.event(
+            "PANEL",
+            "lanes=${lanes.lanes.size} accepted=$ok rejected=$bad " +
+                lanes.lanes.joinToString(",") { l ->
+                    NavLaneCodes.codeFor(l.directions).toString() +
+                        (l.recommended?.let { ">" + NavLaneCodes.dirId(it) } ?: "")
+                },
+        )
         Log.i(TAG, "lanes=${lanes.lanes.size} " +
             lanes.lanes.joinToString(",") { l ->
                 NavLaneCodes.codeFor(l.directions).toString() + (l.recommended?.let { ">" + NavLaneCodes.dirId(it) } ?: "")

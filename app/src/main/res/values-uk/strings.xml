@@ -1284,6 +1284,9 @@
     <string name="settings_widget_reset_position_desc">Повернути віджет на місце за замовчуванням</string>
     <string name="settings_export_csv_desc">Уся історія поїздок одним файлом у папку Download</string>
     <string name="settings_log_recording_desc">Докладний журнал роботи для розбору проблем. Вмикайте на запит розробника</string>
+    <string name="settings_trip_debug_title">Режим налагодження: журнал поїздок</string>
+    <string name="settings_trip_debug_desc">Машина сама пише журнал ведення для кожної поїздки: що показав навігатор, що пішло на приладову панель і що вона прийняла. Файли лишаються в машині, тека %1$s. Записує назви вулиць з екрана навігатора.</string>
+    <string name="settings_trip_debug_files">Журналів у машині: %1$d (зберігається останніх %2$d)</string>
     <string name="settings_config_export_desc">Бекап: історія поїздок з GPS та API-ключі відкритим текстом, файл у папці Download</string>
     <string name="settings_config_restore_desc">Поточні дані та налаштування буде повністю замінено вмістом бекапу</string>
     <string name="settings_autostart_header">Автозапуск</string>
