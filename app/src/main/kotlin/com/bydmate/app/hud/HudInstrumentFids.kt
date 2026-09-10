@@ -70,12 +70,18 @@ class HudInstrumentFids(
             active = true
             Log.i(TAG, "navi status -> active ok=$ok")
         }
-        if (s.maneuverGaode != lastIcon || s.distanceMeters != lastDistance) {
-            val a = write(FID_GUIDE_ICON, s.maneuverGaode)
-            val b = write(FID_GUIDE_ICON_DUAL, s.maneuverGaode)
+        // The panel numbers its glyphs differently from our Gaode codes; writing the raw code
+        // drew a detour for a roundabout, a left arrow for a slight right, and the Chinese
+        // destination glyph on arrival (see HudInstrumentIcons).
+        val icon = HudInstrumentIcons.fromGaode(s.maneuverGaode)
+        if (icon != lastIcon || s.distanceMeters != lastDistance) {
+            val a = write(FID_GUIDE_ICON, icon)
+            val b = write(FID_GUIDE_ICON_DUAL, icon)
             val c = write(FID_GUIDE_DISTANCE, s.distanceMeters)
-            if (s.maneuverGaode != lastIcon) Log.i(TAG, "guide icon=${s.maneuverGaode} dist=${s.distanceMeters} ok=$a/$b/$c")
-            lastIcon = s.maneuverGaode
+            if (icon != lastIcon) {
+                Log.i(TAG, "guide gaode=${s.maneuverGaode} -> icon=$icon dist=${s.distanceMeters} ok=$a/$b/$c")
+            }
+            lastIcon = icon
             lastDistance = s.distanceMeters
         }
         if (s.etaSeconds > 0 && s.totalDistMeters > 0) {
