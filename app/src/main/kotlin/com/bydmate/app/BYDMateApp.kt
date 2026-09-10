@@ -27,6 +27,7 @@ import com.bydmate.app.ui.widget.WidgetController
 import com.bydmate.app.ui.widget.WidgetPreferences
 import com.bydmate.app.util.CrashLog
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,7 +54,18 @@ class BYDMateApp : Application(), Configuration.Provider {
     @Inject lateinit var driveModeRuleMigration: DriveModeRuleMigration
     @Inject lateinit var defaultRulesSeeder: com.bydmate.app.data.automation.DefaultRulesSeeder
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /**
+     * Nothing launched here may take the process down. A SupervisorJob alone does not do that:
+     * an exception escaping a child still reaches the thread's default handler, which is our
+     * crash handler, which lets the platform kill us -- so a single failing one-shot migration
+     * would turn into "BYDMate dies on every start" with no way back.
+     */
+    private val appScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO +
+            CoroutineExceptionHandler { _, e ->
+                android.util.Log.e("BYDMateApp", "background failure", e)
+            }
+    )
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -84,37 +96,64 @@ class BYDMateApp : Application(), Configuration.Provider {
         bootstrapLocale()
         initOsmdroid()
         appScope.launch {
-            // v2.8.1: clear stale "DIPLUS" data_source value from pre-native-stack
-            // builds. One-shot, gated by its own flag.
-            settingsRepository.migrateDataSourceIfNeeded()
-
-            if (!settingsRepository.isInsightCacheV2MigrationDone()) {
-                insightsManager.migrateLegacyCache()
-                settingsRepository.setInsightCacheV2MigrationDone()
+            // Start-up maintenance. Each step is guarded on its own: a migration that trips over
+            // a bad row must not swallow the ones behind it.
+            startupStep("data source") {
+                // v2.8.1: clear stale "DIPLUS" data_source value from pre-native-stack
+                // builds. One-shot, gated by its own flag.
+                settingsRepository.migrateDataSourceIfNeeded()
             }
-            // One-shot migration: remove phantom autoservice rows created by the
-            // lifetime_kwh driving-counter bug in v2.4.15/v2.4.16.
-            if (!settingsRepository.isMigrationV2_4_17Done()) {
-                val removed = chargeDao.deletePhantomAutoserviceRows()
-                settingsRepository.setMigrationV2_4_17Done()
-                android.util.Log.i("BYDMateApp", "v2.4.17 migration: removed $removed phantom autoservice rows")
+            startupStep("insight cache v2") {
+                if (!settingsRepository.isInsightCacheV2MigrationDone()) {
+                    insightsManager.migrateLegacyCache()
+                    settingsRepository.setInsightCacheV2MigrationDone()
+                }
+            }
+            startupStep("v2.4.17 phantom rows") {
+                // One-shot migration: remove phantom autoservice rows created by the
+                // lifetime_kwh driving-counter bug in v2.4.15/v2.4.16.
+                if (!settingsRepository.isMigrationV2_4_17Done()) {
+                    val removed = chargeDao.deletePhantomAutoserviceRows()
+                    settingsRepository.setMigrationV2_4_17Done()
+                    android.util.Log.i("BYDMateApp", "v2.4.17 migration: removed $removed phantom autoservice rows")
+                }
             }
             // One-shot: revive DriveMode rules saved against the old "0" = NORMAL code.
-            driveModeRuleMigration.runOnce()
+            startupStep("drive mode rules") { driveModeRuleMigration.runOnce() }
             // One-shot: the two start-up rules almost every car wants, so an update never
             // means adding them again by hand. Edits and deletions afterwards are respected.
-            defaultRulesSeeder.runOnce()
+            startupStep("default rules") { defaultRulesSeeder.runOnce() }
             // One-time cleanup of existing duplicates from v2.0.0
-            historyImporter.cleanupDuplicates()
-            // Only sync if setup is completed (prevents duplicates during first wizard run)
-            if (settingsRepository.isSetupCompleted()) {
-                historyImporter.runSync()
+            startupStep("duplicate history") { historyImporter.cleanupDuplicates() }
+            startupStep("history sync") {
+                // Only sync if setup is completed (prevents duplicates during first wizard run)
+                if (settingsRepository.isSetupCompleted()) {
+                    historyImporter.runSync()
+                }
             }
         }
         scheduleDataThinning()
         registerActivityLifecycleCallbacks(WidgetLifecycleCallbacks(this, splitOverlayController))
         // Start split-screen overlay observers (mirrors WidgetController init pattern).
         splitOverlayController.start(appScope)
+    }
+
+    /**
+     * Runs one piece of start-up maintenance, logging rather than propagating anything it throws.
+     *
+     * These run detached on [appScope] while the rest of the app is already coming up, so the
+     * world can move underneath them -- the database can close on a fast shutdown, a row can be
+     * malformed. None of that is worth a failed start, and a step that fails leaves its
+     * "done" flag unset so the next start retries it.
+     */
+    private inline fun startupStep(name: String, body: () -> Unit) {
+        try {
+            body()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            android.util.Log.w("BYDMateApp", "start-up step '$name' failed: ${e.message}", e)
+        }
     }
 
     /**

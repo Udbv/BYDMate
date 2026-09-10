@@ -148,10 +148,13 @@ class AdbOnDeviceClientTest {
         assertTrue("must contain setsid", cmd.contains("setsid"))
         assertTrue("must contain CLASSPATH=", cmd.contains("CLASSPATH="))
         assertTrue("must contain app_process", cmd.contains("app_process"))
-        assertTrue("must contain --nice-name=bydmate_helper", cmd.contains("--nice-name=bydmate_helper"))
+        // Flavour-dependent: the waze build spawns "bydmate_waze", the plain build "bydmate_helper".
+        val procName = com.bydmate.app.helper.HelperBinderProtocol.PROCESS_NAME
+        assertTrue("must contain --nice-name=$procName", cmd.contains("--nice-name=$procName"))
         assertTrue("must contain HelperDaemon class", cmd.contains("com.bydmate.app.helper.HelperDaemon"))
         assertTrue("must contain caller uid", cmd.contains(android.os.Process.myUid().toString()))
-        assertTrue("must redirect to bydmate_helper.log", cmd.contains("bydmate_helper.log"))
+        val logName = "${com.bydmate.app.helper.HelperBinderProtocol.SERVICE_NAME}.log"
+        assertTrue("must redirect to $logName", cmd.contains(logName))
 
         // SIGHUP-race fix: the spawning shell must stay alive (poll-loop on the
         // service registry) until the detached app_process has booted and called
@@ -193,8 +196,8 @@ class AdbOnDeviceClientTest {
         // Must select via ps + exact NAME (comm) equality — the discipline helperHeartbeat uses.
         assertTrue("must select via ps -A -o PID,NAME", cmd.contains("ps -A -o PID,NAME"))
         assertTrue(
-            "must match the process NAME exactly (== \"bydmate_helper\")",
-            cmd.contains("\$2==\"bydmate_helper\"")
+            "must match the process NAME exactly (== the flavour's nice-name)",
+            cmd.contains("\$2==\"" + com.bydmate.app.helper.HelperBinderProtocol.PROCESS_NAME + "\"")
         )
         assertTrue("must kill -9 the selected pids", cmd.contains("kill -9"))
     }

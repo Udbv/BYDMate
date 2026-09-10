@@ -98,9 +98,13 @@ class GigaAmModelManagerTest {
         val filesDir = tmp.newFolder("files2")
         val m = manager(filesDir)
 
-        assertTrue(m.modelPath().endsWith("asr/gigaam-v3-ru/model.int8.onnx"))
-        assertTrue(m.tokensPath().endsWith("asr/gigaam-v3-ru/tokens.txt"))
-        assertTrue(m.vadPath().endsWith("asr/silero_vad.onnx"))
+        // The manager builds paths with File, so on a Windows host they come back with "\".
+        // Compare on a separator-normalised copy: the layout is what matters, not the host.
+        fun slashed(p: String) = p.replace(File.separatorChar, '/')
+
+        assertTrue(slashed(m.modelPath()).endsWith("asr/gigaam-v3-ru/model.int8.onnx"))
+        assertTrue(slashed(m.tokensPath()).endsWith("asr/gigaam-v3-ru/tokens.txt"))
+        assertTrue(slashed(m.vadPath()).endsWith("asr/silero_vad.onnx"))
         // Stable across repeated calls.
         assertEquals(m.modelPath(), m.modelPath())
         assertEquals(m.tokensPath(), m.tokensPath())

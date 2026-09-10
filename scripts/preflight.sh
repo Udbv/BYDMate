@@ -34,11 +34,17 @@ mkdir -p "$WORK"
 fail=0
 step() { printf '\n=== %s\n' "$1"; }
 
-# Suites that cannot pass on this Windows machine, verified identical with and without local
-# changes and present on upstream: Robolectric brings the app up and its SQLite shim throws
-# before the test body runs, and MockWebServer never receives a request here. Excluded from the
-# verdict; everything else must be green.
-KNOWN_BROKEN='WebhookTelemetryClientTest|HudSomeIpBridgeTest|LogRecorderTest|ActionDispatcherNavigateTest|ActionDispatcherYoutubeTest|DriveModeRuleMigrationTest|ClusterFrameUi7Test|ClusterProbeRunnerTest|ClusterProjectionAlignTest|ClusterProjectionApplyCalibratedBoundsTest'
+# Suites that cannot pass on a Windows host. Keep this list honest and short: it started as ten
+# suites and 146 failures, and all but these turned out to be real problems hiding behind it --
+# an unguarded start-up coroutine, tests asserting against the wrong product flavour, and a mock
+# server URL that reverse-resolved to a Docker hosts entry. Before adding anything here, find the
+# cause; "fails on this machine" is usually not it.
+#
+# What is left: SettingsViewModelTest's two W6-F4 dumpFids cases. One needs a non-writable
+# Download directory and File.setWritable(false) is a no-op on Windows; the other asserts a
+# FileProvider root against a POSIX path and gets a C:\ path instead. Both should hold on Linux;
+# being checked under WSL, and if that works the gate moves there and this list goes away.
+KNOWN_BROKEN='SettingsViewModelTest'
 
 # Names the test class each live JVM is executing, so a stall points at a culprit rather than a
 # shrug. Reads every java process because the test worker is not always the daemon.
@@ -62,19 +68,38 @@ else
   echo "ok: $(ls -1 app/build/outputs/apk/waze/release/*.apk 2>/dev/null | tail -1)"
 fi
 
-step "unit tests (progress every minute, stall limit ${STALL_MINUTES}m)"
+step "unit tests (each suite reported as it finishes, stall limit ${STALL_MINUTES}m)"
 rm -rf "$RESULTS" 2>/dev/null
 ./gradlew :app:testWazeDebugUnitTest -q > "$WORK/gradle-test.log" 2>&1 &
 gradle_pid=$!
 stall=0
 last_sig=""
+seen="$WORK/seen-suites.txt"
+: > "$seen"
 while kill -0 "$gradle_pid" 2>/dev/null; do
-  sleep 60
+  sleep 15
+  # Announce every suite that finished since the last look, with its failure count, so the run
+  # is readable while it happens instead of only at the end.
+  for f in "$RESULTS"/*.xml; do
+    [ -e "$f" ] || continue
+    name=$(basename "$f" .xml | sed 's/^TEST-//')
+    grep -qxF "$name" "$seen" && continue
+    echo "$name" >> "$seen"
+    n=$(grep -c '<failure' "$f")
+    if [ "$n" = "0" ]; then echo "  ok   $name"
+    elif echo "$name" | grep -qE "$KNOWN_BROKEN"; then echo "  ~    $name ($n, known-broken here)"
+    else echo "  FAIL $name ($n)"; fi
+  done
   suites=$(ls -1 "$RESULTS"/*.xml 2>/dev/null | wc -l | tr -d ' ')
   sig="$suites:$(stat -c %Y "$RESULTS/binary/output.bin" 2>/dev/null || echo 0)"
-  if [ "$sig" = "$last_sig" ]; then stall=$((stall + 1)); else stall=0; last_sig="$sig"; fi
-  echo "  $(date +%H:%M:%S) suites=$suites  no-progress=${stall}m"
-  if [ "$stall" -ge "$STALL_MINUTES" ]; then
+  if [ "$sig" = "$last_sig" ]; then
+    stall=$((stall + 1))
+    # Four 15 s ticks make a minute; only speak up once a minute of silence.
+    [ $((stall % 4)) = 0 ] && echo "  $(date +%H:%M:%S) no progress for $((stall / 4))m (suites=$suites)"
+  else
+    stall=0; last_sig="$sig"
+  fi
+  if [ "$stall" -ge $((STALL_MINUTES * 4)) ]; then
     echo "FAIL: no test progress for ${STALL_MINUTES} minutes - the run is stuck"
     stuck_where
     kill "$gradle_pid" 2>/dev/null
