@@ -34,6 +34,20 @@ mkdir -p "$WORK"
 fail=0
 step() { printf '\n=== %s\n' "$1"; }
 
+# Interrupting this script must not leave gradle behind. It did once: Ctrl-C killed the script,
+# its gradle daemon kept running, and the next run's R8 step died on
+# "classes.dex ... used by another process" - a Windows file lock that looks like a broken build
+# and is not one. Kill the child we spawned and stop the daemons on any exit.
+gradle_pid=""
+cleanup() {
+  local rc=$?
+  [ -n "$gradle_pid" ] && kill "$gradle_pid" 2>/dev/null
+  echo "  (interrupted - stopping gradle so the next run does not hit a locked classes.dex)"
+  ./gradlew --stop >/dev/null 2>&1
+  exit $rc
+}
+trap cleanup INT TERM
+
 # Suites that cannot pass on a Windows host. Keep this list honest and short: it started as ten
 # suites and 146 failures, and all but these turned out to be real problems hiding behind it --
 # an unguarded start-up coroutine, tests asserting against the wrong product flavour, and a mock
@@ -62,8 +76,14 @@ stuck_where() {
 }
 
 step "release build"
-if ./gradlew :app:assembleWazeRelease -q 2>&1 | grep -qE '^e: |FAILURE'; then
-  echo "FAIL: release build"; fail=1
+# Keep the output: "FAIL: release build" on its own sends you looking for a compile error that
+# is not there. The one that actually happened was a Windows file lock on classes.dex left by a
+# previous interrupted run.
+if ! ./gradlew :app:assembleWazeRelease -q > "$WORK/gradle-build.log" 2>&1; then
+  echo "FAIL: release build"
+  grep -E '^e: |^> |What went wrong|Caused by' "$WORK/gradle-build.log" | head -6 | sed 's/^/  /'
+  echo "  full log: $WORK/gradle-build.log"
+  fail=1
 else
   echo "ok: $(ls -1 app/build/outputs/apk/waze/release/*.apk 2>/dev/null | tail -1)"
 fi
