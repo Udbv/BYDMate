@@ -48,17 +48,20 @@ cleanup() {
 }
 trap cleanup INT TERM
 
-# Suites that cannot pass on a Windows host. Keep this list honest and short: it started as ten
-# suites and 146 failures, and all but these turned out to be real problems hiding behind it --
-# an unguarded start-up coroutine, tests asserting against the wrong product flavour, and a mock
-# server URL that reverse-resolved to a Docker hosts entry. Before adding anything here, find the
-# cause; "fails on this machine" is usually not it.
+# Suites allowed to fail on this host. It is EMPTY, and it should stay that way: it began as ten
+# suites and 146 failures, and every single one turned out to be a real problem hiding behind the
+# label -- an unguarded start-up coroutine that could kill the app on the car, tests asserting
+# against the wrong product flavour, a mock server URL that reverse-resolved to a Docker hosts
+# entry. The last two, which genuinely cannot be staged on Windows, now skip themselves with
+# JUnit assumptions instead, which is honest and needs no list.
 #
-# What is left: SettingsViewModelTest's two W6-F4 dumpFids cases. One needs a non-writable
-# Download directory and File.setWritable(false) is a no-op on Windows; the other asserts a
-# FileProvider root against a POSIX path and gets a C:\ path instead. Both should hold on Linux;
-# being checked under WSL, and if that works the gate moves there and this list goes away.
-KNOWN_BROKEN='SettingsViewModelTest'
+# Before adding anything here: find the cause. "Fails on this machine" is almost never it. If a
+# test really depends on the host, express that as an Assume in the test.
+KNOWN_BROKEN=''
+
+# Empty means "nothing is excused" - never let an empty pattern reach grep, it matches everything
+# and would silently pass a completely red run.
+is_known_broken() { [ -n "$KNOWN_BROKEN" ] && echo "$1" | grep -qE "$KNOWN_BROKEN"; }
 
 # Names the test class each live JVM is executing, so a stall points at a culprit rather than a
 # shrug. Reads every java process because the test worker is not always the daemon.
@@ -107,7 +110,7 @@ while kill -0 "$gradle_pid" 2>/dev/null; do
     echo "$name" >> "$seen"
     n=$(grep -c '<failure' "$f")
     if [ "$n" = "0" ]; then echo "  ok   $name"
-    elif echo "$name" | grep -qE "$KNOWN_BROKEN"; then echo "  ~    $name ($n, known-broken here)"
+    elif is_known_broken "$name"; then echo "  ~    $name ($n, known-broken here)"
     else echo "  FAIL $name ($n)"; fi
   done
   suites=$(ls -1 "$RESULTS"/*.xml 2>/dev/null | wc -l | tr -d ' ')
@@ -137,10 +140,10 @@ for f in "$RESULTS"/*.xml; do
   total=$((total + ${t:-0})); bad=$((bad + n))
   if [ "$n" != "0" ]; then
     name=$(basename "$f" .xml | sed 's/^TEST-//')
-    echo "$name" | grep -qE "$KNOWN_BROKEN" || unexpected="$unexpected $name($n)"
+    is_known_broken "$name" || unexpected="$unexpected $name($n)"
   fi
 done
-echo "tests=$total failures=$bad (known-broken suites excluded from the verdict)"
+echo "tests=$total failures=$bad"
 if [ -n "$unexpected" ]; then
   echo "FAIL: unexpected failures:$unexpected"; fail=1
 elif [ "$total" -gt 0 ]; then

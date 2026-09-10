@@ -1,3 +1,4 @@
+import java.io.File
 import java.io.FileInputStream
 import java.util.Properties
 
@@ -66,9 +67,24 @@ android {
     }
 
     signingConfigs {
-        if (keystorePropsFile.exists()) {
+        // Resolve with java.io.File, never Gradle's file(): file() reads a Windows path such as
+        // "D:/BYD/keys/bydmate-waze.jks" as a URL with scheme "D" and aborts the whole
+        // configuration phase on Linux -- including tasks that sign nothing, so even
+        // :app:testWazeDebugUnitTest cannot run under WSL or on a Linux checkout.
+        val storeFileOrNull = keystoreProps.getProperty("storeFile")
+            ?.let { File(it) }
+            ?.takeIf { it.isFile }
+        if (keystorePropsFile.exists() && storeFileOrNull == null) {
+            // Loud on purpose: a release that quietly comes out unsigned will not install over
+            // the copy already on the car, and the failure would only show up there.
+            logger.warn(
+                "keystore.properties points at ${keystoreProps.getProperty("storeFile")}, " +
+                    "which is not a file here - release builds will be UNSIGNED"
+            )
+        }
+        if (storeFileOrNull != null) {
             create("release") {
-                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storeFile = storeFileOrNull
                 storePassword = keystoreProps.getProperty("storePassword")
                 keyAlias = keystoreProps.getProperty("keyAlias")
                 keyPassword = keystoreProps.getProperty("keyPassword")
