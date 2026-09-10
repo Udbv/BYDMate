@@ -21,6 +21,7 @@
   "numberedExit": "(?:(?:(?:at|on)\\s+)?(?:the\\s+)?roundabout\\b.{0,48}?)?(?:take\\s+)?(?:the\\s+)?(\\d+)(?:st|nd|rd|th)?\\s+exit\\b",
   "exitNouns": ["exit"],
   "ordinalSuffixes": ["st", "nd", "rd", "th"],
+  "lanes": {"left": ["left"], "straight": ["straight", "ahead"], "right": ["right"], "uturn": ["u-turn", "uturn"]},
   "units": {
     "km": ["km"], "m": ["m"], "mi": ["mi", "mile", "miles"], "ft": ["ft", "foot", "feet"],
     "hour": ["h", "hr", "hrs", "hour", "hours"], "minute": ["min", "mins", "minute", "minutes"]

@@ -146,27 +146,35 @@ object WazeLaneReader {
      */
     internal fun directionsOf(cell: Cell): Set<NavLanes.Dir> = directionsOf(cell.label)
 
+    /** Direction keys in the language packs' `lanes` section. */
+    private const val KEY_LEFT = "left"
+    private const val KEY_STRAIGHT = "straight"
+    private const val KEY_RIGHT = "right"
+    private const val KEY_UTURN = "uturn"
+
+    /** Arrow characters some builds use instead of words, per direction key. */
+    private val ARROWS = mapOf(
+        KEY_LEFT to "←⬅↰",
+        KEY_STRAIGHT to "↑⬆",
+        KEY_RIGHT to "→➡↱",
+        KEY_UTURN to "⤺⤻↶",
+    )
+
     internal fun directionsOf(label: String?): Set<NavLanes.Dir> {
         if (label.isNullOrBlank()) return emptySet()
-        val out = mutableSetOf<NavLanes.Dir>()
         val normalized = label.lowercase()
-        val tables = runCatching { NavPhraseTables.current }.getOrNull()
-        fun matches(code: Int): Boolean =
-            tables?.phrasePatterns?.any { (pattern, c) ->
-                c == code && pattern.containsMatchIn(normalized)
-            } ?: false
-        if (matches(NavManeuverCodes.GAODE_LEFT) || normalized.contains('←') || normalized.contains('⬅')) {
-            out += NavLanes.Dir.LEFT
+        val keys = mutableSetOf<String>()
+        runCatching { NavPhraseTables.current.lanePatterns }.getOrNull()?.forEach { (pattern, key) ->
+            if (pattern.containsMatchIn(normalized)) keys += key
         }
-        if (matches(NavManeuverCodes.GAODE_RIGHT) || normalized.contains('→') || normalized.contains('➡')) {
-            out += NavLanes.Dir.RIGHT
+        ARROWS.forEach { (key, chars) ->
+            if (normalized.any { it in chars }) keys += key
         }
-        if (matches(NavManeuverCodes.GAODE_STRAIGHT) || normalized.contains('↑') || normalized.contains('⬆')) {
-            out += NavLanes.Dir.STRAIGHT
-        }
-        if (matches(NavManeuverCodes.GAODE_UTURN) || normalized.contains('↰') || normalized.contains('⤺')) {
-            out += NavLanes.Dir.UTURN_LEFT
-        }
+        val out = mutableSetOf<NavLanes.Dir>()
+        if (KEY_LEFT in keys) out += NavLanes.Dir.LEFT
+        if (KEY_STRAIGHT in keys) out += NavLanes.Dir.STRAIGHT
+        if (KEY_RIGHT in keys) out += NavLanes.Dir.RIGHT
+        if (KEY_UTURN in keys) out += NavLanes.Dir.UTURN_LEFT
         return out
     }
 

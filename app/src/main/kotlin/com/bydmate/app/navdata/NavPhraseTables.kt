@@ -38,6 +38,10 @@ object NavPhraseTables {
         val exitNouns: List<String>,
         val ordinalSuffixes: List<String>,
         val units: Map<String, List<String>>,
+        /** Bare direction words Waze writes into a lane cell's description, per direction key
+         *  ("left", "straight", "right", "uturn"). Separate from [maneuvers] because a lane label
+         *  is a single word, not an instruction sentence. */
+        val lanes: Map<String, List<String>> = emptyMap(),
     )
 
     /** Everything the engines need, precompiled once per load. */
@@ -50,6 +54,16 @@ object NavPhraseTables {
         }
 
         /** Numbered-exit regexes in file order; group 1 is the exit number. */
+
+        /**
+         * Lane-label patterns across every loaded language: bare direction words as Waze writes
+         * them into a lane cell's content description, paired with the direction key.
+         */
+        val lanePatterns: List<Pair<Regex, String>> = tables.flatMap { t ->
+            t.lanes.flatMap { (key, words) ->
+                words.map { word -> literalRegex(word) to key }
+            }
+        }
         val numberedExitPatterns: List<Regex> = tables.mapNotNull { it.numberedExit }
 
         private fun unitAlternation(key: String): String =
@@ -142,6 +156,9 @@ object NavPhraseTables {
             exitNouns = (root["exitNouns"] as? List<*>).orEmpty().map { it as String },
             ordinalSuffixes = (root["ordinalSuffixes"] as? List<*>).orEmpty().map { it as String },
             units = units,
+            lanes = (root["lanes"] as? Map<*, *>).orEmpty().entries.associate { (k, v) ->
+                (k as String) to (v as List<*>).map { (it as String).lowercase() }
+            },
         )
     }
 
