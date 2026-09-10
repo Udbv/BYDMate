@@ -13,8 +13,8 @@ import kotlinx.coroutines.sync.withLock
  * Guidance over the instrument panel's autoservice features (the "CAN" path of openbyd 2.4.3,
  * `CarControlImpl.sendSimpleGuidanceInfo` / `sendRestRouteInfo` / `turnOnNavi`): the same
  * `BYDAutoInstrumentDevice` feature ids the BYD navigation SDK writes, sent through the helper
- * daemon. Writes happen only when a value changes, like the donor; the road name feature
- * (1140461576) needs a byte-array write the daemon does not offer yet and is skipped.
+ * daemon. Writes happen only when a value changes, like the donor. The next-street name is a
+ * byte-array feature and goes through the daemon's TX_WRITE_BYTES, which calls BYD's own SDK.
  */
 class HudInstrumentFids(
     private val helper: HelperClient,
@@ -35,6 +35,17 @@ class HudInstrumentFids(
         const val FID_TRIP_MILEAGE = 1139810344
         const val FID_ARRIVE_MINUTE = 1139839008
         const val REST_MILEAGE_MAX = 999_999L
+
+        /**
+         * Next-street name, a byte-array feature. BYD ships two: the domestic one and an
+         * `_OVERASEA_` variant, which is the likelier fit for a car showing Cyrillic. Both are
+         * tried, overseas first, and whichever the panel accepts is remembered for the session.
+         */
+        const val FID_STREET_NAME_OVERSEAS = 0x1F7A1008
+        const val FID_STREET_NAME = 0x43FA1008
+
+        /** The panel truncates anyway; keep a corrupted a11y read from sending a huge buffer. */
+        const val MAX_STREET_BYTES = 96
     }
 
     private val mutex = Mutex()
@@ -88,6 +99,7 @@ class HudInstrumentFids(
             lastIcon = icon
             lastDistance = s.distanceMeters
         }
+        writeStreetName(s.road)
         if (s.etaSeconds > 0 && s.totalDistMeters > 0) {
             val totalMin = s.etaSeconds / 60
             val hour = (totalMin / 60).coerceIn(0, 254)
@@ -102,6 +114,56 @@ class HudInstrumentFids(
                 lastHour = hour; lastMinute = minute; lastMileage = mileage
             }
         }
+    }
+
+
+    /** Last name pushed, so an unchanged street costs nothing. */
+    private var lastStreet: String? = null
+
+    /** The feature the panel accepted; null until one has, so both are tried once. */
+    private var streetFid: Int? = null
+
+    /**
+     * Pushes the next-street name. Which of the two features this firmware honours is not
+     * knowable ahead of time, so the overseas one is tried first and the domestic one second;
+     * the first that reports a real write is kept for the rest of the session.
+     */
+    private suspend fun writeStreetName(road: String) {
+        val name = road.take(MAX_STREET_BYTES)
+        if (name == lastStreet) return
+        val bytes = truncateUtf8(name, MAX_STREET_BYTES)
+        val candidates = streetFid?.let { listOf(it) } ?: listOf(FID_STREET_NAME_OVERSEAS, FID_STREET_NAME)
+        for (fid in candidates) {
+            val status = runCatching { helper.writeBytes(DEV_INSTRUMENT, fid, bytes) }.getOrNull()
+            writes++
+            if (status != null && status > 0) {
+                if (streetFid != fid) {
+                    streetFid = fid
+                    Log.i(TAG, "street name feature 0x${fid.toString(16)} accepted")
+                    com.bydmate.app.diagnostics.TripDebugLog.event(
+                        "PANEL", "street name feature 0x${fid.toString(16)} accepted")
+                }
+                lastStreet = name
+                com.bydmate.app.diagnostics.TripDebugLog.changed("PANEL", "street", "street='$name'")
+                return
+            }
+        }
+        failures++
+        // Remember the attempt so a panel that takes neither is not retried on every maneuver.
+        lastStreet = name
+        com.bydmate.app.diagnostics.TripDebugLog.changed(
+            "PANEL", "street", "street='$name' rejected by both features")
+    }
+
+    /** Cuts UTF-8 on a character boundary so the panel never receives half a code point. */
+    internal fun truncateUtf8(text: String, maxBytes: Int): ByteArray {
+        var out = text.toByteArray(Charsets.UTF_8)
+        var end = text.length
+        while (out.size > maxBytes && end > 0) {
+            end--
+            out = text.substring(0, end).toByteArray(Charsets.UTF_8)
+        }
+        return out
     }
 
     /** Route ended: guidance cleared, navigation status back to stopped (donor `turnOffNavi`). */

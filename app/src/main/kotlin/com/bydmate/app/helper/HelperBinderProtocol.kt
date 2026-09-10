@@ -14,6 +14,8 @@ import android.os.IBinder
  *                                                        -> reply: writeInt(status), writeInt(value)
  *   TX_WRITE : writeInt(dev), writeInt(fid), writeInt(value)
  *                                                        -> reply: writeInt(status), writeInt(value)
+ *   TX_WRITE_BYTES : writeInt(dev), writeInt(fid), writeByteArray(bytes)
+ *                                                        -> reply: writeInt(status), writeInt(0)
  *   TX_CREATE_VIRTUAL_DISPLAY : writeString(name), writeInt(width), writeInt(height),
  *                               writeInt(density), writeInt(flags), Surface.writeToParcel(surface)
  *       -> reply: writeInt(status), writeInt(displayId)   // status 0 = ok, displayId>0
@@ -301,6 +303,14 @@ object HelperBinderProtocol {
      * the split engine reads as "daemon outdated" and falls back to the move-to-fullscreen-root path.
      */
     val TX_SPLIT37_CHANGE_MODE: Int = IBinder.FIRST_CALL_TRANSACTION + 38    // 39
+
+    /**
+     * Writes a byte-array feature (the instrument panel's street-name features take one).
+     * The integer path cannot carry it, and the autoservice binder's own transaction code for
+     * buffers is not documented anywhere we can read, so the daemon goes through BYD's own SDK
+     * class instead - the same call the factory navigation makes.
+     */
+    val TX_WRITE_BYTES: Int = IBinder.FIRST_CALL_TRANSACTION + 39            // 40
 
     /**
      * Recovers the steering-wheel accessibility service on Android 10 (DiLink 3.0/4.0) after the

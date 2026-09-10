@@ -241,6 +241,18 @@ fun main(args: Array<String>) {
                     reply?.writeInt(0); true
                 }
 
+                HelperBinderProtocol.TX_WRITE_BYTES -> runCatching {
+                    val dev = data.readInt()
+                    val fid = data.readInt()
+                    val bytes = data.createByteArray() ?: ByteArray(0)
+                    val status = writeBytesViaSdk(systemContext, dev, fid, bytes)
+                    reply?.writeInt(status)
+                    reply?.writeInt(0)
+                    true
+                }.getOrElse {
+                    reply?.writeInt(-1); reply?.writeInt(0); true
+                }
+
                 HelperBinderProtocol.TX_WRITE -> runCatching {
                     val dev = data.readInt()
                     val fid = data.readInt()
@@ -858,6 +870,46 @@ internal fun readTrailingToTop(data: Parcel): Boolean =
  *   avail >= 4 → status = reply.readInt() else -999
  *   avail >= 8 → retInt = reply.readInt() else 0
  */
+
+/**
+ * BYD SDK class that owns each autoservice device, for the features whose value is a byte array.
+ * Only the devices we actually need are listed; anything else is refused rather than guessed.
+ */
+internal fun deviceClassFor(dev: Int): String? = when (dev) {
+    1007 -> "android.hardware.bydauto.instrument.BYDAutoInstrumentDevice"
+    else -> null
+}
+
+/**
+ * Writes a byte-array feature through BYD's own SDK, the way the factory navigation writes the
+ * next-street name: `device.set(intArrayOf(fid), BYDAutoEventValue{ bufferDataValue = bytes })`.
+ *
+ * The raw autoservice binder path this daemon uses for integers takes (dev, fid, int) and has no
+ * documented transaction for buffers, and guessing one against a live vehicle bus is not a good
+ * trade. Under app_process the framework and the BYD SDK are on the classpath and a system
+ * Context is available, so the supported call is reachable by reflection.
+ *
+ * Returns the SDK's own status (1 real write, 0 accepted no-op, negative error) or -1 when the
+ * class, the context or the field is missing on this firmware.
+ */
+internal fun writeBytesViaSdk(context: Context?, dev: Int, fid: Int, bytes: ByteArray): Int {
+    if (context == null) return -1
+    val className = deviceClassFor(dev) ?: return -1
+    return try {
+        val deviceCls = Class.forName(className)
+        val instance = deviceCls.getMethod("getInstance", Context::class.java).invoke(null, context)
+            ?: return -1
+        val valueCls = Class.forName("android.hardware.bydauto.BYDAutoEventValue")
+        val value = valueCls.getDeclaredConstructor().newInstance()
+        valueCls.getField("bufferDataValue").set(value, bytes)
+        val result = deviceCls.getMethod("set", IntArray::class.java, valueCls)
+            .invoke(instance, intArrayOf(fid), value)
+        (result as? Int) ?: -1
+    } catch (t: Throwable) {
+        System.err.println("WARN: writeBytesViaSdk dev=$dev fid=$fid failed: ${t.message}")
+        -1
+    }
+}
 private fun autoserviceTransact(
     svc: IBinder,
     autoIface: String,

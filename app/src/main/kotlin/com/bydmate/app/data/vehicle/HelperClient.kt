@@ -159,6 +159,13 @@ interface HelperClient {
      */
     suspend fun readBatch(items: List<BatchReadItem>): List<Pair<Int, Int>>?
     suspend fun write(dev: Int, fid: Int, value: Int): Boolean
+    /**
+     * Writes a byte-array feature (the instrument panel's street-name features). Returns the
+     * autoservice status, or null when the daemon is unreachable or the firmware has no such
+     * device class. Status is interpreted like [writeStatus].
+     */
+    suspend fun writeBytes(dev: Int, fid: Int, bytes: ByteArray): Int?
+
     /** Raw autoservice setInt status (1 real, 0 no-op, <0 error, null daemon unreachable). */
     suspend fun writeStatus(dev: Int, fid: Int, value: Int): Int?
     suspend fun isAlive(): Boolean
@@ -457,6 +464,15 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
 
     override suspend fun write(dev: Int, fid: Int, value: Int): Boolean =
         writeStatus(dev, fid, value)?.let { writeAccepted(it) } ?: false
+
+    override suspend fun writeBytes(dev: Int, fid: Int, bytes: ByteArray): Int? {
+        val status = transact(HelperBinderProtocol.TX_WRITE_BYTES) {
+            it.writeInt(dev); it.writeInt(fid); it.writeByteArray(bytes)
+        }?.first
+        Log.i(TAG, "writeBytes dev=$dev fid=$fid len=${bytes.size} status=$status " +
+            "accepted=${status != null && writeAccepted(status)}")
+        return status
+    }
 
     override suspend fun isAlive(): Boolean =
         transact(HelperBinderProtocol.TX_PING) { }
