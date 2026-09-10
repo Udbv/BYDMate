@@ -62,10 +62,18 @@ object WazeLaneReader {
                 diagnostics = Diagnostics(container = describe(container), laneCount = 0)
                 return NavLanes.NONE
             }
+            // A lane that allows several directions carries no clue in its text about which one
+            // the route takes - Waze shows that by highlighting one arrow inside the cell. The
+            // maneuver already in the hub resolves it: on a "turn right", a selected straight+right
+            // lane is being recommended for the right. Falling back to the first direction only
+            // when the maneuver says nothing.
+            val maneuverDir = maneuverDirection()
             val lanes = cells.map { cell ->
+                val dirs = directionsOf(cell)
                 NavLanes.Lane(
-                    directions = directionsOf(cell),
-                    recommended = if (cell.selected) directionsOf(cell).firstOrNull() else null,
+                    directions = dirs,
+                    recommended = if (!cell.selected) null
+                    else maneuverDir?.takeIf { it in dirs } ?: dirs.firstOrNull(),
                 )
             }
             diagnostics = Diagnostics(
@@ -83,6 +91,19 @@ object WazeLaneReader {
 
     /** One lane child: its horizontal position decides the order, its label the directions. */
     internal data class Cell(val left: Int, val label: String?, val selected: Boolean)
+
+    /** The direction of the maneuver currently in the hub, when it is one a lane can show. */
+    internal fun maneuverDirection(
+        gaode: Int = runCatching { NavGuidanceHub.snapshot().maneuverGaode }.getOrDefault(0),
+    ): NavLanes.Dir? = when (gaode) {
+        NavManeuverCodes.GAODE_LEFT, NavManeuverCodes.GAODE_SLIGHT_LEFT, NavManeuverCodes.GAODE_HARD_LEFT ->
+            NavLanes.Dir.LEFT
+        NavManeuverCodes.GAODE_RIGHT, NavManeuverCodes.GAODE_SLIGHT_RIGHT, NavManeuverCodes.GAODE_HARD_RIGHT ->
+            NavLanes.Dir.RIGHT
+        NavManeuverCodes.GAODE_STRAIGHT, 12 -> NavLanes.Dir.STRAIGHT
+        NavManeuverCodes.GAODE_UTURN, NavManeuverCodes.GAODE_UTURN_RIGHT -> NavLanes.Dir.UTURN_LEFT
+        else -> null
+    }
 
     private fun findContainer(root: AccessibilityNodeInfo, pkg: String): AccessibilityNodeInfo? {
         for (id in CONTAINER_IDS) {

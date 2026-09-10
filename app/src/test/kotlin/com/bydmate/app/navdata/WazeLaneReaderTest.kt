@@ -66,4 +66,17 @@ class WazeLaneReaderTest {
         assertEquals(setOf(NavLanes.Dir.STRAIGHT, NavLanes.Dir.RIGHT), dirs("Прямо, Праворуч"))
         assertEquals(setOf(NavLanes.Dir.STRAIGHT, NavLanes.Dir.RIGHT), dirs("прямо|праворуч"))
     }
+
+    @Test fun `the maneuver picks the direction inside a multi-direction lane`() {
+        // Waze highlights one arrow inside the cell; the text cannot say which, the maneuver can.
+        assertEquals(NavLanes.Dir.RIGHT, WazeLaneReader.maneuverDirection(NavManeuverCodes.GAODE_RIGHT))
+        assertEquals(NavLanes.Dir.RIGHT, WazeLaneReader.maneuverDirection(NavManeuverCodes.GAODE_SLIGHT_RIGHT))
+        assertEquals(NavLanes.Dir.LEFT, WazeLaneReader.maneuverDirection(NavManeuverCodes.GAODE_HARD_LEFT))
+        assertEquals(NavLanes.Dir.STRAIGHT, WazeLaneReader.maneuverDirection(NavManeuverCodes.GAODE_STRAIGHT))
+        assertEquals(NavLanes.Dir.UTURN_LEFT, WazeLaneReader.maneuverDirection(NavManeuverCodes.GAODE_UTURN))
+        // A roundabout or an arrival tells a lane nothing.
+        assertEquals(null, WazeLaneReader.maneuverDirection(NavManeuverCodes.GAODE_ROUNDABOUT_ENTER))
+        assertEquals(null, WazeLaneReader.maneuverDirection(NavManeuverCodes.GAODE_ARRIVE))
+        assertEquals(null, WazeLaneReader.maneuverDirection(0))
+    }
 }
