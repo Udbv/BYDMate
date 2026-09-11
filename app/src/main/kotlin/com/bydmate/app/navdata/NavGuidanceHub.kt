@@ -46,6 +46,12 @@ object NavGuidanceHub {
         val cameraAlert: String = "",
         val cameraDistanceMeters: Int = 0,
         val cameraIconPng: ByteArray? = null,
+        // openbyd port (3.16.0-dev.7): the panel glyph named by the Waze arrow classifier, its
+        // read time (expires with MANEUVER_TIMEOUT_MS like maneuverGaode), and the roundabout
+        // exit number from navBarDirectionText. Appended for the same positional-constructor reason.
+        val panelIcon: Int = 0,
+        val panelIconMs: Long = 0L,
+        val exitNumber: Int? = null,
     )
 
     /** Rich notification payload (donor listener merge). applyCamera=false is the

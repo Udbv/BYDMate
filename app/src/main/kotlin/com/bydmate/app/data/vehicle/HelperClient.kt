@@ -170,6 +170,46 @@ interface HelperClient {
     suspend fun writeStatus(dev: Int, fid: Int, value: Int): Int?
     suspend fun isAlive(): Boolean
 
+    // ---- BYD SDK path (TX_SDK_SET / TX_SDK_NAVI): the calls openbyd's CarControlImpl makes. ----
+    // Every method returns the SDK's own int (0 = success, see HelperBinderProtocol.TX_SDK_SET) or
+    // null when the daemon is unreachable or predates the verb. Interpret with [sdkAccepted].
+    // Defaults return null so fakes and older test doubles keep compiling; HelperClientImpl overrides.
+
+    /** `device.set(int[]{fid}, ev{intValue})` on [sdkDev] (HelperBinderProtocol.SDK_DEV_*). */
+    suspend fun sdkSetInt(sdkDev: Int, fid: Int, value: Int): Int? = null
+
+    /** `device.set(int[]{fid}, ev{doubleValue})`. */
+    suspend fun sdkSetDouble(sdkDev: Int, fid: Int, value: Double): Int? = null
+
+    /** `device.set(int[]{fid}, ev{bufferDataValue})`. */
+    suspend fun sdkSetBytes(sdkDev: Int, fid: Int, bytes: ByteArray): Int? = null
+
+    /** One `device.set(fids, ev{intArrayValue = values})` call carrying all pairs at once. */
+    suspend fun sdkSetIntArray(sdkDev: Int, fids: IntArray, values: IntArray): Int? = null
+
+    /** `BYDAutoInstrumentDevice.sendAutoNaviStatus(status)`. */
+    suspend fun sdkNaviStatus(status: Int): Int? = null
+
+    /** `BYDAutoInstrumentDevice.sendSimpleGuidanceInfo(iconId, distanceMeters)`. */
+    suspend fun sdkSimpleGuidance(iconId: Int, distanceMeters: Int): Int? = null
+
+    /** `BYDAutoInstrumentDevice.sendNextPathName(name)`. */
+    suspend fun sdkNextPathName(name: String): Int? = null
+
+    /** `BYDAutoInstrumentDevice.sendRestRouteInfo(hour, minute, mileageMeters)`. */
+    suspend fun sdkRestRoute(hour: Int, minute: Int, mileageMeters: Long): Int? = null
+
+    /** `BYDAutoInstrumentDevice.sendCameraGuidanceInfo(type, distanceMeters, state)`. */
+    suspend fun sdkCameraGuidance(type: Int, distanceMeters: Int, state: Int): Int? = null
+
+    companion object {
+        /**
+         * The SDK reports 0 (`INSTRUMENT_COMMAND_SUCCESS`) for a write it took. openbyd never
+         * inspects the code at all; BYDMate only uses it for the trip log, never to retry.
+         */
+        fun sdkAccepted(status: Int?): Boolean = status == 0
+    }
+
     /** Creates a VirtualDisplay backed by [surface]; returns its displayId (>0) or null. */
     suspend fun createVirtualDisplay(
         name: String, width: Int, height: Int, density: Int, flags: Int, surface: Surface,

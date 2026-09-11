@@ -309,8 +309,13 @@ object HelperBinderProtocol {
      * The integer path cannot carry it, and the autoservice binder's own transaction code for
      * buffers is not documented anywhere we can read, so the daemon goes through BYD's own SDK
      * class instead - the same call the factory navigation makes.
+     *
+     * Was `+39` until 3.16.0-dev.7, which collided with TX_RECOVER_ACCESSIBILITY: the daemon's
+     * dispatch matched this verb first, so every accessibility-recovery request ran as a bytes
+     * write on an empty parcel and answered -1. Numbering is now unique (see the distinctness
+     * test in HelperBinderProtocolTest).
      */
-    val TX_WRITE_BYTES: Int = IBinder.FIRST_CALL_TRANSACTION + 39            // 40
+    val TX_WRITE_BYTES: Int = IBinder.FIRST_CALL_TRANSACTION + 41            // 42
 
     /**
      * Recovers the steering-wheel accessibility service on Android 10 (DiLink 3.0/4.0) after the
@@ -337,6 +342,61 @@ object HelperBinderProtocol {
      * (no args) -> [int status (0 = snapshot logged, -1 = failed), int 0]
      */
     val TX_CLUSTER_DISPLAY_DIAG: Int = IBinder.FIRST_CALL_TRANSACTION + 40  // 41
+
+    /**
+     * Generic BYD SDK feature write - the port of openbyd's `CarControlImpl.setInstrumentFeature*`,
+     * `setSettingFeatureValue` and `setStatisticFeature*`: `Class.forName(device).getInstance(ctx)
+     * .set(int[] fids, BYDAutoEventValue)` with exactly one value field populated. The setting
+     * and statistic devices exist only in the car framework (no stub in any SDK jar), so the
+     * daemon resolves all three by name at call time.
+     *
+     * Request: int sdkDev (SDK_DEV_*), int kind (SDK_KIND_*), then
+     *   SDK_KIND_INT       : int fid, int value
+     *   SDK_KIND_DOUBLE    : int fid, double value
+     *   SDK_KIND_BYTES     : int fid, byte[] value
+     *   SDK_KIND_INT_ARRAY : int[] fids, int[] values   (same length, 1..MAX_SDK_ARRAY)
+     * Reply: [int status, int 0]. status = the SDK's own return, 0 = INSTRUMENT_COMMAND_SUCCESS;
+     * the SDK's failure constants are large negatives (-2147482648 FAILED, -2147482647 BUSY,
+     * -2147482646 TIMEOUT, -2147482645 INVALID_VALUE); daemon-side -1 = class/method/field
+     * missing or reflection threw, -3 = no system context, -4 = malformed arguments.
+     */
+    val TX_SDK_SET: Int = IBinder.FIRST_CALL_TRANSACTION + 42               // 43
+
+    /**
+     * Navigation methods of `android.hardware.bydauto.instrument.BYDAutoInstrumentDevice`, the
+     * calls openbyd makes *in addition to* the feature writes (CarControlImpl.sendAutoNaviStatus,
+     * sendSimpleGuidanceInfo, sendNextPathName, sendRestRouteInfo, sendCameraGuidanceInfo).
+     *
+     * Request: int method (SDK_NAVI_*), then
+     *   SDK_NAVI_STATUS          : int status               -> sendAutoNaviStatus(int)
+     *   SDK_NAVI_SIMPLE_GUIDANCE : int iconId, int distance -> sendSimpleGuidanceInfo(int,int)
+     *   SDK_NAVI_NEXT_PATH_NAME  : String name              -> sendNextPathName(String)
+     *   SDK_NAVI_REST_ROUTE      : int hour, int minute, long mileage -> sendRestRouteInfo(int,int,long)
+     *   SDK_NAVI_CAMERA_GUIDANCE : int type, int distance, int state -> sendCameraGuidanceInfo(int,int,int)
+     * Reply: [int status, int 0], status semantics as TX_SDK_SET.
+     */
+    val TX_SDK_NAVI: Int = IBinder.FIRST_CALL_TRANSACTION + 43              // 44
+
+    /** Device selectors of TX_SDK_SET. Not autoservice device numbers: they name SDK classes. */
+    const val SDK_DEV_INSTRUMENT = 1   // android.hardware.bydauto.instrument.BYDAutoInstrumentDevice
+    const val SDK_DEV_SETTING = 2      // android.hardware.bydauto.setting.BYDAutoSettingDevice
+    const val SDK_DEV_STATISTIC = 3    // android.hardware.bydauto.statistic.BYDAutoStatisticDevice
+
+    /** Value kinds of TX_SDK_SET: which BYDAutoEventValue field is populated. */
+    const val SDK_KIND_INT = 0         // intValue
+    const val SDK_KIND_DOUBLE = 1      // doubleValue
+    const val SDK_KIND_BYTES = 2       // bufferDataValue
+    const val SDK_KIND_INT_ARRAY = 3   // intArrayValue
+
+    /** Methods of TX_SDK_NAVI. */
+    const val SDK_NAVI_STATUS = 1
+    const val SDK_NAVI_SIMPLE_GUIDANCE = 2
+    const val SDK_NAVI_NEXT_PATH_NAME = 3
+    const val SDK_NAVI_REST_ROUTE = 4
+    const val SDK_NAVI_CAMERA_GUIDANCE = 5
+
+    /** Hard cap on one SDK_KIND_INT_ARRAY write (openbyd's lane batch is 25). */
+    const val MAX_SDK_ARRAY: Int = 64
 
     /** Status codes of the TX_SPLIT37_* verbs. Distinct from the (status, value) autoservice
      *  convention: 2 says the firmware has no native split surface at all (methods absent on the

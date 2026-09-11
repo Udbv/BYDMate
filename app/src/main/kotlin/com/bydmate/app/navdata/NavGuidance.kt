@@ -8,6 +8,14 @@ data class NavGuidance(
     val etaSeconds: Int = 0,
     val totalDistMeters: Int = 0,
     val speedLimit: Int = 0,
+    /**
+     * Instrument-panel glyph number (openbyd `TURN_ICON_*`, 1..49) when the source names the
+     * panel picture directly, as the Waze arrow classifier does; 0 = not known, derive from
+     * [maneuverGaode]. The two numbering spaces differ (see HudInstrumentIcons).
+     */
+    val panelIcon: Int = 0,
+    /** Roundabout exit number as Waze prints it inside the arrow (`navBarDirectionText`). */
+    val exitNumber: Int? = null,
 )
 
 /** Pure parsers: raw Navigator widget strings -> NavGuidance. Shared by the a11y
