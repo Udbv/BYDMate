@@ -54,7 +54,7 @@ class ArrowSignatureTest {
             )
             val match = WazeArrowTable.match(shifted!!)
             assertNotNull("shifted $name should still find a shape", match)
-            assertTrue("shifted $name within tolerance", match!!.hamming <= 18)
+            assertTrue("shifted $name within tolerance", match!!.hamming <= 9)
         }
     }
 

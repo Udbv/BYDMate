@@ -37,8 +37,15 @@ object ArrowSignature {
     /** Exact hit aside, this many differing cells still counts as the same arrow. */
     private const val MAX_HAMMING = 4
 
-    /** Tolerance once the crop has been re-aligned by up to two cells in each direction. */
-    private const val MAX_SHIFTED_HAMMING = 18
+    /**
+     * Tolerance once the crop has been re-aligned by up to two cells in each direction.
+     *
+     * The donor accepts 18. On the Tang L (2026-09-11 drive, 105 px arrows) every true match came
+     * in at 0-8 and every false one - a shrinking arrow mid-animation or a partial crop read as a
+     * roundabout - at 11-14, so the line is drawn at 9. A wrong arrow on the glass costs more than
+     * a missed frame: the next capture is two seconds away.
+     */
+    private const val MAX_SHIFTED_HAMMING = 9
 
     /** Cells the shifted search tries in each axis. */
     private const val MAX_SHIFT = 2

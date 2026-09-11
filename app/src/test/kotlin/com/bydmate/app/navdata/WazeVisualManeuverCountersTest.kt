@@ -33,7 +33,7 @@ class WazeVisualManeuverCountersTest {
         assertEquals(null, counters.lastCompleted)
     }
 
-    @Test fun `a route bar whose arrow node reports no bounds falls back to the donor rectangle`() {
+    @Test fun `a route bar whose arrow node reports no bounds is not classified at all`() {
         // Waze does this while the route bar animates. openbyd measured where the arrow actually
         // sits on this head unit, so the capture goes ahead against that fixed rectangle rather
         // than skipping the maneuver entirely.
@@ -51,9 +51,10 @@ class WazeVisualManeuverCountersTest {
 
         val counters = WazeVisualManeuverReader.counters()
         assertEquals(1, counters.requested)
-        assertEquals(1, counters.started)
-        assertEquals("default", WazeVisualManeuverReader.diagnostics().targetSource)
-        assertEquals(183, WazeVisualManeuverReader.diagnostics().targetWidth)
+        // No navBarDirection bounds -> no screenshot at all: the donor's default rectangle lands on
+        // the map on the Tang L and produced 80 phantom roundabouts in one drive.
+        assertEquals(0, counters.started)
+        assertEquals("maneuver_bounds_not_found", WazeVisualManeuverReader.diagnostics().failure)
     }
 
     @Test fun `a foreign root is requested but never produces a completion target`() {

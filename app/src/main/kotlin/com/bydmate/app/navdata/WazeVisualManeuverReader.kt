@@ -249,12 +249,11 @@ object WazeVisualManeuverReader {
     }
 
     /**
-     * The arrow's rectangle: the first `navBarDirection` node with a real size, else the fixed
-     * rectangle openbyd falls back to on the DiLink cluster layout.
+     * The arrow's rectangle: the first `navBarDirection` node with a real size, else null.
      *
-     * The fallback is not a guess - it is the arrow's position on this head unit, measured by the
-     * donor and field-proven - and it matters because Waze sometimes reports the node with zero
-     * bounds while still painting the arrow.
+     * openbyd falls back to a fixed phone-layout rectangle here; on the Tang L that rectangle is
+     * map, and the 2026-09-11 drive log shows what a map does to a shape matcher (see below), so
+     * this port deliberately classifies nothing without the node.
      */
     internal fun findTarget(root: AccessibilityNodeInfo): Target? {
         val pkg = runCatching { root.packageName?.toString() }.getOrNull()
@@ -283,11 +282,11 @@ object WazeVisualManeuverReader {
                 recycle(node)
             }
         }
-        return if (bounds != null) {
-            Target(displayId, bounds, "navBarDirection")
-        } else {
-            Target(displayId, Rect(DEFAULT_LEFT, DEFAULT_TOP, DEFAULT_RIGHT, DEFAULT_BOTTOM), "default")
-        }
+        // Field evidence (Tang L, 2026-09-11 drive): when Waze reports no navBarDirection bounds the
+        // donor's default rectangle lands on the MAP on this head unit, and the map matched
+        // "directions_roundabout" 80 times in one drive (hamming 10-12) while every real arrow
+        // matched at 0-8. So a missing node means "no classification", not "classify the default".
+        return bounds?.let { Target(displayId, it, "navBarDirection") }
     }
 
     /**
@@ -428,10 +427,6 @@ object WazeVisualManeuverReader {
      * Kept as four ints rather than a `Rect` constant so this object can be loaded by a plain JVM
      * test - the classification core below is pure arithmetic and is tested without a device.
      */
-    private const val DEFAULT_LEFT = 26
-    private const val DEFAULT_TOP = 115
-    private const val DEFAULT_RIGHT = 209
-    private const val DEFAULT_BOTTOM = 298
 
     /** Fraction of the value range that separates arrow from background; openbyd's arrow setting. */
     private const val ARROW_THRESHOLD = 0.8f
