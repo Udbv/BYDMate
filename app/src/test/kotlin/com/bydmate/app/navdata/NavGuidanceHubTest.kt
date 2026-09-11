@@ -258,6 +258,83 @@ class NavGuidanceHubTest {
     }
 
     @Test
+    fun `a route goes stale after forty seconds, not ninety`() {
+        // openbyd's window, and the keep-alive re-read fires every 20 s while a route is live, so
+        // nothing legitimate comes near it. The old value left a finished route on the glass.
+        assertEquals(40_000L, NavGuidanceHub.ACTIVE_TIMEOUT_MS)
+    }
+
+    @Test
+    fun `a classified Waze arrow sets the panel glyph and derives the maneuver`() {
+        NavGuidanceHub.update(NavGuidance(distanceMeters = 300, road = "Main"), NavGuidanceHub.Source.A11Y, nowMs = 1000)
+
+        assertTrue(NavGuidanceHub.updateWazeArrow(panelIcon = 2, exitNumber = null, nowMs = 1100))
+
+        val s = NavGuidanceHub.snapshot(nowMs = 1100)
+        assertEquals(2, s.panelIcon)
+        assertEquals(2, s.maneuverGaode)
+        assertEquals(1100L, s.panelIconMs)
+    }
+
+    @Test
+    fun `an unmatched arrow leaves the maneuver the text path read`() {
+        NavGuidanceHub.update(NavGuidance(maneuverGaode = 2, distanceMeters = 300), NavGuidanceHub.Source.A11Y, nowMs = 1000)
+
+        assertFalse(NavGuidanceHub.updateWazeArrow(panelIcon = 0, exitNumber = 3, nowMs = 1100))
+
+        val s = NavGuidanceHub.snapshot(nowMs = 1100)
+        assertEquals(0, s.panelIcon)
+        assertEquals(2, s.maneuverGaode)
+        assertEquals(3, s.exitNumber)
+    }
+
+    @Test
+    fun `an arrow without a live route is not guidance on its own`() {
+        assertFalse(NavGuidanceHub.updateWazeArrow(panelIcon = 2, exitNumber = null, nowMs = 1000))
+        assertEquals(0, NavGuidanceHub.snapshot(nowMs = 1000).panelIcon)
+    }
+
+    @Test
+    fun `the panel glyph expires with the maneuver`() {
+        NavGuidanceHub.update(NavGuidance(distanceMeters = 300), NavGuidanceHub.Source.A11Y, nowMs = 1000)
+        NavGuidanceHub.updateWazeArrow(panelIcon = 27, exitNumber = 3, nowMs = 1000)
+
+        assertEquals(27, NavGuidanceHub.snapshot(nowMs = 1000 + NavGuidanceHub.MANEUVER_TIMEOUT_MS).panelIcon)
+        assertEquals(0, NavGuidanceHub.snapshot(nowMs = 1001 + NavGuidanceHub.MANEUVER_TIMEOUT_MS).panelIcon)
+    }
+
+    @Test
+    fun `a finished route takes its exit number with it`() {
+        NavGuidanceHub.update(NavGuidance(distanceMeters = 300), NavGuidanceHub.Source.A11Y, nowMs = 1000)
+        NavGuidanceHub.updateWazeArrow(panelIcon = 27, exitNumber = 3, nowMs = 1000)
+
+        val s = NavGuidanceHub.snapshot(nowMs = 1001 + NavGuidanceHub.ACTIVE_TIMEOUT_MS)
+
+        assertFalse(s.active)
+        assertEquals(null, s.exitNumber)
+        assertEquals(0, s.panelIcon)
+    }
+
+    @Test
+    fun `panel glyphs translate back into the AutoNavi numbering`() {
+        assertEquals(1, NavGuidanceHub.gaodeOf(1))
+        assertEquals(2, NavGuidanceHub.gaodeOf(2))
+        assertEquals(3, NavGuidanceHub.gaodeOf(3))
+        assertEquals(4, NavGuidanceHub.gaodeOf(5))
+        assertEquals(9, NavGuidanceHub.gaodeOf(9))
+        assertEquals(10, NavGuidanceHub.gaodeOf(10))
+        assertEquals(11, NavGuidanceHub.gaodeOf(11))
+        // The roundabout direction variants have no AutoNavi name and collapse to the plain one.
+        for (icon in 15..24) assertEquals(13, NavGuidanceHub.gaodeOf(icon))
+        for (icon in 25..44) assertEquals(icon, NavGuidanceHub.gaodeOf(icon))
+        assertEquals(45, NavGuidanceHub.gaodeOf(45))
+        assertEquals(48, NavGuidanceHub.gaodeOf(48))
+        assertEquals(11, NavGuidanceHub.gaodeOf(0))
+        assertEquals(11, NavGuidanceHub.gaodeOf(4))
+        assertEquals(11, NavGuidanceHub.gaodeOf(49))
+    }
+
+    @Test
     fun `notification grace deactivates only when stale`() {
         NavGuidanceHub.updateFromNotification(NavGuidanceHub.RichUpdate(
             maneuverGaode = 2, road = "x", cameraAlert = "camera"), nowMs = 1000)

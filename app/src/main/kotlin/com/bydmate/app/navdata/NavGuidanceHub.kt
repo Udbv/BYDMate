@@ -16,7 +16,14 @@ import android.util.Log
  *    "route ended" signal: 10 s of that deactivates the snapshot (markNoGuidance). */
 object NavGuidanceHub {
     private const val TAG = "NavGuidanceHub"
-    const val ACTIVE_TIMEOUT_MS = 90_000L
+    /**
+     * How long a route survives with no source refreshing it.
+     *
+     * 40 s, down from 90: openbyd drops its navigation state after 40 s of silence, and the keep-
+     * alive re-read in [NavA11yFeed] fires every 20 s while a route is live, so nothing legitimate
+     * gets close to this. The old value kept a finished route on the glass for a minute and a half.
+     */
+    const val ACTIVE_TIMEOUT_MS = 40_000L
     const val SPEED_LIMIT_TIMEOUT_MS = 30_000L
     /** Maneuver freshness. The donor holds an a11y maneuver 10 s (20 s while a distance
      *  is known) and then falls back to its SEPARATE notification-enum maneuver; here both
@@ -81,6 +88,10 @@ object NavGuidanceHub {
         cameraAlert = "",
         cameraDistanceMeters = 0,
         cameraIconPng = null,
+        // openbyd clears lastExitNumber with the route; a stale exit would otherwise renumber the
+        // first roundabout of the NEXT route before its own number is read.
+        panelIcon = 0,
+        exitNumber = null,
     )
 
     // @Synchronized because expiry writes back: an unsynchronized write here could
@@ -115,7 +126,76 @@ object NavGuidanceHub {
             current = s
             Log.i(TAG, "maneuver expired: no maneuver read for ${MANEUVER_TIMEOUT_MS / 1000}s")
         }
+        // The panel glyph has its own clock: it is written by the arrow classifier, which can stop
+        // matching (arrow off screen, Waze minimized) while the text path keeps a maneuver alive.
+        if (s.panelIcon > 0 && nowMs - s.panelIconMs > MANEUVER_TIMEOUT_MS) {
+            s = s.copy(panelIcon = 0)
+            current = s
+            Log.i(TAG, "panel icon expired: no arrow matched for ${MANEUVER_TIMEOUT_MS / 1000}s")
+        }
         return s
+    }
+
+    /**
+     * One classified Waze arrow: the panel glyph openbyd would write, plus the roundabout exit
+     * number that was in force when it was classified.
+     *
+     * Only a matched arrow gets here with a glyph; an unmatched one passes 0 and leaves the text
+     * path's maneuver alone. [maneuverGaode] is derived from the glyph so every consumer that
+     * still speaks the AutoNavi numbering (the windshield card, the voice agent) keeps working -
+     * the panel writer prefers [Snapshot.panelIcon] itself.
+     *
+     * Never activates a route: a bare arrow with no distance or street is not guidance.
+     */
+    @Synchronized
+    fun updateWazeArrow(
+        panelIcon: Int,
+        exitNumber: Int?,
+        nowMs: Long = System.currentTimeMillis(),
+    ): Boolean {
+        val snapshot = snapshot(nowMs)
+        if (!snapshot.active) return false
+        val changed = snapshot.panelIcon != panelIcon && panelIcon > 0
+        current = current.copy(
+            panelIcon = if (panelIcon > 0) panelIcon else current.panelIcon,
+            panelIconMs = if (panelIcon > 0) nowMs else current.panelIconMs,
+            maneuverGaode = if (panelIcon > 0) gaodeOf(panelIcon) else current.maneuverGaode,
+            maneuverGaodeMs = if (panelIcon > 0) nowMs else current.maneuverGaodeMs,
+            exitNumber = exitNumber ?: current.exitNumber,
+        )
+        return changed
+    }
+
+    /**
+     * Roundabout exit number as printed inside the Waze arrow, stored verbatim (null included) so a
+     * roundabout that no longer prints one stops renumbering the glyph. The donor keeps the same
+     * single mutable field beside its route state.
+     */
+    @Synchronized
+    fun setExitNumber(exitNumber: Int?) {
+        current = current.copy(exitNumber = exitNumber)
+    }
+
+    /**
+     * Instrument-panel glyph -> AutoNavi maneuver code. The two numbering spaces only partly
+     * overlap, so this is a deliberate table rather than an identity:
+     *  - 5 (slight right on the panel) is 4 in AutoNavi;
+     *  - 15..24, the roundabout direction variants, have no AutoNavi equivalent at all and collapse
+     *    to the plain roundabout 13;
+     *  - 25..44, the numbered roundabout exits, pass through (35..44 are the left-hand-traffic
+     *    block, which AutoNavi has no name for but which no consumer re-derives);
+     *  - anything else answers 11, the neutral "straight", which is what openbyd writes when it
+     *    cannot name the arrow.
+     */
+    fun gaodeOf(panelIcon: Int): Int = when (panelIcon) {
+        1, 2, 3 -> panelIcon
+        5 -> 4
+        9, 10, 11 -> panelIcon
+        in 15..24 -> 13
+        in 25..44 -> panelIcon
+        45 -> 45
+        48 -> 48
+        else -> 11
     }
 
     /**
@@ -154,6 +234,9 @@ object NavGuidanceHub {
             speedLimit = if (data.speedLimit > 0) data.speedLimit else prev.speedLimit,
             speedLimitMs = if (data.speedLimit > 0) nowMs else prev.speedLimitMs,
             lastUpdateMs = nowMs,
+            panelIcon = if (data.panelIcon > 0) data.panelIcon else prev.panelIcon,
+            panelIconMs = if (data.panelIcon > 0) nowMs else prev.panelIconMs,
+            exitNumber = data.exitNumber ?: prev.exitNumber,
         )
         if (source == Source.A11Y) lastA11yMs = nowMs
     }

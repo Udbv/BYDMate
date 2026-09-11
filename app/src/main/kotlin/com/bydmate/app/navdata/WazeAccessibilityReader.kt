@@ -15,6 +15,7 @@ object WazeAccessibilityReader {
     private const val MAX_FALLBACK_TREE_NODES = 256
     private val COMPOSE_TEST_TAG = Regex("^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$")
     private val SPEED_LIMIT = Regex("""(?<![-+\d])(\d{1,3})(?!\d)""")
+    private val STRICT_INT = Regex("""^[+-]?\d+$""")
     // "2-й съезд", "на 2-му з'їзді", "2nd exit": exit nouns and ordinal suffixes come from the
     // language packs (assets/navi/phrases); apostrophes are normalized in numberedExit() first.
     private val NUMBERED_EXIT: Regex get() = NavPhraseTables.current.numberedExitQuick
@@ -42,7 +43,20 @@ object WazeAccessibilityReader {
         val remainingTime: String?,
         val arrivalTime: String?,
         val speedLimit: String?,
-        val exitNumber: String?,
+        /**
+         * Roundabout exit number Waze prints inside the arrow (`navBarDirectionText`), parsed as a
+         * strict integer. It is a number and nothing else - never an instruction - so it is not fed
+         * to the text parser; it exists to override the arrow classifier's roundabout glyph.
+         *
+         * When that node is absent entirely the exit named by the instruction text stands in, which
+         * is the only exit number the Yandex-era phrase path ever had.
+         */
+        val exitNumber: Int?,
+        /**
+         * Exit number named by the instruction text ("take the 2nd exit"). Unlike [exitNumber] this
+         * one is a maneuver statement, so it still resolves to a roundabout code on its own.
+         */
+        val textExitNumber: String?,
     )
 
     /**
@@ -116,7 +130,7 @@ object WazeAccessibilityReader {
         if (!fields.remainingTime.isNullOrBlank()) score += 6
         if (!fields.arrivalTime.isNullOrBlank()) score += 4
         if (!fields.speedLimit.isNullOrBlank()) score += 2
-        if (!fields.exitNumber.isNullOrBlank()) score += 2
+        if (fields.exitNumber != null) score += 2
         return score
     }
 
@@ -130,9 +144,11 @@ object WazeAccessibilityReader {
         val pkg = runCatching { root.packageName?.toString() }.getOrNull()
             ?.takeIf(NavPackages::isWazePackage)
             ?: return null
+        // navBarDirectionText is deliberately NOT in this list. It carries the roundabout exit
+        // number and nothing else; parsed as an instruction, a bare "2" reads as an unrecognized
+        // maneuver and pushed the whole route to code 0 (the roundabout never reached the panel).
         val maneuverRead = maneuverScan(
             root,
-            "$pkg:id/navBarDirectionText",
             "$pkg:id/navBarInstructionText",
             "$pkg:id/navBarInstruction",
             "$pkg:id/instructionView",
@@ -207,6 +223,8 @@ object WazeAccessibilityReader {
         // ETA may remain visible in preview/search UI. A maneuver bar field is the honest signal
         // that active guidance is available for HUD output.
         if (maneuver == null && maneuverDistance == null && street == null) return null
+        val textExitNumber = numberedExit(maneuver)
+        val directionText = firstNodeText(root, "$pkg:id/navBarDirectionText")
         return Fields(
             maneuver = maneuver,
             maneuverDistance = maneuverDistance,
@@ -215,9 +233,39 @@ object WazeAccessibilityReader {
             remainingTime = remainingTime,
             arrivalTime = arrivalTime,
             speedLimit = speedLimit,
-            exitNumber = numberedExit(maneuver),
+            exitNumber = if (directionText != null) {
+                strictInt(directionText)
+            } else {
+                textExitNumber?.toIntOrNull()
+            },
+            textExitNumber = textExitNumber,
         )
     }
+
+    /**
+     * Text of the first node with [id], visible or not.
+     *
+     * Visibility is checked everywhere else in this reader, but not here: Waze reports the exit
+     * number's TextView as not visible to the user on the DiLink cluster layout while it is plainly
+     * painted inside the arrow, and openbyd reads it unconditionally for that reason.
+     */
+    private fun firstNodeText(root: AccessibilityNodeInfo, id: String): String? {
+        val nodes = runCatching { root.findAccessibilityNodeInfosByViewId(id) }.getOrNull() ?: return null
+        var text: String? = null
+        var seen = false
+        for (node in nodes) {
+            if (!seen) {
+                seen = true
+                text = runCatching { node.text?.toString() }.getOrNull()
+            }
+            recycle(node)
+        }
+        return text
+    }
+
+    /** `^[+-]?\d+$` on the trimmed value - the whole string is the number, or there is none. */
+    private fun strictInt(value: String): Int? =
+        value.trim().takeIf(STRICT_INT::matches)?.toIntOrNull()
 
     /**
      * Direction carried by the event that changed Waze's route bar.

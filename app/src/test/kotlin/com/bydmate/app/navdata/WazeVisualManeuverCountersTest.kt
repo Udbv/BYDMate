@@ -33,7 +33,10 @@ class WazeVisualManeuverCountersTest {
         assertEquals(null, counters.lastCompleted)
     }
 
-    @Test fun `a route bar without any croppable arrow completes without starting a screenshot`() {
+    @Test fun `a route bar whose arrow node reports no bounds falls back to the donor rectangle`() {
+        // Waze does this while the route bar animates. openbyd measured where the arrow actually
+        // sits on this head unit, so the capture goes ahead against that fixed rectangle rather
+        // than skipping the maneuver entirely.
         val service = mockk<AccessibilityService>(relaxed = true)
         val root = mockk<AccessibilityNodeInfo>(relaxed = true) {
             every { packageName } returns "com.waze"
@@ -44,13 +47,13 @@ class WazeVisualManeuverCountersTest {
             every { findAccessibilityNodeInfosByViewId(any()) } returns emptyList()
         }
 
-        WazeVisualManeuverReader.request(service, root) { }
+        WazeVisualManeuverReader.request(service, root, null) { }
 
         val counters = WazeVisualManeuverReader.counters()
         assertEquals(1, counters.requested)
-        assertEquals(0, counters.started)
-        assertEquals(1, counters.completed)
-        assertEquals("maneuver_bounds_not_found", counters.lastCompleted?.failure)
+        assertEquals(1, counters.started)
+        assertEquals("default", WazeVisualManeuverReader.diagnostics().targetSource)
+        assertEquals(183, WazeVisualManeuverReader.diagnostics().targetWidth)
     }
 
     @Test fun `a foreign root is requested but never produces a completion target`() {
@@ -59,9 +62,10 @@ class WazeVisualManeuverCountersTest {
             every { packageName } returns "com.android.launcher"
         }
 
-        WazeVisualManeuverReader.request(service, root) { }
+        WazeVisualManeuverReader.request(service, root, null) { }
 
         assertEquals(1, WazeVisualManeuverReader.counters().requested)
         assertEquals(0, WazeVisualManeuverReader.counters().started)
+        assertEquals("not_a_waze_window", WazeVisualManeuverReader.counters().lastCompleted?.failure)
     }
 }
