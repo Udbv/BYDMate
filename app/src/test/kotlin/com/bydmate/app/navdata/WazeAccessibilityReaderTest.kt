@@ -64,6 +64,7 @@ class WazeAccessibilityReaderTest {
         arrivalTime = arrivalTime,
         speedLimit = null,
         exitNumber = null,
+        textExitNumber = null,
     )
 
     @Test fun `guidance score prefers complete route window over stale short arrow`() {

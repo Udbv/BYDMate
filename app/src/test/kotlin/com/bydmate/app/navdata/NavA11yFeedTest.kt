@@ -25,9 +25,11 @@ class NavA11yFeedTest {
         assertFalse(NavA11yFeed.shouldProcess("ru.yandex.yandexnavi", clicked, nowMs = 1000, lastMs = 0))
     }
 
+    /** 200 ms, openbyd's window. Waze emits the arrow and the distance as separate events tens of
+     *  milliseconds apart, and the old 500 ms floor swallowed one of the pair every time. */
     @Test fun `debounce blocks rapid events`() {
-        assertFalse(NavA11yFeed.shouldProcess("ru.yandex.yandexnavi", contentChanged, nowMs = 1400, lastMs = 1000))
-        assertTrue(NavA11yFeed.shouldProcess("ru.yandex.yandexnavi", contentChanged, nowMs = 1500, lastMs = 1000))
+        assertFalse(NavA11yFeed.shouldProcess("ru.yandex.yandexnavi", contentChanged, nowMs = 1150, lastMs = 1000))
+        assertTrue(NavA11yFeed.shouldProcess("ru.yandex.yandexnavi", contentChanged, nowMs = 1200, lastMs = 1000))
     }
 
     @Test fun `maps packages pass`() {

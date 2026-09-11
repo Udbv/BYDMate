@@ -12,10 +12,12 @@ class WazeGuidanceParserTest {
         maneuver: String? = null, distance: String? = null, street: String? = null,
         remainingDistance: String? = null, remainingTime: String? = null,
         arrivalTime: String? = null, speedLimit: String? = null, exitNumber: String? = null,
+        directionTextExit: Int? = null,
     ) = WazeAccessibilityReader.Fields(
         maneuver = maneuver, maneuverDistance = distance, street = street,
         remainingDistance = remainingDistance, remainingTime = remainingTime,
-        arrivalTime = arrivalTime, speedLimit = speedLimit, exitNumber = exitNumber,
+        arrivalTime = arrivalTime, speedLimit = speedLimit,
+        exitNumber = directionTextExit ?: exitNumber?.toIntOrNull(), textExitNumber = exitNumber,
     )
 
     @Test fun `eta alone is not guidance`() {
@@ -43,6 +45,23 @@ class WazeGuidanceParserTest {
         assertEquals(26, WazeGuidanceParser.parse(fields(maneuver = "Turn right", exitNumber = "2", distance = "300 m"))!!.maneuverGaode)
         assertEquals(24, WazeGuidanceParser.parse(fields(maneuver = "Take the 12th exit", exitNumber = "12", distance = "300 m"))!!.maneuverGaode)
         assertEquals(27, WazeGuidanceParser.resolveManeuver("At the roundabout, take the 3rd exit", "3"))
+    }
+
+    @Test fun `the exit number printed inside the arrow is passed through, not turned into a maneuver`() {
+        // Waze's navBarDirectionText is a bare "2". On its own it says nothing about the junction -
+        // only the arrow picture does - so it must reach NavGuidance untouched and leave the
+        // maneuver code alone. Treating it as instruction text is what kept roundabouts off the
+        // panel: a bare number parsed to 0 and wiped the read.
+        val parsed = WazeGuidanceParser.parse(
+            fields(maneuver = "Turn right onto Main St", distance = "300 m", directionTextExit = 2),
+        )!!
+
+        assertEquals(2, parsed.exitNumber)
+        assertEquals(2, parsed.maneuverGaode)
+    }
+
+    @Test fun `no exit number at all stays null`() {
+        assertNull(WazeGuidanceParser.parse(fields(maneuver = "Turn right", distance = "300 m"))!!.exitNumber)
     }
 
     @Test fun `remaining time in english and russian`() {

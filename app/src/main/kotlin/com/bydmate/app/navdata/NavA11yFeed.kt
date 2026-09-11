@@ -11,7 +11,9 @@ import com.bydmate.app.cluster.SteeringWheelKeyService
  *  a11y events fire far more often. */
 object NavA11yFeed {
     private const val TAG = "NavA11yFeed"
-    private const val DEBOUNCE_MS = 500L
+    /** openbyd's Waze debounce. The arrow and the distance arrive as separate events a few tens of
+     *  milliseconds apart, and at 500 ms one of the two was routinely dropped. */
+    private const val DEBOUNCE_MS = 200L
     /** Cycle guard for the parent climb: a stale tree can hand back a looping chain. */
     private const val MAX_PARENT_HOPS = 64
     /** Lane-widget research dump: bounded so a deep tree cannot stall the a11y thread
@@ -183,7 +185,11 @@ object NavA11yFeed {
                     NavGuidanceHub.update(data, NavGuidanceHub.Source.A11Y, nowMs)
                     logRead(pkg, data, nowMs)
                     dumpTreeOnManeuverChange(root, data.maneuverGaode, nowMs)
-                    if (data.maneuverGaode == 0) requestWazeVisualManeuver(service, root)
+                    // Unconditionally, not only when the text path drew a blank: on this Waze the
+                    // arrow IS the maneuver, and gating the classifier behind gaode==0 meant one
+                    // bogus text match (an ARRIVE parsed off an unrelated panel) silenced it for
+                    // the whole drive.
+                    requestWazeVisualManeuver(service, root, data.exitNumber)
                     readLanes(root)
                     armKeepAlive()
                 }
@@ -303,22 +309,39 @@ object NavA11yFeed {
         return data.copy(maneuverGaode = hint)
     }
 
-    private fun requestWazeVisualManeuver(service: SteeringWheelKeyService, root: AccessibilityNodeInfo) {
+    private fun requestWazeVisualManeuver(
+        service: SteeringWheelKeyService,
+        root: AccessibilityNodeInfo,
+        exitNumber: Int?,
+    ) {
         if (!NavPackages.isWazePackage(runCatching { root.packageName?.toString() }.getOrNull())) return
+        // The exit number goes into the hub BEFORE the request: the screenshot completes
+        // asynchronously, and by the time a roundabout arrow is recognised the read that carried
+        // its number is long gone. openbyd keeps the same single "last exit number" for exactly
+        // this reason.
+        NavGuidanceHub.setExitNumber(exitNumber)
         // request() reads the tree synchronously (the caller recycles root afterwards) and
-        // classifies on the service executor; only the resulting code reaches the hub.
+        // classifies on the service executor; only the resulting glyph reaches the hub.
         runCatching {
-            WazeVisualManeuverReader.request(service, root) { gaode ->
-                if (enabled) applyVisualManeuver(gaode)
+            WazeVisualManeuverReader.request(service, root, exitNumber) { classification ->
+                if (enabled) applyWazeArrow(classification, exitNumber)
             }
         }
     }
 
     /** Applies one classified arrow. Logs edges only: the classifier re-reads the same arrow
-     *  about once a second for the whole approach to a turn. */
-    internal fun applyVisualManeuver(gaode: Int, nowMs: Long = System.currentTimeMillis()) {
-        if (NavGuidanceHub.updateManeuverHint(gaode, NavGuidanceHub.Source.A11Y, nowMs)) {
-            Log.i(TAG, "Waze visual maneuver=${NavManeuverCodes.codeName(gaode)} gaode=$gaode")
+     *  every two seconds for the whole approach to a turn. */
+    internal fun applyWazeArrow(
+        classification: WazeVisualManeuverReader.Classification,
+        exitNumber: Int?,
+        nowMs: Long = System.currentTimeMillis(),
+    ) {
+        if (NavGuidanceHub.updateWazeArrow(classification.panelIcon, exitNumber, nowMs)) {
+            Log.i(
+                TAG,
+                "Waze arrow '${classification.matchedName}' hamming=${classification.hamming} " +
+                    "icon=${classification.panelIcon} exit=$exitNumber",
+            )
         }
     }
 

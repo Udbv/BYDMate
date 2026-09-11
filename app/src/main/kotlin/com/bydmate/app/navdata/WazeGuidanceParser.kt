@@ -30,7 +30,7 @@ object WazeGuidanceParser {
     /** Null when no maneuver-bar field is visible: ETA alone (preview/search UI) is not guidance. */
     fun parse(f: WazeAccessibilityReader.Fields): NavGuidance? {
         if (f.maneuver == null && f.maneuverDistance == null && f.street == null) return null
-        val maneuverGaode = resolveManeuver(f.maneuver, f.exitNumber)
+        val maneuverGaode = resolveManeuver(f.maneuver, f.textExitNumber)
         if (maneuverGaode == 0 && !f.maneuver.isNullOrBlank()) {
             // Field diagnostic (no text logged): a maneuver string the packs did not recognize.
             val t = NavPhraseTables.current
@@ -45,6 +45,10 @@ object WazeGuidanceParser {
             etaSeconds = parseDurationSeconds(f.remainingTime),
             totalDistMeters = parseDistanceText(f.remainingDistance),
             speedLimit = parseSpeedLimit(f.speedLimit),
+            // Passed through, never turned into a maneuver here: on its own a bare number says
+            // nothing about the shape of the junction. It becomes a code only once the arrow
+            // classifier has said the arrow IS a roundabout (openbyd applies it the same way).
+            exitNumber = f.exitNumber,
         )
     }
 

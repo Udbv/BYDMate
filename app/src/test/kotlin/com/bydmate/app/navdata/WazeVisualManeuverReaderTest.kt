@@ -1,95 +1,89 @@
 package com.bydmate.app.navdata
 
+import com.bydmate.app.navdata.waze.ArrowFixtures
+import com.bydmate.app.navdata.waze.WazeArrowTable
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * The classification step between the cropped pixels and the panel glyph: the signature match, the
+ * roundabout exit override, and what happens when nothing is recognised.
+ */
 class WazeVisualManeuverReaderTest {
-    private fun turnMask(right: Boolean): BooleanArray {
-        val width = 100
-        val mask = BooleanArray(width * width)
-        fun fill(left: Int, top: Int, rightEdge: Int, bottom: Int) {
-            for (y in top until bottom) for (x in left until rightEdge) mask[y * width + x] = true
-        }
-        fill(45, 38, 55, 92)
-        if (right) {
-            fill(45, 28, 82, 43)
-            for (i in 0 until 20) fill(72 + i / 2, 18 + i, 78 + i / 2, 20 + i)
-        } else {
-            fill(18, 28, 55, 43)
-            for (i in 0 until 20) fill(22 - i / 2, 18 + i, 28 - i / 2, 20 + i)
-        }
-        return mask
-    }
 
-    @Test fun `connected right arrow shape maps to Waze right`() {
-        val result = WazeVisualManeuverReader.classifyForegroundMask(100, 100, turnMask(true))
+    private fun signatureOf(name: String): String =
+        WazeArrowTable.entries.entries.first { it.value == name }.key.asString()
 
-        assertEquals(NavManeuverCodes.GAODE_RIGHT, result?.maneuverGaode)
-        assertTrue((result?.horizontalShift ?: 0f) > 0f)
-    }
-
-    @Test fun `connected left arrow shape maps to Waze left`() {
-        val result = WazeVisualManeuverReader.classifyForegroundMask(100, 100, turnMask(false))
-
-        assertEquals(NavManeuverCodes.GAODE_LEFT, result?.maneuverGaode)
-        assertTrue((result?.horizontalShift ?: 0f) < 0f)
-    }
-
-    @Test fun `straight symmetric arrow maps to straight without inventing a side`() {
-        val mask = BooleanArray(100 * 100)
-        for (y in 15 until 92) for (x in 45 until 55) mask[y * 100 + x] = true
-        for (i in 0 until 18) {
-            for (x in 45 - i / 2 until 55 + i / 2) mask[(15 + i) * 100 + x] = true
-        }
-
-        assertEquals(
-            NavManeuverCodes.GAODE_STRAIGHT,
-            WazeVisualManeuverReader.classifyForegroundMask(100, 100, mask)?.maneuverGaode,
+    private fun classify(name: String, exitNumber: Int? = null, side: Int = 183) =
+        WazeVisualManeuverReader.classifyPixels(
+            side,
+            side,
+            ArrowFixtures.render(signatureOf(name), side),
+            exitNumber,
         )
+
+    @Test fun `a recognised turn becomes its panel glyph`() {
+        val result = classify("big_trans_direction_left")
+
+        assertEquals(1, result.panelIcon)
+        assertEquals("big_trans_direction_left", result.matchedName)
+        assertEquals(0, result.hamming)
     }
 
-    @Test fun `tiny disconnected noise is rejected`() {
-        val mask = BooleanArray(100 * 100)
-        repeat(12) { mask[(it * 317) % mask.size] = true }
-
-        assertNull(WazeVisualManeuverReader.classifyForegroundMask(100, 100, mask))
+    @Test fun `a roundabout takes the exit number Waze printed inside it`() {
+        // 24 + 3: the panel's own numbering for "third exit, right-hand traffic".
+        assertEquals(27, classify("big_trans_directions_roundabout", exitNumber = 3).panelIcon)
     }
 
-    @Test fun `plain circular notification badge is not mistaken for straight`() {
-        val mask = BooleanArray(100 * 100)
-        for (y in 5 until 95) for (x in 5 until 95) {
-            val dx = x - 50
-            val dy = y - 50
-            if (dx * dx + dy * dy <= 40 * 40) mask[y * 100 + x] = true
-        }
-
-        assertEquals(
-            0,
-            WazeVisualManeuverReader.classifyForegroundMask(100, 100, mask)?.maneuverGaode,
-        )
+    @Test fun `a left-hand-traffic roundabout uses the second block of exit glyphs`() {
+        // 34 + 2, not 24 + 2: the UK/LHS artwork has its own ten glyphs on the panel.
+        assertEquals(36, classify("big_trans_directions_roundabout_lhs", exitNumber = 2).panelIcon)
+        assertEquals(36, classify("car_dark_big_directions_roundabout_uk", exitNumber = 2).panelIcon)
     }
 
-    @Test fun `white arrow is recovered from inside coloured maneuver disc`() {
-        val width = 100
-        val pixels = IntArray(width * width) { 0xff202124.toInt() }
-        val purple = 0xff7356a8.toInt()
-        val white = 0xfff7f7f7.toInt()
-        for (y in 10 until 95) {
-            for (x in 5 until 95) {
-                val dx = x - 50
-                val dy = y - 52
-                if (dx * dx + dy * dy <= 40 * 40) pixels[y * width + x] = purple
-            }
-        }
-        turnMask(right = true).forEachIndexed { index, arrow ->
-            if (arrow) pixels[index] = white
+    @Test fun `a roundabout without an exit number keeps its plain glyph`() {
+        assertEquals(25, classify("big_trans_directions_roundabout").panelIcon)
+        assertEquals(35, classify("big_trans_directions_roundabout_lhs").panelIcon)
+    }
+
+    @Test fun `a non-roundabout arrow ignores a stale exit number`() {
+        assertEquals(1, classify("big_trans_direction_left", exitNumber = 3).panelIcon)
+    }
+
+    @Test fun `an unmatched arrow leaves the glyph unknown and reports its shape`() {
+        val half = IntArray(183 * 183) { index ->
+            if (index / 183 < 91) ArrowFixtures.INK else ArrowFixtures.PAPER
         }
 
-        assertEquals(
-            NavManeuverCodes.GAODE_RIGHT,
-            WazeVisualManeuverReader.classifyPixels(width, width, pixels)?.maneuverGaode,
-        )
+        val result = WazeVisualManeuverReader.classifyPixels(183, 183, half, null)
+
+        // 0, not the donor's 11: an unknown arrow must not overwrite a maneuver the text path read.
+        assertEquals(0, result.panelIcon)
+        assertNull(result.matchedName)
+        assertEquals(225, result.gridString.length)
+    }
+
+    @Test fun `a crop with no contrast produces no shape string at all`() {
+        val blank = IntArray(183 * 183) { ArrowFixtures.PAPER }
+
+        val result = WazeVisualManeuverReader.classifyPixels(183, 183, blank, 7)
+
+        assertEquals(0, result.panelIcon)
+        assertNull(result.matchedName)
+        assertEquals("", result.gridString)
+    }
+
+    @Test fun `every reference arrow classifies to the glyph its name names`() {
+        for ((grid, name) in WazeArrowTable.entries) {
+            val result = WazeVisualManeuverReader.classifyPixels(
+                183,
+                183,
+                ArrowFixtures.render(grid.asString(), 183),
+                null,
+            )
+            assertEquals(name, result.matchedName)
+            assertEquals("glyph for $name", WazeArrowTable.iconFor(name), result.panelIcon)
+        }
     }
 }
