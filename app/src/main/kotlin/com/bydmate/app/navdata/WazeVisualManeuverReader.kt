@@ -134,9 +134,11 @@ object WazeVisualManeuverReader {
         countRequest()
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
         val target = findTarget(root) ?: run {
+            val isWaze = runCatching { root.packageName?.toString() }.getOrNull()
+                ?.let(NavPackages::isWazePackage) == true
             val result = Diagnostics(
                 attemptedAtMs = System.currentTimeMillis(),
-                failure = "not_a_waze_window",
+                failure = if (isWaze) "maneuver_bounds_not_found" else "not_a_waze_window",
             )
             latest = result
             countCompletion(result)
