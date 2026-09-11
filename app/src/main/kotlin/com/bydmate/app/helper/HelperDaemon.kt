@@ -4,7 +4,9 @@ package com.bydmate.app.helper
 import com.bydmate.app.BuildConfig
 import android.content.ComponentName
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -180,6 +182,8 @@ fun main(args: Array<String>) {
     @Suppress("DEPRECATION")
     Looper.prepareMainLooper()
     val systemContext: Context? = acquireSystemContext()
+    // Wrapped, package-rooted copy used for the BYD SDK calls only (openbyd's SystemContext).
+    val sdkContext: Context? = sdkContextOf(systemContext)
 
     // Step 2: resolve autoservice Binder.
     val smCls = Class.forName("android.os.ServiceManager")
@@ -245,9 +249,27 @@ fun main(args: Array<String>) {
                     val dev = data.readInt()
                     val fid = data.readInt()
                     val bytes = data.createByteArray() ?: ByteArray(0)
-                    val status = writeBytesViaSdk(systemContext, dev, fid, bytes)
+                    val status = writeBytesViaSdk(sdkContext, dev, fid, bytes)
                     reply?.writeInt(status)
                     reply?.writeInt(0)
+                    true
+                }.getOrElse {
+                    reply?.writeInt(-1); reply?.writeInt(0); true
+                }
+
+                HelperBinderProtocol.TX_SDK_SET -> runCatching {
+                    handleSdkSet(data, reply) { sdkDev, kind, fids, value ->
+                        sdkSetViaReflection(sdkContext, sdkDev, kind, fids, value)
+                    }
+                    true
+                }.getOrElse {
+                    reply?.writeInt(-1); reply?.writeInt(0); true
+                }
+
+                HelperBinderProtocol.TX_SDK_NAVI -> runCatching {
+                    handleSdkNavi(data, reply) { method, args ->
+                        sdkNaviViaReflection(sdkContext, method, args)
+                    }
                     true
                 }.getOrElse {
                     reply?.writeInt(-1); reply?.writeInt(0); true
@@ -872,44 +894,258 @@ internal fun readTrailingToTop(data: Parcel): Boolean =
  */
 
 /**
- * BYD SDK class that owns each autoservice device, for the features whose value is a byte array.
- * Only the devices we actually need are listed; anything else is refused rather than guessed.
+ * BYD SDK class behind each TX_SDK_SET device selector (HelperBinderProtocol.SDK_DEV_*).
+ * None of the three is on the daemon's compile classpath — the setting and statistic devices
+ * live only in the car framework — so all of them are resolved by name at call time, exactly
+ * as openbyd's CarControlImpl does for the setting device.
  */
-internal fun deviceClassFor(dev: Int): String? = when (dev) {
-    1007 -> "android.hardware.bydauto.instrument.BYDAutoInstrumentDevice"
+internal fun sdkDeviceClassName(sdkDev: Int): String? = when (sdkDev) {
+    HelperBinderProtocol.SDK_DEV_INSTRUMENT ->
+        "android.hardware.bydauto.instrument.BYDAutoInstrumentDevice"
+    HelperBinderProtocol.SDK_DEV_SETTING ->
+        "android.hardware.bydauto.setting.BYDAutoSettingDevice"
+    HelperBinderProtocol.SDK_DEV_STATISTIC ->
+        "android.hardware.bydauto.statistic.BYDAutoStatisticDevice"
     else -> null
 }
 
 /**
- * Writes a byte-array feature through BYD's own SDK, the way the factory navigation writes the
- * next-street name: `device.set(intArrayOf(fid), BYDAutoEventValue{ bufferDataValue = bytes })`.
- *
- * The raw autoservice binder path this daemon uses for integers takes (dev, fid, int) and has no
- * documented transaction for buffers, and guessing one against a live vehicle bus is not a good
- * trade. Under app_process the framework and the BYD SDK are on the classpath and a system
- * Context is available, so the supported call is reachable by reflection.
- *
- * Returns the SDK's own status (1 real write, 0 accepted no-op, negative error) or -1 when the
- * class, the context or the field is missing on this firmware.
+ * Autoservice device number -> SDK selector, for the legacy TX_WRITE_BYTES caller (the street
+ * name goes to the instrument device). Anything else is refused rather than guessed.
  */
-internal fun writeBytesViaSdk(context: Context?, dev: Int, fid: Int, bytes: ByteArray): Int {
-    if (context == null) return -1
-    val className = deviceClassFor(dev) ?: return -1
+internal fun sdkDevForAutoserviceDev(dev: Int): Int? = when (dev) {
+    1007 -> HelperBinderProtocol.SDK_DEV_INSTRUMENT
+    else -> null
+}
+
+/**
+ * BYD SDK class that owns an autoservice device, for the features whose value is a byte array.
+ * Kept for the TX_WRITE_BYTES path and its tests; TX_SDK_SET selects the class directly.
+ */
+internal fun deviceClassFor(dev: Int): String? =
+    sdkDevForAutoserviceDev(dev)?.let(::sdkDeviceClassName)
+
+/** BYDAutoEventValue field each SDK_KIND_* populates. */
+private fun sdkValueField(kind: Int): String? = when (kind) {
+    HelperBinderProtocol.SDK_KIND_INT -> "intValue"
+    HelperBinderProtocol.SDK_KIND_DOUBLE -> "doubleValue"
+    HelperBinderProtocol.SDK_KIND_BYTES -> "bufferDataValue"
+    HelperBinderProtocol.SDK_KIND_INT_ARRAY -> "intArrayValue"
+    else -> null
+}
+
+/**
+ * BYDAutoInstrumentDevice navigation method behind each SDK_NAVI_* selector: name and parameter
+ * types. All of them return int (BYDAutoInstrumentDevice:1660-1724).
+ */
+private fun sdkNaviMethod(method: Int): Pair<String, Array<Class<*>>>? {
+    val i = Int::class.javaPrimitiveType!!
+    val l = Long::class.javaPrimitiveType!!
+    return when (method) {
+        HelperBinderProtocol.SDK_NAVI_STATUS -> "sendAutoNaviStatus" to arrayOf<Class<*>>(i)
+        HelperBinderProtocol.SDK_NAVI_SIMPLE_GUIDANCE ->
+            "sendSimpleGuidanceInfo" to arrayOf<Class<*>>(i, i)
+        HelperBinderProtocol.SDK_NAVI_NEXT_PATH_NAME ->
+            "sendNextPathName" to arrayOf<Class<*>>(String::class.java)
+        HelperBinderProtocol.SDK_NAVI_REST_ROUTE ->
+            "sendRestRouteInfo" to arrayOf<Class<*>>(i, i, l)
+        HelperBinderProtocol.SDK_NAVI_CAMERA_GUIDANCE ->
+            "sendCameraGuidanceInfo" to arrayOf<Class<*>>(i, i, i)
+        else -> null
+    }
+}
+
+/** One WARN line per SDK failure; returns the status the caller should reply. */
+private fun sdkWarn(status: Int, what: String, t: Throwable? = null): Int {
+    val cause = if (t == null) "" else " ${t.javaClass.name}: ${t.message}"
+    System.err.println("WARN: $what -> $status$cause")
+    return status
+}
+
+/**
+ * Reflective SDK feature write, the single implementation behind TX_SDK_SET and TX_WRITE_BYTES:
+ * `Class.forName(device).getInstance(ctx).set(fids, BYDAutoEventValue{ <field> = value })`, the
+ * port of CarControlImpl.setInstrumentFeature* / setSettingFeatureValue / setStatisticFeature*
+ * (CarControlImpl:1722-1829). getInstance is called per write, as in the donor.
+ *
+ * Returns the SDK's own int (0 = INSTRUMENT_COMMAND_SUCCESS), or -1 reflection failure,
+ * -3 no system context, -4 unknown selector/kind.
+ */
+internal fun sdkSetViaReflection(
+    context: Context?,
+    sdkDev: Int,
+    kind: Int,
+    fids: IntArray,
+    value: Any,
+): Int {
+    if (context == null) return sdkWarn(-3, "sdkSet dev=$sdkDev kind=$kind: no system context")
+    val className = sdkDeviceClassName(sdkDev)
+        ?: return sdkWarn(-4, "sdkSet: unknown device selector $sdkDev")
+    val field = sdkValueField(kind)
+        ?: return sdkWarn(-4, "sdkSet: unknown value kind $kind")
     return try {
         val deviceCls = Class.forName(className)
         val instance = deviceCls.getMethod("getInstance", Context::class.java).invoke(null, context)
-            ?: return -1
+            ?: return sdkWarn(-1, "sdkSet $className.getInstance returned null")
         val valueCls = Class.forName("android.hardware.bydauto.BYDAutoEventValue")
-        val value = valueCls.getDeclaredConstructor().newInstance()
-        valueCls.getField("bufferDataValue").set(value, bytes)
+        val ev = valueCls.getDeclaredConstructor().newInstance()
+        valueCls.getField(field).set(ev, value)
         val result = deviceCls.getMethod("set", IntArray::class.java, valueCls)
-            .invoke(instance, intArrayOf(fid), value)
-        (result as? Int) ?: -1
+            .invoke(instance, fids, ev)
+        (result as? Int) ?: sdkWarn(-1, "sdkSet $className.set returned non-int")
     } catch (t: Throwable) {
-        System.err.println("WARN: writeBytesViaSdk dev=$dev fid=$fid failed: ${t.message}")
-        -1
+        sdkWarn(-1, "sdkSet dev=$sdkDev kind=$kind fids=${fids.joinToString()} failed", t)
     }
 }
+
+/**
+ * Reflective BYDAutoInstrumentDevice navigation call (TX_SDK_NAVI): the calls openbyd makes in
+ * addition to the feature writes. getInstance per call, like the donor (CarControlImpl:1319).
+ */
+internal fun sdkNaviViaReflection(context: Context?, method: Int, args: List<Any>): Int {
+    if (context == null) return sdkWarn(-3, "sdkNavi method=$method: no system context")
+    val (name, paramTypes) = sdkNaviMethod(method)
+        ?: return sdkWarn(-4, "sdkNavi: unknown method $method")
+    if (args.size != paramTypes.size) {
+        return sdkWarn(-4, "sdkNavi $name: ${args.size} args, expected ${paramTypes.size}")
+    }
+    val className = sdkDeviceClassName(HelperBinderProtocol.SDK_DEV_INSTRUMENT)!!
+    return try {
+        val deviceCls = Class.forName(className)
+        val instance = deviceCls.getMethod("getInstance", Context::class.java).invoke(null, context)
+            ?: return sdkWarn(-1, "sdkNavi $className.getInstance returned null")
+        val result = deviceCls.getMethod(name, *paramTypes).invoke(instance, *args.toTypedArray())
+        (result as? Int) ?: sdkWarn(-1, "sdkNavi $name returned non-int")
+    } catch (t: Throwable) {
+        sdkWarn(-1, "sdkNavi $name(${args.joinToString()}) failed", t)
+    }
+}
+
+/**
+ * Writes a byte-array feature through BYD's own SDK, the way the factory navigation writes the
+ * next-street name. The raw autoservice binder path this daemon uses for integers takes
+ * (dev, fid, int) and has no documented transaction for buffers, and guessing one against a live
+ * vehicle bus is not a good trade. Under app_process the framework and the BYD SDK are on the
+ * classpath and a system Context is available, so the supported call is reachable by reflection.
+ *
+ * Same implementation as TX_SDK_SET kind BYTES, reached with the autoservice device number the
+ * older clients send.
+ */
+internal fun writeBytesViaSdk(context: Context?, dev: Int, fid: Int, bytes: ByteArray): Int {
+    val sdkDev = sdkDevForAutoserviceDev(dev)
+        ?: return sdkWarn(-1, "writeBytes: no SDK device for autoservice dev $dev")
+    return sdkSetViaReflection(
+        context, sdkDev, HelperBinderProtocol.SDK_KIND_BYTES, intArrayOf(fid), bytes,
+    )
+}
+
+/** Seam over [sdkSetViaReflection] so the parcel handling is testable without the car SDK. */
+internal fun interface SdkSetInvoker {
+    fun invoke(sdkDev: Int, kind: Int, fids: IntArray, value: Any): Int
+}
+
+/** Seam over [sdkNaviViaReflection]. */
+internal fun interface SdkNaviInvoker {
+    fun invoke(method: Int, args: List<Any>): Int
+}
+
+/**
+ * Unmarshals a TX_SDK_SET request (layout in HelperBinderProtocol.TX_SDK_SET), performs the write
+ * through [invoker] and writes the [status, 0] reply. Malformed arguments reply -4 without
+ * reaching the SDK.
+ */
+internal fun handleSdkSet(data: Parcel, reply: Parcel?, invoker: SdkSetInvoker) {
+    val status = try {
+        val sdkDev = data.readInt()
+        val kind = data.readInt()
+        if (sdkDeviceClassName(sdkDev) == null) {
+            sdkWarn(-4, "TX_SDK_SET: unknown device selector $sdkDev")
+        } else when (kind) {
+            HelperBinderProtocol.SDK_KIND_INT -> {
+                val fid = data.readInt()
+                invoker.invoke(sdkDev, kind, intArrayOf(fid), data.readInt())
+            }
+            HelperBinderProtocol.SDK_KIND_DOUBLE -> {
+                val fid = data.readInt()
+                invoker.invoke(sdkDev, kind, intArrayOf(fid), data.readDouble())
+            }
+            HelperBinderProtocol.SDK_KIND_BYTES -> {
+                val fid = data.readInt()
+                val bytes = data.createByteArray()
+                if (bytes == null) sdkWarn(-4, "TX_SDK_SET: null byte array for fid $fid")
+                else invoker.invoke(sdkDev, kind, intArrayOf(fid), bytes)
+            }
+            HelperBinderProtocol.SDK_KIND_INT_ARRAY -> {
+                val fids = data.createIntArray()
+                val values = data.createIntArray()
+                val max = HelperBinderProtocol.MAX_SDK_ARRAY
+                when {
+                    fids == null || values == null -> sdkWarn(-4, "TX_SDK_SET: null int array")
+                    fids.size != values.size ->
+                        sdkWarn(-4, "TX_SDK_SET: ${fids.size} fids vs ${values.size} values")
+                    fids.isEmpty() || fids.size > max ->
+                        sdkWarn(-4, "TX_SDK_SET: array length ${fids.size} outside 1..$max")
+                    else -> invoker.invoke(sdkDev, kind, fids, values)
+                }
+            }
+            else -> sdkWarn(-4, "TX_SDK_SET: unknown value kind $kind")
+        }
+    } catch (t: Throwable) {
+        sdkWarn(-4, "TX_SDK_SET: malformed request", t)
+    }
+    reply?.writeInt(status)
+    reply?.writeInt(0)
+}
+
+/**
+ * Unmarshals a TX_SDK_NAVI request (layout in HelperBinderProtocol.TX_SDK_NAVI), performs the
+ * call through [invoker] and writes the [status, 0] reply.
+ */
+internal fun handleSdkNavi(data: Parcel, reply: Parcel?, invoker: SdkNaviInvoker) {
+    val status = try {
+        when (val method = data.readInt()) {
+            HelperBinderProtocol.SDK_NAVI_STATUS ->
+                invoker.invoke(method, listOf(data.readInt()))
+            HelperBinderProtocol.SDK_NAVI_SIMPLE_GUIDANCE ->
+                invoker.invoke(method, listOf(data.readInt(), data.readInt()))
+            HelperBinderProtocol.SDK_NAVI_NEXT_PATH_NAME -> {
+                val name = data.readString()
+                if (name == null) sdkWarn(-4, "TX_SDK_NAVI: null path name")
+                else invoker.invoke(method, listOf(name))
+            }
+            HelperBinderProtocol.SDK_NAVI_REST_ROUTE ->
+                invoker.invoke(method, listOf(data.readInt(), data.readInt(), data.readLong()))
+            HelperBinderProtocol.SDK_NAVI_CAMERA_GUIDANCE ->
+                invoker.invoke(method, listOf(data.readInt(), data.readInt(), data.readInt()))
+            else -> sdkWarn(-4, "TX_SDK_NAVI: unknown method $method")
+        }
+    } catch (t: Throwable) {
+        sdkWarn(-4, "TX_SDK_NAVI: malformed request", t)
+    }
+    reply?.writeInt(status)
+    reply?.writeInt(0)
+}
+
+/**
+ * Context the BYD SDK devices are handed: the port of openbyd's BydContextWrapper
+ * (BydContextWrapper:9-58). The SDK's getInstance/set paths check permissions against the calling
+ * context, and the raw system context names the framework's own package; the wrapper answers every
+ * permission check with PERMISSION_GRANTED and reports our package instead.
+ */
+internal class BydContextWrapper(base: Context) : ContextWrapper(base) {
+    override fun checkPermission(permission: String, pid: Int, uid: Int): Int =
+        PackageManager.PERMISSION_GRANTED
+    override fun checkCallingPermission(permission: String): Int =
+        PackageManager.PERMISSION_GRANTED
+    override fun checkCallingOrSelfPermission(permission: String): Int =
+        PackageManager.PERMISSION_GRANTED
+    override fun enforcePermission(permission: String, pid: Int, uid: Int, message: String?) = Unit
+    override fun enforceCallingPermission(permission: String, message: String?) = Unit
+    override fun enforceCallingOrSelfPermission(permission: String, message: String?) = Unit
+    override fun getApplicationContext(): Context = this
+    override fun getPackageName(): String = BuildConfig.APPLICATION_ID
+}
+
 private fun autoserviceTransact(
     svc: IBinder,
     autoIface: String,
@@ -1439,6 +1675,26 @@ private fun acquireSystemContext(): Context? = try {
 } catch (e: Throwable) {
     System.err.println("WARN: systemContext unavailable: ${e.message}")
     null
+}
+
+/**
+ * The context every BYD SDK getInstance call is handed: openbyd's SystemContext.get()
+ * (SystemContext:15-26) - the system context re-rooted in our own package
+ * (CONTEXT_INCLUDE_CODE | CONTEXT_IGNORE_SECURITY = 3), wrapped in [BydContextWrapper]. A
+ * firmware that refuses the package context keeps the raw one; the wrapper still applies.
+ *
+ * Deliberately separate from [acquireSystemContext]: the daemon's other users of the system
+ * context (broadcast publication, DisplayManager) must keep the framework's own identity - a
+ * context that reports com.bydmate.app under the shell uid is refused by AMS.
+ */
+private fun sdkContextOf(system: Context?): Context? = system?.let { ctx ->
+    val based = try {
+        ctx.createPackageContext(BuildConfig.APPLICATION_ID, 3)
+    } catch (t: Throwable) {
+        System.err.println("WARN: createPackageContext failed: ${t.javaClass.name}: ${t.message}")
+        ctx
+    }
+    BydContextWrapper(based)
 }
 
 /**

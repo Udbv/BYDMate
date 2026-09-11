@@ -514,6 +514,85 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
         return status
     }
 
+    // ---- BYD SDK path. One INFO line per call: the status is the only evidence a write landed,
+    // and openbyd never inspects it, so the log is where a rejected write becomes visible. ----
+
+    private suspend fun sdkSet(
+        sdkDev: Int, kind: Int, what: String, writeValue: (Parcel) -> Unit,
+    ): Int? {
+        val status = transact(HelperBinderProtocol.TX_SDK_SET) {
+            it.writeInt(sdkDev); it.writeInt(kind); writeValue(it)
+        }?.first
+        Log.i(TAG, "sdkSet dev=$sdkDev kind=$kind $what status=$status " +
+            "accepted=${HelperClient.sdkAccepted(status)}")
+        return status
+    }
+
+    override suspend fun sdkSetInt(sdkDev: Int, fid: Int, value: Int): Int? =
+        sdkSet(sdkDev, HelperBinderProtocol.SDK_KIND_INT, "fid=$fid value=$value") {
+            it.writeInt(fid); it.writeInt(value)
+        }
+
+    override suspend fun sdkSetDouble(sdkDev: Int, fid: Int, value: Double): Int? =
+        sdkSet(sdkDev, HelperBinderProtocol.SDK_KIND_DOUBLE, "fid=$fid value=$value") {
+            it.writeInt(fid); it.writeDouble(value)
+        }
+
+    override suspend fun sdkSetBytes(sdkDev: Int, fid: Int, bytes: ByteArray): Int? =
+        sdkSet(sdkDev, HelperBinderProtocol.SDK_KIND_BYTES, "fid=$fid len=${bytes.size}") {
+            it.writeInt(fid); it.writeByteArray(bytes)
+        }
+
+    override suspend fun sdkSetIntArray(sdkDev: Int, fids: IntArray, values: IntArray): Int? {
+        if (fids.size != values.size ||
+            fids.isEmpty() ||
+            fids.size > HelperBinderProtocol.MAX_SDK_ARRAY
+        ) {
+            Log.w(TAG, "sdkSetIntArray dev=$sdkDev refused: ${fids.size} fids, ${values.size} values")
+            return null
+        }
+        return sdkSet(sdkDev, HelperBinderProtocol.SDK_KIND_INT_ARRAY, "n=${fids.size}") {
+            it.writeIntArray(fids); it.writeIntArray(values)
+        }
+    }
+
+    private suspend fun sdkNavi(method: Int, what: String, writeArgs: (Parcel) -> Unit): Int? {
+        val status = transact(HelperBinderProtocol.TX_SDK_NAVI) {
+            it.writeInt(method); writeArgs(it)
+        }?.first
+        Log.i(TAG, "sdkNavi $what status=$status accepted=${HelperClient.sdkAccepted(status)}")
+        return status
+    }
+
+    override suspend fun sdkNaviStatus(status: Int): Int? =
+        sdkNavi(HelperBinderProtocol.SDK_NAVI_STATUS, "sendAutoNaviStatus($status)") {
+            it.writeInt(status)
+        }
+
+    override suspend fun sdkSimpleGuidance(iconId: Int, distanceMeters: Int): Int? =
+        sdkNavi(
+            HelperBinderProtocol.SDK_NAVI_SIMPLE_GUIDANCE,
+            "sendSimpleGuidanceInfo($iconId, $distanceMeters)",
+        ) { it.writeInt(iconId); it.writeInt(distanceMeters) }
+
+    override suspend fun sdkNextPathName(name: String): Int? =
+        sdkNavi(
+            HelperBinderProtocol.SDK_NAVI_NEXT_PATH_NAME,
+            "sendNextPathName(len=${name.length})",
+        ) { it.writeString(name) }
+
+    override suspend fun sdkRestRoute(hour: Int, minute: Int, mileageMeters: Long): Int? =
+        sdkNavi(
+            HelperBinderProtocol.SDK_NAVI_REST_ROUTE,
+            "sendRestRouteInfo($hour, $minute, $mileageMeters)",
+        ) { it.writeInt(hour); it.writeInt(minute); it.writeLong(mileageMeters) }
+
+    override suspend fun sdkCameraGuidance(type: Int, distanceMeters: Int, state: Int): Int? =
+        sdkNavi(
+            HelperBinderProtocol.SDK_NAVI_CAMERA_GUIDANCE,
+            "sendCameraGuidanceInfo($type, $distanceMeters, $state)",
+        ) { it.writeInt(type); it.writeInt(distanceMeters); it.writeInt(state) }
+
     override suspend fun isAlive(): Boolean =
         transact(HelperBinderProtocol.TX_PING) { }
             ?.let { (status, _) -> readAccepted(status) } ?: false
