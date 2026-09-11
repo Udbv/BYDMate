@@ -100,10 +100,47 @@ object NavLaneState {
 
     @Volatile private var lanes: NavLanes = NavLanes.NONE
     @Volatile private var updatedMs: Long = 0L
+    @Volatile private var pixelMs: Long = 0L
 
+    /**
+     * Screen bounds of Waze's `laneGuidanceView`, and the display it was found on.
+     *
+     * This is all the accessibility tree gives for the strip (openbyd reads the same node for the
+     * same reason). It is the crop the pixel path segments; null means Waze is not showing lanes.
+     * Plain ints rather than a `Rect` so the lane pipeline stays testable off-device.
+     */
+    data class ContainerBounds(
+        val displayId: Int,
+        val left: Int,
+        val top: Int,
+        val right: Int,
+        val bottom: Int,
+    ) {
+        val width: Int get() = right - left
+        val height: Int get() = bottom - top
+    }
+
+    @Volatile var containerBounds: ContainerBounds? = null
+
+    /**
+     * Lanes from the accessibility labels - the secondary source.
+     *
+     * The emulator stub is the only place this path ever produced anything; on the car the lane
+     * children carry no text at all. It runs on every a11y read (five times a second), so it must
+     * not overwrite a pixel result that only refreshes every two seconds: while a pixel strip is
+     * still fresh, the label path is ignored entirely.
+     */
     fun update(value: NavLanes, nowMs: Long = System.currentTimeMillis()) {
+        if (pixelMs != 0L && nowMs - pixelMs <= TTL_MS) return
         lanes = value
         updatedMs = if (value.isEmpty) 0L else nowMs
+    }
+
+    /** Lanes from the pixel path (openbyd's own source). Wins over [update] for [TTL_MS]. */
+    fun updateFromPixels(value: NavLanes, nowMs: Long = System.currentTimeMillis()) {
+        lanes = value
+        updatedMs = if (value.isEmpty) 0L else nowMs
+        pixelMs = if (value.isEmpty) 0L else nowMs
     }
 
     /** The current strip, or [NavLanes.NONE] when there is none or it has gone stale. */
@@ -113,6 +150,8 @@ object NavLaneState {
     fun clear() {
         lanes = NavLanes.NONE
         updatedMs = 0L
+        pixelMs = 0L
+        containerBounds = null
     }
 }
 

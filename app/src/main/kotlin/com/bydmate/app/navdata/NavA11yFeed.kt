@@ -189,8 +189,11 @@ object NavA11yFeed {
                     // arrow IS the maneuver, and gating the classifier behind gaode==0 meant one
                     // bogus text match (an ARRIVE parsed off an unrelated panel) silenced it for
                     // the whole drive.
-                    requestWazeVisualManeuver(service, root, data.exitNumber)
+                    // Lanes before the screenshot request: the reader is what puts the lane
+                    // strip's bounds where the classifier looks for them, and the classifier
+                    // segments the strip before it falls back to the arrow crop.
                     readLanes(root)
+                    requestWazeVisualManeuver(service, root, data.exitNumber)
                     armKeepAlive()
                 }
                 is NavA11yExtractor.ReadResult.NoGuidance -> {

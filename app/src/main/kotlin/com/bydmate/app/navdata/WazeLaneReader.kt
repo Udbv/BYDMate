@@ -52,7 +52,8 @@ object WazeLaneReader {
     fun read(root: AccessibilityNodeInfo): NavLanes {
         val pkg = runCatching { root.packageName?.toString() }.getOrNull()
         if (!NavPackages.isWazePackage(pkg)) return NavLanes.NONE
-        val container = findContainer(root, pkg!!) ?: run {
+        NavLaneState.containerBounds = readContainerBounds(root, pkg!!)
+        val container = findContainer(root, pkg) ?: run {
             diagnostics = Diagnostics()
             return NavLanes.NONE
         }
@@ -104,6 +105,55 @@ object WazeLaneReader {
         NavManeuverCodes.GAODE_UTURN, NavManeuverCodes.GAODE_UTURN_RIGHT -> NavLanes.Dir.UTURN_LEFT
         else -> null
     }
+
+    /**
+     * Screen bounds of the first `laneGuidanceView` with a real size, for the pixel path.
+     *
+     * This is the only thing openbyd reads from this node (`BydAccessibilityService` :725-743):
+     * the lane arrows are drawables, so the rectangle is handed to the screenshot classifier and
+     * the tree is not consulted again. The display id travels with it because the screenshot is
+     * taken per display and a crop from the wrong one would be meaningless pixels.
+     */
+    private fun readContainerBounds(
+        root: AccessibilityNodeInfo,
+        pkg: String,
+    ): NavLaneState.ContainerBounds? {
+        val nodes = runCatching {
+            root.findAccessibilityNodeInfosByViewId("$pkg:id/laneGuidanceView")
+        }.getOrNull().orEmpty()
+        var bounds: Rect? = null
+        for (node in nodes) {
+            try {
+                if (bounds != null) continue
+                val rect = Rect()
+                runCatching { node.getBoundsInScreen(rect) }
+                if (rect.width() > 0 && rect.height() > 0) bounds = rect
+            } finally {
+                recycle(node, root)
+            }
+        }
+        val rect = bounds ?: return null
+        return NavLaneState.ContainerBounds(
+            displayId = displayIdOf(root),
+            left = rect.left,
+            top = rect.top,
+            right = rect.right,
+            bottom = rect.bottom,
+        )
+    }
+
+    private fun displayIdOf(root: AccessibilityNodeInfo): Int = runCatching {
+        val window = root.window ?: return@runCatching 0
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                window.displayId
+            } else {
+                0
+            }
+        } finally {
+            @Suppress("DEPRECATION") runCatching { window.recycle() }
+        }
+    }.getOrDefault(0)
 
     private fun findContainer(root: AccessibilityNodeInfo, pkg: String): AccessibilityNodeInfo? {
         for (id in CONTAINER_IDS) {

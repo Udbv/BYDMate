@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import com.bydmate.app.navdata.waze.ArrowSignature
 import com.bydmate.app.navdata.waze.WazeArrowTable
+import com.bydmate.app.navdata.waze.WazeLaneSegmenter
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -156,6 +157,9 @@ object WazeVisualManeuverReader {
             failure = "pending",
         )
         countStart()
+        // Read off the service now: the callback runs on the main executor, but the display
+        // metrics are what the donor reads at segmentation time and they never change mid-route.
+        val density = runCatching { service.resources.displayMetrics.density }.getOrDefault(1f)
         return runCatching {
             service.takeScreenshot(
                 target.displayId,
@@ -168,7 +172,13 @@ object WazeVisualManeuverReader {
                         try {
                             wrapped = Bitmap.wrapHardwareBuffer(buffer, screenshot.colorSpace)
                             software = wrapped?.copy(Bitmap.Config.ARGB_8888, false)
-                            val classification = software?.let { classify(it, target.bounds, exitNumber) }
+                            // Lanes first, exactly as the donor: when Waze is showing a lane
+                            // strip, one of its cells IS the maneuver arrow, so the separate
+                            // arrow crop is only used when there is no strip to segment.
+                            val classification = software?.let { bitmap ->
+                                classifyLanes(bitmap, target.displayId, density, exitNumber)
+                                    ?: classify(bitmap, target.bounds, exitNumber)
+                            }
                             val result = Diagnostics(
                                 attemptedAtMs = System.currentTimeMillis(),
                                 displayId = target.displayId,
@@ -278,6 +288,89 @@ object WazeVisualManeuverReader {
         } else {
             Target(displayId, Rect(DEFAULT_LEFT, DEFAULT_TOP, DEFAULT_RIGHT, DEFAULT_BOTTOM), "default")
         }
+    }
+
+    /**
+     * The lane path: segment Waze's lane strip out of the same screenshot and publish the codes.
+     *
+     * Returns null exactly where the donor's `processSegmentedLanes` returns false - no strip on
+     * screen, bounds that do not fit the screenshot, no cells, or a peak column score too weak to
+     * be lane artwork - and the caller then classifies the plain arrow crop as before.
+     *
+     * When it does produce lanes, the first on-route lane's crop is the maneuver arrow (the donor
+     * hands that same crop to its arrow classifier). If no lane is on the route the lanes are
+     * still published and the arrow comes back unknown, which leaves the panel glyph to the text
+     * path rather than guessing.
+     */
+    private fun classifyLanes(
+        bitmap: Bitmap,
+        displayId: Int,
+        density: Float,
+        exitNumber: Int?,
+    ): Classification? {
+        val container = NavLaneState.containerBounds ?: return null
+        if (container.displayId != displayId) return null
+        if (!isValidBounds(container, bitmap.width, bitmap.height)) return null
+        val w = container.width
+        val h = container.height
+        val pixels = IntArray(w * h)
+        runCatching {
+            bitmap.getPixels(pixels, 0, w, container.left, container.top, w, h)
+        }.getOrElse { return null }
+
+        val rect = WazeLaneSegmenter.Box(
+            container.left,
+            container.top,
+            container.right,
+            container.bottom,
+        )
+        val segments = WazeLaneSegmenter.segment(pixels, w, h, rect, density)
+        val result = WazeLaneSegmenter.process(pixels, w, h, rect, segments) ?: return null
+
+        val distance = runCatching { NavGuidanceHub.snapshot().distanceMeters }.getOrDefault(0)
+        NavLaneState.updateFromPixels(
+            NavLanes.ofCodes(result.codes, result.fronts, distance),
+        )
+        val arrow = result.mainArrow
+        val classification = if (arrow == null) {
+            Classification(0, null, null, "")
+        } else {
+            classifyPixels(arrow.width, arrow.height, arrow.pixels, exitNumber)
+        }
+        logLanes(result, distance, classification)
+        return classification
+    }
+
+    /** openbyd's `isValidBounds` (:488-494): the crop has to lie wholly inside the screenshot. */
+    internal fun isValidBounds(
+        bounds: NavLaneState.ContainerBounds,
+        bitmapWidth: Int,
+        bitmapHeight: Int,
+    ): Boolean = bounds.width > 0 && bounds.height > 0 &&
+        bounds.left >= 0 && bounds.top >= 0 &&
+        bounds.left + bounds.width <= bitmapWidth &&
+        bounds.top + bounds.height <= bitmapHeight
+
+    /**
+     * One line per segmentation in the trip log: how many cells were found, what each became, and
+     * which one was taken as the maneuver arrow. Scores and codes only - never pixels.
+     */
+    private fun logLanes(
+        result: WazeLaneSegmenter.Result,
+        distance: Int,
+        classification: Classification,
+    ) {
+        val cells = result.codes.indices.joinToString(" | ") { i ->
+            "${result.codes[i]}>${result.fronts[i]}@${result.scores[i].toInt()}" +
+                if (i == result.mainArrowIndex) "*" else ""
+        }
+        com.bydmate.app.diagnostics.TripDebugLog.event(
+            "LANES",
+            "pixels cells=${result.codes.size} dist=$distance arrow=" +
+                (if (result.mainArrowIndex >= 0) "#${result.mainArrowIndex}" else "none") +
+                " icon=${classification.panelIcon} name=${classification.matchedName ?: "-"}" +
+                (if (cells.isEmpty()) "" else " $cells"),
+        )
     }
 
     /** Crops [crop] out of [bitmap] and classifies the raw pixels - no resampling. */
