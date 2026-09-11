@@ -1435,4 +1435,35 @@
     <string name="dashboard_trip2_label">TRIP 2</string>
     <string name="settings_hud_street_translit_title">街道名称转写为拉丁字母</string>
     <string name="settings_hud_street_translit_desc">仪表字体不含西里尔字母。开启时街道名称先转写为拉丁字母后再发送（与 openbyd 一致，已在车上验证）；关闭时按原样发送。</string>
+
+    <!-- HUD panel test bench (openbyd HUD Tester port) -->
+    <string name="settings_hudtest_sdk_label">SDK access status: %1$s</string>
+    <string name="settings_hudtest_sdk_connected">CONNECTED</string>
+    <string name="settings_hudtest_sdk_offline">OFFLINE (NOT BOUND)</string>
+    <string name="settings_hudtest_title_sim">SIMULATED NAVIGATION TRIP</string>
+    <string name="settings_hudtest_title_manual">MANUAL TEST FRAME</string>
+    <string name="settings_hudtest_step_elapsed">Step %1$d/%2$d • Elapsed: %3$ds</string>
+    <string name="settings_hudtest_custom_frame">Custom frame</string>
+    <string name="settings_hudtest_icon">ICON #%1$d</string>
+    <string name="settings_hudtest_distance">%1$d m</string>
+    <string name="settings_hudtest_arrived">Arrived</string>
+    <string name="settings_hudtest_onto">onto %1$s</string>
+    <string name="settings_hudtest_maneuver">Active maneuver: %1$s</string>
+    <string name="settings_hudtest_field_step">Step (1-%1$d)</string>
+    <string name="settings_hudtest_field_speed">Speed limit (km/h)</string>
+    <string name="settings_hudtest_field_street">Custom street name</string>
+    <string name="settings_hudtest_field_lane_dist">Lanes split dist (m)</string>
+    <string name="settings_hudtest_field_lanes">Lane codes (e.g. 0,0|1,0|3,0)</string>
+    <string name="settings_hudtest_sanitize_title">Sanitize HUD text</string>
+    <string name="settings_hudtest_sanitize_desc">Latinise the street name of the test frame before sending it</string>
+    <string name="settings_hudtest_send_title">Manual test frame</string>
+    <string name="settings_hudtest_send_desc">Sends the chosen step, street, lanes and speed limit to the panel once</string>
+    <string name="settings_hudtest_send">Send manual test frame</string>
+    <string name="settings_hudtest_auto_title">Automatic tour</string>
+    <string name="settings_hudtest_auto_desc">Cycles all 49 panel glyphs, one every three seconds</string>
+    <string name="settings_hudtest_start">Start automatic HUD test</string>
+    <string name="settings_hudtest_stop">Stop HUD test</string>
+    <string name="settings_hudtest_status">Last call: %1$s</string>
+    <string name="settings_hudtest_failed">Failed: %1$s</string>
+    <string name="settings_hudtest_route_active">A route is being guided — the test bench does not write while navigating</string>
 </resources>

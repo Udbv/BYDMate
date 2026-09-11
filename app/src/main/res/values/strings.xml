@@ -1484,4 +1484,35 @@
     <string name="tech_hint_tyres">Давление и температура каждого колеса от датчиков в шинах. Давление растёт на 0,2…0,3 бар по мере прогрева в поездке, это нормально. Одно колесо заметно ниже других: проверьте, не спускает ли.</string>
     <string name="settings_hud_street_translit_title">Транслитерировать название улицы</string>
     <string name="settings_hud_street_translit_desc">Панель рисует шрифтом без кириллицы. Включено — название улицы переводится в латиницу (как в openbyd, проверено на машине); выключено — отправляется как есть.</string>
+
+    <!-- HUD panel test bench (openbyd HUD Tester port) -->
+    <string name="settings_hudtest_sdk_label">Статус доступа к SDK: %1$s</string>
+    <string name="settings_hudtest_sdk_connected">ПОДКЛЮЧЕНО</string>
+    <string name="settings_hudtest_sdk_offline">НЕТ СВЯЗИ (НЕ ПРИВЯЗАН)</string>
+    <string name="settings_hudtest_title_sim">ИМИТАЦИЯ ПОЕЗДКИ</string>
+    <string name="settings_hudtest_title_manual">РУЧНОЙ ТЕСТОВЫЙ КАДР</string>
+    <string name="settings_hudtest_step_elapsed">Шаг %1$d/%2$d • Прошло: %3$d с</string>
+    <string name="settings_hudtest_custom_frame">Свой кадр</string>
+    <string name="settings_hudtest_icon">ЗНАЧОК #%1$d</string>
+    <string name="settings_hudtest_distance">%1$d м</string>
+    <string name="settings_hudtest_arrived">Прибытие</string>
+    <string name="settings_hudtest_onto">на %1$s</string>
+    <string name="settings_hudtest_maneuver">Текущий маневр: %1$s</string>
+    <string name="settings_hudtest_field_step">Шаг (1-%1$d)</string>
+    <string name="settings_hudtest_field_speed">Ограничение скорости (км/ч)</string>
+    <string name="settings_hudtest_field_street">Своя улица</string>
+    <string name="settings_hudtest_field_lane_dist">Расстояние до полос (м)</string>
+    <string name="settings_hudtest_field_lanes">Коды полос (напр. 0,0|1,0|3,0)</string>
+    <string name="settings_hudtest_sanitize_title">Латинизировать текст HUD</string>
+    <string name="settings_hudtest_sanitize_desc">Переводить название улицы в латиницу перед отправкой тестового кадра</string>
+    <string name="settings_hudtest_send_title">Ручной тестовый кадр</string>
+    <string name="settings_hudtest_send_desc">Один раз отправляет выбранный шаг, улицу, полосы и ограничение скорости</string>
+    <string name="settings_hudtest_send">Отправить тестовый кадр</string>
+    <string name="settings_hudtest_auto_title">Автоматический прогон</string>
+    <string name="settings_hudtest_auto_desc">Перебирает все 49 значков панели, по одному каждые три секунды</string>
+    <string name="settings_hudtest_start">Запустить авто-тест HUD</string>
+    <string name="settings_hudtest_stop">Остановить тест HUD</string>
+    <string name="settings_hudtest_status">Последний вызов: %1$s</string>
+    <string name="settings_hudtest_failed">Ошибка: %1$s</string>
+    <string name="settings_hudtest_route_active">Идет навигация по маршруту — тестовый стенд не пишет в панель</string>
 </resources>

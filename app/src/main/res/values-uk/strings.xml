@@ -1479,4 +1479,35 @@
     <string name="tech_hint_tyres">Тиск і температура кожного колеса від датчиків у шинах. Тиск зростає на 0,2…0,3 бар у міру прогріву в поїздці, це нормально. Одне колесо помітно нижче за інші: перевірте, чи не спускає.</string>
     <string name="settings_hud_street_translit_title">Транслітерувати назву вулиці</string>
     <string name="settings_hud_street_translit_desc">Панель малює шрифтом без кирилиці. Увімкнено — назву вулиці переводимо в латиницю (як в openbyd, перевірено на авто); вимкнено — надсилаємо як є.</string>
+
+    <!-- HUD panel test bench (openbyd HUD Tester port) -->
+    <string name="settings_hudtest_sdk_label">Статус доступу до SDK: %1$s</string>
+    <string name="settings_hudtest_sdk_connected">ПІДКЛЮЧЕНО</string>
+    <string name="settings_hudtest_sdk_offline">НЕМАЄ ЗВ’ЯЗКУ (НЕ ПРИВ’ЯЗАНО)</string>
+    <string name="settings_hudtest_title_sim">ІМІТАЦІЯ ПОЇЗДКИ</string>
+    <string name="settings_hudtest_title_manual">РУЧНИЙ ТЕСТОВИЙ КАДР</string>
+    <string name="settings_hudtest_step_elapsed">Крок %1$d/%2$d • Минуло: %3$d с</string>
+    <string name="settings_hudtest_custom_frame">Власний кадр</string>
+    <string name="settings_hudtest_icon">ЗНАЧОК #%1$d</string>
+    <string name="settings_hudtest_distance">%1$d м</string>
+    <string name="settings_hudtest_arrived">Прибуття</string>
+    <string name="settings_hudtest_onto">на %1$s</string>
+    <string name="settings_hudtest_maneuver">Поточний маневр: %1$s</string>
+    <string name="settings_hudtest_field_step">Крок (1-%1$d)</string>
+    <string name="settings_hudtest_field_speed">Обмеження швидкості (км/год)</string>
+    <string name="settings_hudtest_field_street">Власна вулиця</string>
+    <string name="settings_hudtest_field_lane_dist">Відстань до смуг (м)</string>
+    <string name="settings_hudtest_field_lanes">Коди смуг (напр. 0,0|1,0|3,0)</string>
+    <string name="settings_hudtest_sanitize_title">Латинізувати текст HUD</string>
+    <string name="settings_hudtest_sanitize_desc">Перекладати назву вулиці в латиницю перед надсиланням тестового кадру</string>
+    <string name="settings_hudtest_send_title">Ручний тестовий кадр</string>
+    <string name="settings_hudtest_send_desc">Один раз надсилає обраний крок, вулицю, смуги та обмеження швидкості</string>
+    <string name="settings_hudtest_send">Надіслати тестовий кадр</string>
+    <string name="settings_hudtest_auto_title">Автоматичний прогін</string>
+    <string name="settings_hudtest_auto_desc">Перебирає всі 49 значків панелі, по одному кожні три секунди</string>
+    <string name="settings_hudtest_start">Запустити авто-тест HUD</string>
+    <string name="settings_hudtest_stop">Зупинити тест HUD</string>
+    <string name="settings_hudtest_status">Останній виклик: %1$s</string>
+    <string name="settings_hudtest_failed">Помилка: %1$s</string>
+    <string name="settings_hudtest_route_active">Триває навігація маршрутом — тестовий стенд не пише в панель</string>
 </resources>
