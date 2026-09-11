@@ -47,6 +47,8 @@ class HudPushLoop(
         private const val NO_MANEUVER = Int.MIN_VALUE
         /** Field-diagnostics cadence: one info line per ~10 s of frames (release keeps Log.i). */
         private const val LOG_EVERY_FRAMES = 33L
+        /** Idle cadence: one "why nothing is going out" line per ~30 s of ticks. */
+        private const val IDLE_EVERY_TICKS = 100L
     }
 
     private var job: Job? = null
@@ -56,6 +58,9 @@ class HudPushLoop(
     // session", so the first frame of a new session is always written.
     private var journalledGaode = NO_MANEUVER
     private var journalledSuppress = false
+
+    /** Ticks spent with an inactive hub; drives the idle diagnostic cadence. */
+    private var idleTicks = 0L
 
     /** §5 diagnostics, read by the settings dump via HudController.diag(). */
     @Volatile var framesSent: Long = 0L; private set
@@ -90,6 +95,7 @@ class HudPushLoop(
     internal fun tick(wasActive: Boolean): Boolean {
         val s = NavGuidanceHub.snapshot(nowMsProvider())
         val d = dialect()
+        if (s.active) idleTicks = 0L
         if (!s.active) {
             if (wasActive) {
                 val rc = sink.fireEvent(HudSomeIpBridge.TOPIC_NAVI, HudProtobufBuilder.buildClearFrame(counter++, d))
@@ -103,6 +109,17 @@ class HudPushLoop(
             }
             amap?.onSnapshot(null)
             journalledGaode = NO_MANEUVER
+            // Say why nothing is being sent. A whole drive once produced not a single line from
+            // this loop, because an inactive hub returns here silently -- afterwards there was no
+            // way to tell "we never pushed" from "we pushed and stopped". One line per IDLE_EVERY
+            // ticks is cheap and makes the trip log answer that on its own.
+            idleTicks++
+            if (idleTicks % IDLE_EVERY_TICKS == 1L) {
+                val why = com.bydmate.app.navdata.NavA11yFeed.idleReason(nowMsProvider())
+                Log.i(TAG, "idle: no guidance to push - $why")
+                com.bydmate.app.diagnostics.TripDebugLog.event("HUD", "idle: $why")
+                com.bydmate.app.diagnostics.TripDebugLog.drain()
+            }
             return false
         }
         // The classic glass gets the sign as a PNG in f7; the AR-HUD draws its own from f11/f15.

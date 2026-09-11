@@ -1324,6 +1324,9 @@
     <string name="settings_hud_status_on">Przesyłanie na HUD aktywne</string>
     <string name="settings_hud_status_bind_failed">Nie udało się połączyć z magistralą SOME/IP</string>
     <string name="settings_hud_hint">Potrzebna wersja wyposażenia z wyświetlaczem przeziernym. Dane brane są z okna Yandex Nawigatora</string>
+    <string name="settings_hud_street_encoding_title">Kodowanie nazwy ulicy</string>
+    <string name="settings_hud_street_encoding_desc">Panel sam dekoduje bajty, a jego odpowiedź nie mówi jakim kodowaniem. Auto wybiera UTF-8 dla funkcji zagranicznej i GBK dla krajowej. Jeśli panel pokazuje chińskie znaki, przełączaj aż pojawi się cyrylica.</string>
+    <string name="settings_hud_street_encoding_auto">Auto</string>
     <string name="settings_hud_dialect_title">Typ HUD</string>
     <string name="settings_hud_dialect_desc">Klasyczny: Atto 3, Seal, Sea Lion. AR-HUD: DiLink 150 (Tang L 2025). Auto według oprogramowania: %1$s</string>
     <string name="settings_hud_dialect_auto">Auto</string>

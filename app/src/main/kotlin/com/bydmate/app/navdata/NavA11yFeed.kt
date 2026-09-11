@@ -116,6 +116,29 @@ object NavA11yFeed {
         runCatching { readWindow(service, null, nowMs) }
     }
 
+
+    /**
+     * One short line saying why no guidance is reaching the hub.
+     *
+     * Silence used to be unreadable: a whole drive produced not one line from this feed or the
+     * push loop, so "we never wrote anything" and "we wrote once and stopped" looked identical
+     * afterwards. Every distinguishable state is named here, and [HudPushLoop] prints it while
+     * the loop is idle.
+     */
+    fun idleReason(nowMs: Long = System.currentTimeMillis()): String {
+        if (!enabled) return "feed disabled (HUD projection off?)"
+        if (com.bydmate.app.cluster.SteeringWheelKeyService.instance == null) {
+            return "accessibility service not bound - grant it in Android settings"
+        }
+        if (lastProcessMs == 0L) return "accessibility bound but no navigator event has ever arrived"
+        val sinceS = (nowMs - lastProcessMs) / 1000
+        if (!rootReachable) {
+            return "navigator window unreachable for ${sinceS}s" +
+                (if (sourceFallbackWorking) " (event-source fallback reading)" else " (no fallback either)")
+        }
+        return "reads happening (last ${sinceS}s ago) but they carry no guidance - route ended or not started"
+    }
+
     private fun armKeepAlive() {
         runCatching {
             keepAliveHandler.removeCallbacks(keepAliveTask)

@@ -11,7 +11,9 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import java.nio.charset.Charset
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -25,16 +27,43 @@ class HudStreetNameTest {
     private fun fids(helper: HelperClient, scope: TestScope) = HudInstrumentFids(helper, scope)
 
     @Test fun `utf8 truncation never splits a character`() {
-        val helper = mockk<HelperClient>(relaxed = true)
-        val f = HudInstrumentFids(helper, TestScope())
-        // Cyrillic is two bytes per character, so an odd cap must cut a whole character off.
-        val cut = f.truncateUtf8("Хрещатик", 5)
+        // Cyrillic is two bytes per character in UTF-8, so an odd cap must cut a whole
+        // character off rather than leave half a code point on the bus.
+        val (cut, charset) = HudStreetEncoding.truncate(
+            "Хрещатик", HudStreetEncoding.UTF8, overseasFeature = true, maxBytes = 5)
         assertTrue(cut.size <= 5)
         assertEquals("Хр", String(cut, Charsets.UTF_8))
+        assertEquals(HudStreetEncoding.UTF8, charset)
         // A cap larger than the text leaves it whole.
-        assertEquals("Садова", String(f.truncateUtf8("Садова", 96), Charsets.UTF_8))
+        val (whole, _) = HudStreetEncoding.truncate(
+            "Садова", HudStreetEncoding.UTF8, overseasFeature = true, maxBytes = 96)
+        assertEquals("Садова", String(whole, Charsets.UTF_8))
     }
 
+    @Test fun `auto picks utf8 for the overseas feature and gbk for the domestic one`() {
+        val (overseas, overseasName) = HudStreetEncoding.truncate(
+            "Садова", HudStreetEncoding.AUTO, overseasFeature = true, maxBytes = 96)
+        assertEquals(HudStreetEncoding.UTF8, overseasName)
+        assertEquals("Садова", String(overseas, Charsets.UTF_8))
+
+        // A firmware that exposes the domestic feature is a Chinese-market build; its panel
+        // decodes GBK, and Cyrillic UTF-8 bytes sent there come out as Chinese characters -
+        // which is exactly what the Tang L drew under the arrow on 2026-09-10.
+        val (domestic, domesticName) = HudStreetEncoding.truncate(
+            "Садова", HudStreetEncoding.AUTO, overseasFeature = false, maxBytes = 96)
+        assertEquals(HudStreetEncoding.GBK, domesticName)
+        assertNotEquals(
+            "GBK bytes must differ from UTF-8 or the setting changes nothing",
+            String(domestic, Charsets.UTF_8), String(domestic, Charset.forName("GBK")))
+        assertEquals("Садова", String(domestic, Charset.forName("GBK")))
+    }
+
+    @Test fun `an unavailable charset falls back to utf8 instead of throwing`() {
+        val (bytes, name) = HudStreetEncoding.truncate(
+            "Садова", "not-a-charset", overseasFeature = true, maxBytes = 96)
+        assertEquals("not-a-charset>utf8", name)
+        assertEquals("Садова", String(bytes, Charsets.UTF_8))
+    }
     @Test fun `the overseas feature is tried first and remembered once accepted`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val scope = TestScope(dispatcher)

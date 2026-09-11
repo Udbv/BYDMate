@@ -30,7 +30,7 @@ class TripDebugLogTest {
 
     private fun body(f: File) = f.readText()
 
-    @Test fun `off by default and writes nothing`() {
+    @Test fun `writes nothing while switched off`() {
         assertFalse(TripDebugLog.isEnabled(context))
         TripDebugLog.startTrip(context, "test")
         TripDebugLog.event("READ", "should not be written")
@@ -41,6 +41,8 @@ class TripDebugLogTest {
 
     @Test fun `enabled writes a header and events`() {
         TripDebugLog.setEnabled(context, true)
+        // Switching on already opened the trip, so the header carries that reason; the
+        // startTrip below is the deliberate no-op that keeps one drive in one file.
         TripDebugLog.startTrip(context, "unit test")
         assertTrue(TripDebugLog.active)
         TripDebugLog.event("READ", "gaode=2 road='Садова'")
@@ -51,7 +53,7 @@ class TripDebugLogTest {
         assertEquals(1, files.size)
         val text = body(files.first())
         assertTrue(text.contains("BYDMate trip debug log"))
-        assertTrue(text.contains("reason: unit test"))
+        assertTrue(text.contains("reason: switch on"))
         assertTrue(text.contains("READ gaode=2 road='Садова'"))
         assertTrue(text.contains("PANEL guide icon=2 accepted=true"))
         assertTrue(text.contains("TRIP end: done"))
@@ -107,5 +109,41 @@ class TripDebugLogTest {
         TripDebugLog.setEnabled(context, false)
         assertFalse(TripDebugLog.active)
         assertTrue(body(TripDebugLog.files(context).first()).contains("TRIP end: switch off"))
+    }
+
+    @Test fun `switching on starts recording immediately, not at the next ignition`() {
+        // The regression this exists for: startTrip() was reachable only from
+        // TrackingService.onCreate, and the service is long since running by the time anyone
+        // opens settings - so switching this on did nothing until the car was restarted, and a
+        // drive was lost with an empty folder to show for it.
+        assertFalse(TripDebugLog.active)
+
+        TripDebugLog.setEnabled(context, true)
+
+        assertTrue("a trip must be open the moment the switch goes on", TripDebugLog.active)
+        TripDebugLog.event("READ", "recorded without any restart")
+        TripDebugLog.drain()
+        val files = TripDebugLog.files(context)
+        assertEquals(1, files.size)
+        assertTrue(body(files.first()).contains("recorded without any restart"))
+        assertTrue("the header must say why it opened", body(files.first()).contains("switch on"))
+    }
+
+    @Test fun `the development channel records unless it is switched off`() {
+        // Anti-vacuity: this reads the stored value's DEFAULT, so the key must be absent.
+        context.getSharedPreferences(TripDebugLog.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().remove(TripDebugLog.KEY_ENABLED).apply()
+
+        assertEquals(
+            "dev builds default to recording; stable builds do not",
+            com.bydmate.app.BuildConfig.DEFAULT_UPDATE_CHANNEL == "dev",
+            TripDebugLog.isEnabled(context),
+        )
+        assertEquals(TripDebugLog.DEFAULT_ENABLED, TripDebugLog.isEnabled(context))
+
+        // An explicit "off" still wins over the default, and survives a refresh.
+        TripDebugLog.setEnabled(context, false)
+        TripDebugLog.refresh(context)
+        assertFalse(TripDebugLog.isEnabled(context))
     }
 }

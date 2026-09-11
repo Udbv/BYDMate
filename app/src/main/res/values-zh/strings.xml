@@ -1286,6 +1286,9 @@
     <string name="settings_hud_status_on">正在向 HUD 传输</string>
     <string name="settings_hud_status_bind_failed">无法连接 SOME/IP 总线</string>
     <string name="settings_hud_hint">需要配备抬头显示的车型。数据来自 Yandex 导航窗口</string>
+    <string name="settings_hud_street_encoding_title">街道名称编码</string>
+    <string name="settings_hud_street_encoding_desc">仪表自行解码字节，其返回值不会说明使用了哪种编码。「自动」为海外功能选择 UTF-8，为国内功能选择 GBK。若仪表显示乱码，请逐个切换直至正常显示。</string>
+    <string name="settings_hud_street_encoding_auto">自动</string>
     <string name="settings_hud_dialect_title">HUD 类型</string>
     <string name="settings_hud_dialect_desc">经典：Atto 3、Seal、Sea Lion。AR-HUD：DiLink 150（唐 L 2025）。自动按固件判断：%1$s</string>
     <string name="settings_hud_dialect_auto">自动</string>

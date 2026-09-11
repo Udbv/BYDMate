@@ -19,6 +19,8 @@ import kotlinx.coroutines.sync.withLock
 class HudInstrumentFids(
     private val helper: HelperClient,
     private val scope: CoroutineScope,
+    /** Charset for the next-street name; read per write so the setting applies immediately. */
+    private val encodingPref: () -> String = { HudStreetEncoding.AUTO },
 ) {
     companion object {
         private const val TAG = "HudInstrumentFids"
@@ -131,20 +133,27 @@ class HudInstrumentFids(
     private suspend fun writeStreetName(road: String) {
         val name = road.take(MAX_STREET_BYTES)
         if (name == lastStreet) return
-        val bytes = truncateUtf8(name, MAX_STREET_BYTES)
         val candidates = streetFid?.let { listOf(it) } ?: listOf(FID_STREET_NAME_OVERSEAS, FID_STREET_NAME)
+        val pref = encodingPref()
         for (fid in candidates) {
+            val (bytes, charset) = HudStreetEncoding.truncate(
+                name, pref, overseasFeature = fid == FID_STREET_NAME_OVERSEAS, maxBytes = MAX_STREET_BYTES)
             val status = runCatching { helper.writeBytes(DEV_INSTRUMENT, fid, bytes) }.getOrNull()
             writes++
             if (status != null && status > 0) {
                 if (streetFid != fid) {
                     streetFid = fid
-                    Log.i(TAG, "street name feature 0x${fid.toString(16)} accepted")
+                    Log.i(TAG, "street name feature 0x${fid.toString(16)} accepted, charset=$charset")
                     com.bydmate.app.diagnostics.TripDebugLog.event(
-                        "PANEL", "street name feature 0x${fid.toString(16)} accepted")
+                        "PANEL", "street name feature 0x${fid.toString(16)} accepted, charset=$charset")
                 }
                 lastStreet = name
-                com.bydmate.app.diagnostics.TripDebugLog.changed("PANEL", "street", "street='$name'")
+                // The charset and the first bytes are the whole point of logging this: a positive
+                // status says the panel took the buffer, never that it drew what we meant. If the
+                // glass shows Chinese, these bytes and this charset name identify the mismatch.
+                com.bydmate.app.diagnostics.TripDebugLog.changed(
+                    "PANEL", "street",
+                    "street='$name' charset=$charset bytes=${bytes.size} [${HudStreetEncoding.preview(bytes)}]")
                 return
             }
         }
@@ -153,17 +162,6 @@ class HudInstrumentFids(
         lastStreet = name
         com.bydmate.app.diagnostics.TripDebugLog.changed(
             "PANEL", "street", "street='$name' rejected by both features")
-    }
-
-    /** Cuts UTF-8 on a character boundary so the panel never receives half a code point. */
-    internal fun truncateUtf8(text: String, maxBytes: Int): ByteArray {
-        var out = text.toByteArray(Charsets.UTF_8)
-        var end = text.length
-        while (out.size > maxBytes && end > 0) {
-            end--
-            out = text.substring(0, end).toByteArray(Charsets.UTF_8)
-        }
-        return out
     }
 
     /** Route ended: guidance cleared, navigation status back to stopped (donor `turnOffNavi`). */

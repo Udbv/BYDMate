@@ -162,8 +162,19 @@ if [ "$RUN_EMU" = "1" ]; then
     apk=$(ls -1 app/build/outputs/apk/waze/debug/*.apk 2>/dev/null | tail -1)
     "$ADB" -s "$SERIAL" install -r -g --user 10 "$(cygpath -w "$apk" 2>/dev/null || echo "$apk")" >/dev/null 2>&1
     out=$(cd "$SIM" && SERIAL="$SERIAL" P="$P" DIALECT=arhud bash scripts/bydmate-scenarios.sh 2>&1)
+    echo "$out" > "$WORK/scenarios.log"
+    # Readiness lines too, not just the verdicts. A run where the app never bound printed 17
+    # identical "got: " failures and read as broken lane code; the two lines that said the app
+    # was not up had been filtered out.
+    echo "$out" | grep -E '^(a11y connected|HUD active)' | sed 's/^/  /'
     echo "$out" | grep -E '^\s+(ok|FAIL)' | sed 's/^/  /'
-    if echo "$out" | grep -q 'FAIL'; then echo "FAIL: emulator scenarios"; fail=1; else echo "ok: all scenarios green"; fi
+    if echo "$out" | grep -q 'FAIL'; then
+      echo "FAIL: emulator scenarios"
+      echo "  full output: $WORK/scenarios.log"
+      fail=1
+    else
+      echo "ok: all scenarios green"
+    fi
   fi
 fi
 

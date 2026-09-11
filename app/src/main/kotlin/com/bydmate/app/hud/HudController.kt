@@ -58,6 +58,8 @@ class HudController @Inject constructor(
         const val KEY_ARHUD_ROAD_INFO = "hud_arhud_road_info"
         const val KEY_ARHUD_FIDS = "hud_arhud_fids"
         const val KEY_ARHUD_LANES = "hud_arhud_lanes"
+        /** Charset the panel decodes the next-street name with; see [HudStreetEncoding]. */
+        const val KEY_STREET_ENCODING = "hud_street_encoding"
     }
 
     /** Single lane: stop()/startIfEnabled() launched across a service restart must
@@ -85,6 +87,15 @@ class HudController @Inject constructor(
 
     fun setSpeedSignEnabled(on: Boolean) {
         prefs().edit().putBoolean(KEY_SPEED_SIGN, on).apply()
+    }
+
+    fun streetEncoding(): String = prefs().getString(KEY_STREET_ENCODING, null) ?: HudStreetEncoding.AUTO
+
+    /** Takes effect on the next street name the panel is sent; no restart, no re-open. */
+    fun setStreetEncoding(value: String) {
+        prefs().edit().putString(KEY_STREET_ENCODING, value).apply()
+        Log.i(TAG, "street name charset=$value")
+        com.bydmate.app.diagnostics.TripDebugLog.event("PANEL", "street charset set to $value")
     }
 
     /** Frame layout / service key family for the connected glass (see [HudDialect]). */
@@ -210,7 +221,7 @@ class HudController @Inject constructor(
                         context.getString(com.bydmate.app.R.string.hud_eta_remaining_minutes, minutes)
                     },
                     roadInfoEnabled = { isArHudRoadInfoEnabled() },
-                    instrumentFids = HudInstrumentFids(helperClient, scope),
+                    instrumentFids = HudInstrumentFids(helperClient, scope) { streetEncoding() },
                     instrumentFidsEnabled = { isArHudFidsEnabled() },
                     lanes = HudLaneWriter(helperClient, scope),
                     lanesEnabled = { isArHudLanesEnabled() })

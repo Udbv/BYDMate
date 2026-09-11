@@ -1326,6 +1326,9 @@
     <string name="settings_hud_status_on">Передача на HUD активна</string>
     <string name="settings_hud_status_bind_failed">Не удалось подключиться к шине SOME/IP</string>
     <string name="settings_hud_hint">Нужна комплектация с проекционным дисплеем. Данные берутся из окна навигатора (Яндекс Навигатор, Яндекс Карты или Waze)</string>
+    <string name="settings_hud_street_encoding_title">Кодировка названия улицы</string>
+    <string name="settings_hud_street_encoding_desc">Панель декодирует байты сама, и в ответе не сказано, какой кодировкой. «Авто» выбирает UTF-8 для зарубежной функции и GBK для домашней. Если на панели иероглифы — переключайте, пока не появится кириллица.</string>
+    <string name="settings_hud_street_encoding_auto">Авто</string>
     <string name="settings_hud_dialect_title">Тип HUD</string>
     <string name="settings_hud_dialect_desc">Классический: Atto 3, Seal, Sea Lion. AR-HUD: DiLink 150 (Tang L 2025). Авто по прошивке: %1$s</string>
     <string name="settings_hud_dialect_auto">Авто</string>

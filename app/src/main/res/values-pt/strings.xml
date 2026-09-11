@@ -1168,6 +1168,9 @@
     <string name="settings_hud_status_on">Transmissão para o HUD ativa</string>
     <string name="settings_hud_status_bind_failed">Falha ao conectar ao barramento SOME/IP</string>
     <string name="settings_hud_hint">Requer versão com head-up display. Os dados vêm da janela do Yandex Navigator</string>
+    <string name="settings_hud_street_encoding_title">Codificação do nome da rua</string>
+    <string name="settings_hud_street_encoding_desc">O painel decodifica os bytes sozinho e sua resposta não diz com qual codificação. Automático usa UTF-8 para o recurso internacional e GBK para o doméstico. Se o painel mostrar chinês, alterne até aparecer cirílico.</string>
+    <string name="settings_hud_street_encoding_auto">Automático</string>
     <string name="settings_hud_dialect_title">Tipo de HUD</string>
     <string name="settings_hud_dialect_desc">Clássico: Atto 3, Seal, Sea Lion. AR-HUD: DiLink 150 (Tang L 2025). Auto segue o firmware: %1$s</string>
     <string name="settings_hud_dialect_auto">Auto</string>

@@ -17,12 +17,13 @@ import java.util.concurrent.ConcurrentLinkedQueue
  * every guidance decision straight to the public Download folder, where it survives the trip and
  * can be collected later over USB, a file manager, or ADB once the car is home again.
  *
- * It is **off by default** and gated by an explicit debug switch, because it records what the
- * navigator showed on screen: street names, and with them, by implication, where the car went.
- * Nothing here is sent anywhere; the files stay on the car until the owner copies them off.
+ * On the development channel it runs unless switched off; on the stable channel it is off until
+ * switched on. It records what the navigator showed on screen -- street names, and with them, by
+ * implication, where the car went -- so it is worth knowing about. Nothing is sent anywhere: the
+ * files stay on the car until the owner copies them off, newest [MAX_FILES] kept.
  *
- * One file per trip, newest [MAX_FILES] kept. Writes are buffered and flushed on a background
- * drain so the 300 ms push loop never touches storage.
+ * One file per trip. Writes are buffered and flushed on a background drain so the 300 ms push
+ * loop never touches storage.
  */
 object TripDebugLog {
     private const val TAG = "TripDebugLog"
@@ -51,15 +52,30 @@ object TripDebugLog {
         enabled = isEnabled(context)
     }
 
+    /**
+     * Whether the log runs unless the owner says otherwise.
+     *
+     * On the development channel it does. The whole point of this file is the drive that cannot
+     * be observed any other way -- Wi-Fi is gone the moment the car leaves the driveway -- and a
+     * switch that defaults to off produced exactly one outcome in the field: an empty folder
+     * after the drive that mattered. A stored `false` still wins; turning it off keeps it off.
+     */
+    val DEFAULT_ENABLED: Boolean = com.bydmate.app.BuildConfig.DEFAULT_UPDATE_CHANNEL == "dev"
+
     fun isEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, false)
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_ENABLED, DEFAULT_ENABLED)
 
     fun setEnabled(context: Context, on: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_ENABLED, on).apply()
         enabled = on
         Log.i(TAG, "trip debug log ${if (on) "enabled" else "disabled"}")
-        if (!on) endTrip("switch off")
+        // Start recording now, not at the next ignition. startTrip() used to be reachable only
+        // from TrackingService.onCreate, and the service is already running by the time anyone
+        // opens settings -- so switching this on did nothing at all until the car was restarted,
+        // which is how a drive was lost.
+        if (on) startTrip(context, "switch on") else endTrip("switch off")
     }
 
     /** True while a trip file is open; cheap enough to guard every call site. */

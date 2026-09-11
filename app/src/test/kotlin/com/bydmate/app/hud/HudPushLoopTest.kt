@@ -222,4 +222,46 @@ class HudPushLoopTest {
         assertEquals(-5, loop.lastRc)
         assertEquals(1L, loop.nonZeroRcCount)
     }
+
+    @Test fun `an idle loop records why nothing is going out`() {
+        // A whole drive once produced not one line from this loop: an inactive hub returned
+        // silently, so afterwards "we never pushed" and "we pushed then stopped" were
+        // indistinguishable. The idle branch must speak, on a cadence, with a reason.
+        val recorded = mutableListOf<String>()
+        val context: android.content.Context =
+            androidx.test.core.app.ApplicationProvider.getApplicationContext()
+        com.bydmate.app.diagnostics.TripDebugLog.setEnabled(context, true)
+        try {
+            val sink = FakeSink()
+            val loop = HudPushLoop(sink, nowMsProvider = { 1000L })
+
+            // First idle tick speaks; the ones right behind it stay quiet.
+            assertFalse(loop.tick(wasActive = false))
+            repeat(20) { assertFalse(loop.tick(wasActive = false)) }
+            com.bydmate.app.diagnostics.TripDebugLog.drain()
+            val text = com.bydmate.app.diagnostics.TripDebugLog.files(context)
+                .firstOrNull()?.readText().orEmpty()
+            recorded += text.lines().filter { it.contains("idle:") }
+
+            assertEquals("exactly one idle line per cadence window", 1, recorded.size)
+            assertTrue(
+                "the line must name a reason, not just say idle: ${recorded.first()}",
+                recorded.first().length > "HUD idle: ".length + 10,
+            )
+            assertTrue(sink.events.isEmpty())
+        } finally {
+            com.bydmate.app.diagnostics.TripDebugLog.endTrip("test")
+            com.bydmate.app.diagnostics.TripDebugLog.setEnabled(context, false)
+            com.bydmate.app.diagnostics.TripDebugLog.files(context).forEach { it.delete() }
+        }
+    }
+
+    @Test fun `the idle reason names the missing piece`() {
+        // NavA11yFeed disabled is the state a HUD-off car is in; the text must say so rather
+        // than leave the reader guessing which of four things went wrong.
+        com.bydmate.app.navdata.NavA11yFeed.enabled = false
+        assertTrue(
+            com.bydmate.app.navdata.NavA11yFeed.idleReason(1000L).contains("disabled"),
+        )
+    }
 }
