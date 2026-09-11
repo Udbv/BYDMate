@@ -1171,9 +1171,6 @@
     <string name="settings_hud_status_on">Streaming to the HUD</string>
     <string name="settings_hud_status_bind_failed">Could not connect to the SOME/IP bus</string>
     <string name="settings_hud_hint">Requires a trim with the head-up display. Data comes from the navigator window (Yandex Navigator, Yandex Maps or Waze)</string>
-    <string name="settings_hud_street_encoding_title">Street name encoding</string>
-    <string name="settings_hud_street_encoding_desc">The panel decodes the bytes itself and its reply does not say with which charset. Auto uses UTF-8 for the overseas feature and GBK for the domestic one. If the panel shows Chinese, switch until Cyrillic appears.</string>
-    <string name="settings_hud_street_encoding_auto">Auto</string>
     <string name="settings_hud_dialect_title">HUD type</string>
     <string name="settings_hud_dialect_desc">Classic: Atto 3, Seal, Sea Lion. AR-HUD: DiLink 150 (Tang L 2025). Auto follows the firmware: %1$s</string>
     <string name="settings_hud_dialect_auto">Auto</string>
@@ -1322,4 +1319,6 @@
     <string name="tech_hint_tyres">Pressure and temperature of each wheel from the sensors in the tyres. Pressure rises by 0.2…0.3 bar as the tyres warm up on a trip, that is normal. If one wheel is noticeably lower than the others, check whether it is losing air.</string>
     <string name="dashboard_trip1_label">TRIP 1</string>
     <string name="dashboard_trip2_label">TRIP 2</string>
+    <string name="settings_hud_street_translit_title">Transliterate the street name</string>
+    <string name="settings_hud_street_translit_desc">The cluster\'s font set has no Cyrillic. On, the street name is Latinised before it is sent (as openbyd does, proven on real cars); off, it goes as typed.</string>
 </resources>

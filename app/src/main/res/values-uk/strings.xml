@@ -1324,9 +1324,6 @@
     <string name="settings_hud_status_on">Передача на HUD активна</string>
     <string name="settings_hud_status_bind_failed">Не вдалося підключитися до шини SOME/IP</string>
     <string name="settings_hud_hint">Потрібна комплектація з проєкційним дисплеєм. Дані беруться з вікна навігатора (Яндекс Навігатор, Яндекс Карти або Waze)</string>
-    <string name="settings_hud_street_encoding_title">Кодування назви вулиці</string>
-    <string name="settings_hud_street_encoding_desc">Панель декодує байти сама, і у відповіді не сказано, яким кодуванням. «Авто» бере UTF-8 для зарубіжної функції і GBK для домашньої. Якщо на панелі ієрогліфи — перемикайте, доки не зʼявиться кирилиця.</string>
-    <string name="settings_hud_street_encoding_auto">Авто</string>
     <string name="settings_hud_dialect_title">Тип HUD</string>
     <string name="settings_hud_dialect_desc">Класичний: Atto 3, Seal, Sea Lion. AR-HUD: DiLink 150 (Tang L 2025). Авто за прошивкою: %1$s</string>
     <string name="settings_hud_dialect_auto">Авто</string>
@@ -1480,4 +1477,6 @@
     <string name="tech_hint_motors">Температура електромоторів та інверторів, які ними керують. У звичайній їзді до 60…80°. При довгому розгоні або буксируванні гріються сильніше, і машина сама знижує потужність, поки не охолонуть.</string>
     <string name="tech_hint_compressor">Скільки ватів споживає компресор кондиціонера і теплового насоса. Це головний споживач крім моторів: улітку в спеку та взимку в мороз він помітно з\'їдає запас ходу.</string>
     <string name="tech_hint_tyres">Тиск і температура кожного колеса від датчиків у шинах. Тиск зростає на 0,2…0,3 бар у міру прогріву в поїздці, це нормально. Одне колесо помітно нижче за інші: перевірте, чи не спускає.</string>
+    <string name="settings_hud_street_translit_title">Транслітерувати назву вулиці</string>
+    <string name="settings_hud_street_translit_desc">Панель малює шрифтом без кирилиці. Увімкнено — назву вулиці переводимо в латиницю (як в openbyd, перевірено на авто); вимкнено — надсилаємо як є.</string>
 </resources>

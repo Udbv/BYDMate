@@ -1324,9 +1324,6 @@
     <string name="settings_hud_status_on">Przesyłanie na HUD aktywne</string>
     <string name="settings_hud_status_bind_failed">Nie udało się połączyć z magistralą SOME/IP</string>
     <string name="settings_hud_hint">Potrzebna wersja wyposażenia z wyświetlaczem przeziernym. Dane brane są z okna Yandex Nawigatora</string>
-    <string name="settings_hud_street_encoding_title">Kodowanie nazwy ulicy</string>
-    <string name="settings_hud_street_encoding_desc">Panel sam dekoduje bajty, a jego odpowiedź nie mówi jakim kodowaniem. Auto wybiera UTF-8 dla funkcji zagranicznej i GBK dla krajowej. Jeśli panel pokazuje chińskie znaki, przełączaj aż pojawi się cyrylica.</string>
-    <string name="settings_hud_street_encoding_auto">Auto</string>
     <string name="settings_hud_dialect_title">Typ HUD</string>
     <string name="settings_hud_dialect_desc">Klasyczny: Atto 3, Seal, Sea Lion. AR-HUD: DiLink 150 (Tang L 2025). Auto według oprogramowania: %1$s</string>
     <string name="settings_hud_dialect_auto">Auto</string>
@@ -1474,4 +1471,6 @@
     <string name="tech_hint_tyres">Ciśnienie i temperatura każdego koła z czujników w oponach. Ciśnienie rośnie o 0,2…0,3 bar w miarę nagrzewania się opon w trasie, to normalne. Jeśli jedno koło ma wyraźnie mniej niż pozostałe, sprawdź, czy nie schodzi z niego powietrze.</string>
     <string name="dashboard_trip1_label">TRIP 1</string>
     <string name="dashboard_trip2_label">TRIP 2</string>
+    <string name="settings_hud_street_translit_title">Transliteruj nazwę ulicy</string>
+    <string name="settings_hud_street_translit_desc">Zestaw czcionek panelu nie ma cyrylicy. Włączone — nazwa ulicy jest zamieniana na łacinkę (jak w openbyd, sprawdzone w aucie); wyłączone — wysyłana bez zmian.</string>
 </resources>

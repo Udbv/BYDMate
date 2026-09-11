@@ -1324,9 +1324,6 @@
     <string name="settings_hud_status_on">Перадача на HUD актыўная</string>
     <string name="settings_hud_status_bind_failed">Не ўдалося падключыцца да шыны SOME/IP</string>
     <string name="settings_hud_hint">Патрэбна камплектацыя з праекцыйным дысплеем. Даныя бяруцца з акна Яндэкс Навігатара</string>
-    <string name="settings_hud_street_encoding_title">Кадзіроўка назвы вуліцы</string>
-    <string name="settings_hud_street_encoding_desc">Панэль дэкадуе байты сама, і ў адказе не сказана, якой кадзіроўкай. «Аўта» бярэ UTF-8 для замежнай функцыі і GBK для хатняй. Калі на панэлі іерогліфы — пераключайце, пакуль не зʼявіцца кірыліца.</string>
-    <string name="settings_hud_street_encoding_auto">Аўта</string>
     <string name="settings_hud_dialect_title">Тып HUD</string>
     <string name="settings_hud_dialect_desc">Класічны: Atto 3, Seal, Sea Lion. AR-HUD: DiLink 150 (Tang L 2025). Аўта па прашыўцы: %1$s</string>
     <string name="settings_hud_dialect_auto">Аўта</string>
@@ -1474,4 +1471,6 @@
     <string name="tech_hint_tyres">Ціск і тэмпература кожнага кола ад датчыкаў у шынах. Ціск расце на 0,2…0,3 бар па меры прагрэву ў паездцы, гэта нармальна. Адно кола прыкметна ніжэй за іншыя: праверце, ці не спускае яно.</string>
     <string name="dashboard_trip1_label">TRIP 1</string>
     <string name="dashboard_trip2_label">TRIP 2</string>
+    <string name="settings_hud_street_translit_title">Транслітараваць назву вуліцы</string>
+    <string name="settings_hud_street_translit_desc">Панэль малюе шрыфтам без кірыліцы. Уключана — назва вуліцы пераводзіцца ў лацінку (як у openbyd, праверана на машыне); выключана — адпраўляецца як ёсць.</string>
 </resources>

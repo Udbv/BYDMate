@@ -1356,25 +1356,17 @@ private fun DisplaySection() {
                     checked = arLanes,
                     onCheckedChange = { arLanes = it; hudController.setArHudLanesEnabled(it) },
                 )
-                // Which charset the panel decodes the street name with. The write status is
-                // positive whatever we send, so the panel cannot be asked - the driver reads it
-                // off the glass and picks the one that is not Chinese.
-                var streetEnc by remember { mutableStateOf(hudController.streetEncoding()) }
-                SettingChipRow(
-                    title = stringResource(R.string.settings_hud_street_encoding_title),
-                    description = stringResource(R.string.settings_hud_street_encoding_desc),
-                    options = listOf(
-                        stringResource(R.string.settings_hud_street_encoding_auto),
-                        "UTF-8", "GBK", "UTF-16LE", "UTF-16BE",
-                    ),
-                    selectedIndex = com.bydmate.app.hud.HudStreetEncoding.ALL
-                        .indexOf(streetEnc).coerceAtLeast(0),
-                    onSelect = { index ->
-                        val value = com.bydmate.app.hud.HudStreetEncoding.ALL[index]
-                        if (value != streetEnc) {
-                            streetEnc = value
-                            hudController.setStreetEncoding(value)
-                        }
+                // The cluster's own font set has no Cyrillic. openbyd Latinises the street name
+                // before sending it and has done so on real cars for years; off shows the raw
+                // name, which is worth a try on a firmware with a fuller font.
+                var streetTranslit by remember { mutableStateOf(hudController.streetTransliterate()) }
+                SettingToggleRow(
+                    title = stringResource(R.string.settings_hud_street_translit_title),
+                    description = stringResource(R.string.settings_hud_street_translit_desc),
+                    checked = streetTranslit,
+                    onCheckedChange = {
+                        streetTranslit = it
+                        hudController.setStreetTransliterate(it)
                     },
                 )
             }
