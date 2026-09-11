@@ -3,16 +3,33 @@ package com.bydmate.app.navdata
 /**
  * Lane guidance for the junction ahead: one entry per physical lane, left to right.
  *
- * The car's instrument panel draws lanes from a pair of numbers per lane (see
- * [com.bydmate.app.hud.HudLaneWriter]): a *lane icon code* describing which directions the lane
- * allows, and a *recommended direction* saying which of them the route takes. This model keeps
- * the same two facts in readable form; the mapping to the car's numbers lives in [NavLaneCodes].
+ * The panel takes the two arrays `sendLaneGuidanceInfo` takes (openbyd `CarControlImpl` :1400):
+ * one *lane code* per lane saying which directions it allows, and one *front* per lane saying
+ * which of them the route takes (255 = this lane is not on the route). [lanes] is the readable
+ * direction-set view the accessibility reader still produces; [codes]/[fronts] are what reach the
+ * car, and they alone (with [distanceMeters]) decide whether anything needs sending again. The
+ * mapping between the two views lives in [NavLaneCodes].
  */
-data class NavLanes(
+class NavLanes private constructor(
+    /** Donor lane codes (0..25, 255 = no lane), one per physical lane, left to right. */
+    val codes: IntArray,
+    /** Donor front per lane: the arrow the route takes, 255 when the lane is off route. */
+    val fronts: IntArray,
+    /** Metres to the junction the lanes belong to; 0 when unknown, -1 on a clear. */
+    val distanceMeters: Int,
+    /** Direction-set view of the same lanes; empty when the codes came from the pixel path. */
     val lanes: List<Lane>,
-    /** Metres to the junction the lanes belong to; 0 when unknown. */
-    val distanceMeters: Int = 0,
 ) {
+    /** The reader's view: directions per lane, translated to codes/fronts by [NavLaneCodes]. */
+    constructor(lanes: List<Lane>, distanceMeters: Int = 0) : this(
+        codes = IntArray(lanes.size) { NavLaneCodes.codeFor(lanes[it].directions) },
+        fronts = IntArray(lanes.size) { i ->
+            lanes[i].recommended?.let { NavLaneCodes.dirId(it) } ?: NavLaneCodes.EMPTY
+        },
+        distanceMeters = distanceMeters,
+        lanes = lanes,
+    )
+
     data class Lane(
         /** Every direction this lane allows. Empty means the lane was read but not understood. */
         val directions: Set<Dir>,
@@ -25,13 +42,47 @@ data class NavLanes(
     /** Directions the car's lane glyphs distinguish. */
     enum class Dir { LEFT, STRAIGHT, RIGHT, UTURN_LEFT, UTURN_RIGHT }
 
-    val isEmpty: Boolean get() = lanes.isEmpty()
+    /** How many lanes the junction has. Never clamped: the donor sends the real count. */
+    val size: Int get() = codes.size
+
+    val isEmpty: Boolean get() = codes.isEmpty()
+
+    /** The front of lane [i] the way the donor reads it: past the end of the array it is 255. */
+    fun frontAt(i: Int): Int = if (i < fronts.size) fronts[i] else NavLaneCodes.EMPTY
+
+    /** `code>front` per lane, the front omitted when the lane is not on the route. This is the
+     *  shape the emulator scenarios grep for (`dilink5-sim/scripts/bydmate-scenarios.sh`). */
+    fun codesLine(): String = codes.indices.joinToString(",") { i ->
+        val front = frontAt(i)
+        if (front == NavLaneCodes.EMPTY) codes[i].toString() else "${codes[i]}>$front"
+    }
+
+    /** Identity is exactly the donor's change detection (`CanBydFidStrategy` :202): the two
+     *  arrays and the distance. The derived [lanes] view is left out. */
+    override fun equals(other: Any?): Boolean =
+        other is NavLanes && codes.contentEquals(other.codes) &&
+            fronts.contentEquals(other.fronts) && distanceMeters == other.distanceMeters
+
+    override fun hashCode(): Int =
+        (codes.contentHashCode() * 31 + fronts.contentHashCode()) * 31 + distanceMeters
+
+    override fun toString(): String = "NavLanes(${codesLine()} dist=$distanceMeters)"
 
     companion object {
         /** The instrument panel draws at most eight lanes. */
         const val MAX_LANES = 8
 
+        /** Lane slots on the setting device (`SET_LANE_STATES`). */
+        const val SETTING_LANES = 12
+
         val NONE = NavLanes(emptyList())
+
+        /** The panel's own arrays, as the pixel path produces them. */
+        fun ofCodes(codes: IntArray, fronts: IntArray, distanceMeters: Int = 0): NavLanes =
+            NavLanes(codes, fronts, distanceMeters, emptyList())
+
+        /** The donor's clear: no lanes, distance -1 (`sendLaneGuidanceInfo(int[0], int[0], -1)`). */
+        val CLEARED = ofCodes(IntArray(0), IntArray(0), -1)
     }
 }
 
