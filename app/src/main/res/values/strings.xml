@@ -1500,6 +1500,16 @@
     <string name="settings_hudtest_maneuver">Текущий маневр: %1$s</string>
     <string name="settings_hudtest_field_step">Шаг (1-%1$d)</string>
     <string name="settings_hudtest_field_speed">Ограничение скорости (км/ч)</string>
+    <string name="settings_hudtest_camera_type">Тип камеры</string>
+    <string name="settings_hudtest_camera_distance">Расстояние до камеры (м)</string>
+    <string name="settings_hudtest_camera_state">Состояние камеры</string>
+    <string name="settings_hudtest_camera_send_title">Знак камеры</string>
+    <string name="settings_hudtest_camera_send_desc">Отправляет sendCameraInfo с выбранным типом, расстоянием и состоянием.</string>
+    <string name="settings_hudtest_camera_send">Отправить камеру</string>
+    <string name="settings_hudtest_camera_clear_title">Сброс знака камеры</string>
+    <string name="settings_hudtest_camera_clear_desc">Отправляет тип 0, расстояние -1, состояние 1 — как в доноре.</string>
+    <string name="settings_hudtest_camera_clear">Сбросить камеру</string>
+    <string name="settings_hudtest_camera_status">Камера: %1$s</string>
     <string name="settings_hudtest_field_street">Своя улица</string>
     <string name="settings_hudtest_field_lane_dist">Расстояние до полос (м)</string>
     <string name="settings_hudtest_field_lanes">Коды полос (напр. 0,0|1,0|3,0)</string>

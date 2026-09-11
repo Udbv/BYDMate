@@ -1451,6 +1451,16 @@
     <string name="settings_hudtest_maneuver">Active maneuver: %1$s</string>
     <string name="settings_hudtest_field_step">Step (1-%1$d)</string>
     <string name="settings_hudtest_field_speed">Speed limit (km/h)</string>
+    <string name="settings_hudtest_camera_type">Camera type</string>
+    <string name="settings_hudtest_camera_distance">Camera distance (m)</string>
+    <string name="settings_hudtest_camera_state">Camera state</string>
+    <string name="settings_hudtest_camera_send_title">Camera sign</string>
+    <string name="settings_hudtest_camera_send_desc">Sends sendCameraInfo with the picked type, distance and state.</string>
+    <string name="settings_hudtest_camera_send">Send camera</string>
+    <string name="settings_hudtest_camera_clear_title">Clear the camera sign</string>
+    <string name="settings_hudtest_camera_clear_desc">Sends type 0, distance -1, state 1 — the donor clear call.</string>
+    <string name="settings_hudtest_camera_clear">Clear camera</string>
+    <string name="settings_hudtest_camera_status">Camera: %1$s</string>
     <string name="settings_hudtest_field_street">Custom street name</string>
     <string name="settings_hudtest_field_lane_dist">Lanes split dist (m)</string>
     <string name="settings_hudtest_field_lanes">Lane codes (e.g. 0,0|1,0|3,0)</string>

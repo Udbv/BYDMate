@@ -56,6 +56,10 @@ class HudPanelTester internal constructor(
         const val DEFAULT_LANE_DISTANCE = "100"
         const val DEFAULT_SPEED_LIMIT = "50"
 
+        /** Camera row defaults: 300 m ahead, state 1 (the donor's "approaching" state). */
+        const val DEFAULT_CAMERA_DISTANCE = "300"
+        const val DEFAULT_CAMERA_STATE = "1"
+
         /** No lane / not on the route, as the panel spells it. */
         const val LANE_EMPTY = 255
 
@@ -157,6 +161,12 @@ class HudPanelTester internal constructor(
         val speedLimit: String = DEFAULT_SPEED_LIMIT,
         val laneText: String = DEFAULT_LANE_TEXT,
         val laneDistance: String = DEFAULT_LANE_DISTANCE,
+        /** Picked `CAMERA_TYPE_*` (see [HudCameraTypes]); the row sends it as-is. */
+        val cameraType: Int = HudCameraTypes.SPEED_LIMITED,
+        val cameraDistance: String = DEFAULT_CAMERA_DISTANCE,
+        val cameraState: String = DEFAULT_CAMERA_STATE,
+        /** Raw status of the last camera call, e.g. "type=1 dist=300 state=1 sdk=0". */
+        val cameraStatus: String = "",
         val sanitize: Boolean = true,
         /** The helper daemon answered a ping: without it nothing below reaches the panel. */
         val sdkBound: Boolean = false,
@@ -225,6 +235,67 @@ class HudPanelTester internal constructor(
     fun setLaneText(text: String) { _state.value = _state.value.copy(laneText = text) }
 
     fun setSanitize(on: Boolean) { _state.value = _state.value.copy(sanitize = on) }
+
+    fun setCameraType(type: Int) { _state.value = _state.value.copy(cameraType = type) }
+
+    fun setCameraDistance(text: String) {
+        if (text.any { !it.isDigit() }) return
+        _state.value = _state.value.copy(cameraDistance = text)
+    }
+
+    fun setCameraState(text: String) {
+        if (text.any { !it.isDigit() }) return
+        _state.value = _state.value.copy(cameraState = text)
+    }
+
+    // ---------------------------------------------------------------- camera row
+
+    /**
+     * `sendCameraInfo(type, distance, state)` with the picked values. No change detection and no
+     * route guard beyond the one the whole card has: the point of the row is to put one chosen
+     * sign on the glass and see whether the cluster draws it.
+     */
+    fun sendCamera() {
+        scope.launch { sendCameraNow() }
+    }
+
+    /** The camera call, awaited. Returns false when a live route made it refuse. */
+    suspend fun sendCameraNow(): Boolean {
+        if (routeActive()) {
+            _state.value = _state.value.copy(routeActiveBlocked = true)
+            Log.i(TAG, "camera frame refused: a route is active")
+            return false
+        }
+        val s = _state.value
+        return camera(
+            s.cameraType,
+            s.cameraDistance.toIntOrNull() ?: 0,
+            s.cameraState.toIntOrNull() ?: 0,
+        )
+    }
+
+    /** The donor's clear: type 0, distance -1, state 1 (`CanBydFidStrategy:263-271`). */
+    fun clearCamera() {
+        scope.launch { clearCameraNow() }
+    }
+
+    suspend fun clearCameraNow(): Boolean = camera(
+        HudCameraTypes.NONE, HudCameraTypes.CLEAR_DISTANCE, HudCameraTypes.CLEAR_STATE)
+
+    private suspend fun camera(type: Int, distance: Int, state: Int): Boolean = try {
+        val status = helperClient.sdkCameraGuidance(type, distance, state)
+        _state.value = _state.value.copy(
+            routeActiveBlocked = false,
+            cameraStatus = "type=$type (${HudCameraTypes.name(type)}) dist=$distance " +
+                "state=$state sdk=$status",
+            lastError = null,
+        )
+        true
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to send camera info", e)
+        _state.value = _state.value.copy(lastError = e.message ?: "Unknown error")
+        false
+    }
 
     // ---------------------------------------------------------------- screen lifecycle
 

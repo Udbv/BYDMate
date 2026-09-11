@@ -112,6 +112,9 @@ class HudInstrumentFids(
     private var lastMinute = -1
     private var lastMileage = -1L
     private var lastStreet: String? = null
+    /** -1 = "nothing sent yet", and also the donor's value for "no limit known" — so a route
+     *  that never learns a limit writes nothing at all. */
+    private var lastSpeedLimit = -1
     @Volatile var writes: Long = 0L
         private set
     @Volatile var failures: Long = 0L
@@ -146,6 +149,28 @@ class HudInstrumentFids(
         writeGuidance(s)
         writeStreetName(s.road)
         writeRestRoute(s)
+        writeSpeedLimit(s.speedLimit)
+    }
+
+    /**
+     * `sendSpeedLimitInfo(v)` (CarControlImpl:1628-1655, driven by CanBydFidStrategy:314-323):
+     * two statistic features and the camera call, and only when the value changed.
+     *
+     * The snapshot spells "no limit" as 0 and the donor spells it as -1; the two statistics get
+     * `max(v, 0)`, and the camera call is what actually draws (or removes) the roundel — type
+     * SPEED_LIMITED at 0 m, state 1 while a limit is known and 0 when it is not.
+     */
+    private suspend fun writeSpeedLimit(limitKmh: Int) {
+        val v = if (limitKmh > 0) limitKmh else -1
+        if (v == lastSpeedLimit) return
+        val value = maxOf(v, 0)
+        val a = sdk { helper.sdkSetInt(HelperBinderProtocol.SDK_DEV_STATISTIC, STAT_SEGMENT_SPEED_LIMIT, value) }
+        val b = sdk { helper.sdkSetInt(HelperBinderProtocol.SDK_DEV_STATISTIC, STAT_SEGMENT_SPEED_2, value) }
+        val c = sdk { helper.sdkCameraGuidance(HudCameraTypes.SPEED_LIMITED, 0, if (value > 0) 1 else 0) }
+        lastSpeedLimit = v
+        val line = "speed limit -> $value stat=$a/$b camera=$c"
+        Log.i(TAG, line)
+        TripDebugLog.event("PANEL", line)
     }
 
     /**
@@ -374,6 +399,9 @@ class HudInstrumentFids(
             lastIcon = -1; lastDistance = -1
             lastHour = -1; lastMinute = -1; lastMileage = -1L
             lastStreet = null
+            // The stop wrote both speed-limit statistics back to 0, so the next route must be
+            // allowed to re-send the same number it ended with.
+            lastSpeedLimit = -1
         }
     }
 

@@ -1590,6 +1590,50 @@ private fun HudPanelTestSection(tester: com.bydmate.app.hud.HudPanelTester) {
         onValueChange = { tester.setLaneText(it) },
         keyboardType = KeyboardType.Text,
     )
+    Spacer(modifier = Modifier.height(8.dp))
+    // Camera / roadside sign row: the type picker is the SDK's own CAMERA_TYPE_* table, and the
+    // raw status is the whole point — a sign that never appears and a call that was refused look
+    // identical on the glass.
+    ConnDropdown(
+        label = stringResource(R.string.settings_hudtest_camera_type),
+        options = com.bydmate.app.hud.HudCameraTypes.ALL.map {
+            it.first.toString() to com.bydmate.app.hud.HudCameraTypes.label(it.first)
+        },
+        selectedId = state.cameraType.toString(),
+        allowNone = false,
+        onSelect = { tester.setCameraType(it.toIntOrNull() ?: 0) },
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    SettingsTextField(
+        label = stringResource(R.string.settings_hudtest_camera_distance),
+        value = state.cameraDistance,
+        onValueChange = { tester.setCameraDistance(it) },
+        keyboardType = KeyboardType.Number,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    SettingsTextField(
+        label = stringResource(R.string.settings_hudtest_camera_state),
+        value = state.cameraState,
+        onValueChange = { tester.setCameraState(it) },
+        keyboardType = KeyboardType.Number,
+    )
+    SettingActionRow(
+        title = stringResource(R.string.settings_hudtest_camera_send_title),
+        description = stringResource(R.string.settings_hudtest_camera_send_desc),
+        buttonLabel = stringResource(R.string.settings_hudtest_camera_send),
+        onClick = { tester.sendCamera() },
+        style = SettingButtonStyle.Primary,
+    )
+    SettingActionRow(
+        title = stringResource(R.string.settings_hudtest_camera_clear_title),
+        description = stringResource(R.string.settings_hudtest_camera_clear_desc),
+        buttonLabel = stringResource(R.string.settings_hudtest_camera_clear),
+        onClick = { tester.clearCamera() },
+        style = SettingButtonStyle.Secondary,
+    )
+    if (state.cameraStatus.isNotEmpty()) {
+        SettingHint(text = stringResource(R.string.settings_hudtest_camera_status, state.cameraStatus))
+    }
     SettingToggleRow(
         title = stringResource(R.string.settings_hudtest_sanitize_title),
         description = stringResource(R.string.settings_hudtest_sanitize_desc),

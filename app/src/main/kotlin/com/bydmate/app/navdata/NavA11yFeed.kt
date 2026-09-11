@@ -34,6 +34,8 @@ object NavA11yFeed {
                 sourceFallbackWorking = false
                 lastDumpedGaode = NO_MANEUVER
                 lastDumpMs = 0L
+                seenWazeIds.clear()
+                newWazeIdsLogged = 0
             }
             field = value
         }
@@ -179,6 +181,9 @@ object NavA11yFeed {
             Log.i(TAG, "Navigator window reachable again")
         }
         try {
+            // Before the extractor, and whatever it finds: a camera alert can be on screen while
+            // the guidance widgets are not.
+            discoverNewIds(root)
             when (val result = NavA11yExtractor.read(root)) {
                 is NavA11yExtractor.ReadResult.Guidance -> {
                     val data = withWazeManeuverHint(root, result.data, nowMs)
@@ -269,6 +274,63 @@ object NavA11yFeed {
             treeDumpSink("nav tree [gaode=$maneuverGaode]:${ids.take(TREE_DUMP_MAX_CHARS)}")
         }
     }
+
+    // -- Waze node discovery ---------------------------------------------------------------
+    // Camera and speed-limit alerts are drawn by Waze views nobody has named yet, and the
+    // maneuver-change dump above is both rate-limited and text-free, so a view that appears for
+    // ten seconds when a camera is announced never shows up in it. This walk runs on every Waze
+    // read and writes one line the first time an id is seen in a session, with its text — this
+    // is the diagnostics build, and the trip log already keeps street names and stays on the car.
+
+    /** How many nodes one discovery walk may visit. */
+    private const val DISCOVERY_MAX_NODES = 300
+    /** How many *new* ids a session may report; a Waze that recycles ids cannot flood the log. */
+    internal const val DISCOVERY_MAX_NEW_IDS = 200
+    /** How much of a node's text and description one line carries. */
+    private const val DISCOVERY_MAX_TEXT = 60
+
+    /** Where a discovery line goes; the trip log in production, a collector in tests. */
+    internal var newIdSink: (String) -> Unit = {
+        com.bydmate.app.diagnostics.TripDebugLog.event("TREE", it)
+    }
+
+    private val seenWazeIds = HashSet<String>()
+    @Volatile private var newWazeIdsLogged = 0
+
+    /** One line per id never seen this session. Waze only; [root] belongs to the caller. */
+    private fun discoverNewIds(root: AccessibilityNodeInfo) {
+        if (!NavPackages.isWazePackage(runCatching { root.packageName?.toString() }.getOrNull())) return
+        if (newWazeIdsLogged >= DISCOVERY_MAX_NEW_IDS) return
+        runCatching { walkNewIds(root, intArrayOf(DISCOVERY_MAX_NODES)) }
+    }
+
+    private fun walkNewIds(node: AccessibilityNodeInfo, budget: IntArray) {
+        if (budget[0] <= 0 || newWazeIdsLogged >= DISCOVERY_MAX_NEW_IDS) return
+        budget[0]--
+        val id = runCatching { node.viewIdResourceName }.getOrNull()?.substringAfter(":id/")
+        if (id != null && id.isNotEmpty() && seenWazeIds.add(id)) {
+            newWazeIdsLogged++
+            val text = clip(runCatching { node.text?.toString() }.getOrNull())
+            val desc = clip(runCatching { node.contentDescription?.toString() }.getOrNull())
+            val cls = runCatching { node.className?.toString() }.getOrNull()
+                ?.substringAfterLast('.') ?: ""
+            newIdSink("new id=$id text='$text' desc='$desc' class=$cls")
+        }
+        val children = runCatching { node.childCount }.getOrDefault(0)
+        for (i in 0 until children) {
+            if (budget[0] <= 0 || newWazeIdsLogged >= DISCOVERY_MAX_NEW_IDS) return
+            val child = runCatching { node.getChild(i) }.getOrNull() ?: continue
+            try {
+                walkNewIds(child, budget)
+            } finally {
+                @Suppress("DEPRECATION")
+                runCatching { child.recycle() }
+            }
+        }
+    }
+
+    private fun clip(value: String?): String =
+        (value ?: "").replace('\n', ' ').take(DISCOVERY_MAX_TEXT)
 
     /** Depth-first, [budget] nodes at most; only ids are collected, text is reduced to its
      *  length (screen text is the driver's route, not diagnostic data). */

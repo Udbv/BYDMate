@@ -42,6 +42,7 @@ class HudInstrumentFidsTest {
         coEvery { it.sdkSimpleGuidance(any(), any()) } returns 0
         coEvery { it.sdkNextPathName(any()) } returns 0
         coEvery { it.sdkRestRoute(any(), any(), any()) } returns 0
+        coEvery { it.sdkCameraGuidance(any(), any(), any()) } returns 0
     }
 
     private fun fids(helper: HelperClient, scope: TestScope) =
@@ -212,6 +213,62 @@ class HudInstrumentFidsTest {
     }
 
     // ----------------------------------------------------------------- stop
+
+    // ---------------------------------------------------------------- speed limit
+
+    @Test fun `a speed limit writes both statistics and the camera call`() = runTest {
+        val scope = TestScope(StandardTestDispatcher(testScheduler))
+        val helper = helper()
+
+        fids(helper, scope).update(NavGuidanceHub.Snapshot(active = true, speedLimit = 50))
+        scope.advanceUntilIdle()
+
+        coVerifyOrder {
+            helper.sdkSetInt(SDK_DEV_STATISTIC, HudInstrumentFids.STAT_SEGMENT_SPEED_LIMIT, 50)
+            helper.sdkSetInt(SDK_DEV_STATISTIC, HudInstrumentFids.STAT_SEGMENT_SPEED_2, 50)
+            helper.sdkCameraGuidance(HudCameraTypes.SPEED_LIMITED, 0, 1)
+        }
+    }
+
+    @Test fun `an unchanged speed limit writes nothing the second time`() = runTest {
+        val scope = TestScope(StandardTestDispatcher(testScheduler))
+        val helper = helper()
+        val s = NavGuidanceHub.Snapshot(active = true, speedLimit = 50)
+
+        val f = fids(helper, scope)
+        f.update(s); scope.advanceUntilIdle()
+        f.update(s.copy(distanceMeters = 100)); scope.advanceUntilIdle()
+
+        coVerify(exactly = 1) { helper.sdkCameraGuidance(any(), any(), any()) }
+    }
+
+    @Test fun `a route without a known limit sends no speed limit at all`() = runTest {
+        val scope = TestScope(StandardTestDispatcher(testScheduler))
+        val helper = helper()
+
+        fids(helper, scope).update(NavGuidanceHub.Snapshot(active = true, speedLimit = 0))
+        scope.advanceUntilIdle()
+
+        coVerify(exactly = 0) { helper.sdkCameraGuidance(any(), any(), any()) }
+        coVerify(exactly = 0) {
+            helper.sdkSetInt(SDK_DEV_STATISTIC, HudInstrumentFids.STAT_SEGMENT_SPEED_2, any())
+        }
+    }
+
+    @Test fun `a limit that disappears clears the roundel`() = runTest {
+        val scope = TestScope(StandardTestDispatcher(testScheduler))
+        val helper = helper()
+
+        val f = fids(helper, scope)
+        f.update(NavGuidanceHub.Snapshot(active = true, speedLimit = 50)); scope.advanceUntilIdle()
+        f.update(NavGuidanceHub.Snapshot(active = true, speedLimit = 0)); scope.advanceUntilIdle()
+
+        // 0 on both statistics, and the camera call with state 0: the sign goes away.
+        coVerify(exactly = 1) {
+            helper.sdkSetInt(SDK_DEV_STATISTIC, HudInstrumentFids.STAT_SEGMENT_SPEED_LIMIT, 0)
+        }
+        coVerify(exactly = 1) { helper.sdkCameraGuidance(HudCameraTypes.SPEED_LIMITED, 0, 0) }
+    }
 
     @Test fun `stop clears every feature the donor clears, in the donor's order`() = runTest {
         val scope = TestScope(StandardTestDispatcher(testScheduler))

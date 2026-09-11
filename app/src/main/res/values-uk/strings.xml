@@ -1495,6 +1495,16 @@
     <string name="settings_hudtest_maneuver">Поточний маневр: %1$s</string>
     <string name="settings_hudtest_field_step">Крок (1-%1$d)</string>
     <string name="settings_hudtest_field_speed">Обмеження швидкості (км/год)</string>
+    <string name="settings_hudtest_camera_type">Тип камери</string>
+    <string name="settings_hudtest_camera_distance">Відстань до камери (м)</string>
+    <string name="settings_hudtest_camera_state">Стан камери</string>
+    <string name="settings_hudtest_camera_send_title">Знак камери</string>
+    <string name="settings_hudtest_camera_send_desc">Надсилає sendCameraInfo з вибраним типом, відстанню та станом.</string>
+    <string name="settings_hudtest_camera_send">Надіслати камеру</string>
+    <string name="settings_hudtest_camera_clear_title">Скидання знака камери</string>
+    <string name="settings_hudtest_camera_clear_desc">Надсилає тип 0, відстань -1, стан 1 — як у донорі.</string>
+    <string name="settings_hudtest_camera_clear">Скинути камеру</string>
+    <string name="settings_hudtest_camera_status">Камера: %1$s</string>
     <string name="settings_hudtest_field_street">Власна вулиця</string>
     <string name="settings_hudtest_field_lane_dist">Відстань до смуг (м)</string>
     <string name="settings_hudtest_field_lanes">Коди смуг (напр. 0,0|1,0|3,0)</string>
