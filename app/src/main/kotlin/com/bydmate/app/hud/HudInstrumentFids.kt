@@ -189,19 +189,25 @@ class HudInstrumentFids(
      */
     private suspend fun writeGuidance(s: NavGuidanceHub.Snapshot) {
         val icon = if (s.panelIcon > 0) s.panelIcon else HudInstrumentIcons.fromGaode(s.maneuverGaode)
-        if (icon == lastIcon && s.distanceMeters == lastDistance) return
+        sendGuidance(icon, s.distanceMeters, "gaode=${s.maneuverGaode} panel=${s.panelIcon}")
+    }
+
+    /** The three features and the SDK call; null when nothing changed and nothing was sent. */
+    private suspend fun sendGuidance(icon: Int, distanceMeters: Int, origin: String): Int? {
+        if (icon == lastIcon && distanceMeters == lastDistance) return null
         val a = write(FID_GUIDE_ICON, icon)
         val b = write(FID_GUIDE_ICON_DUAL, icon)
-        val c = write(FID_GUIDE_DISTANCE, s.distanceMeters)
-        val status = sdk { helper.sdkSimpleGuidance(icon, s.distanceMeters) }
+        val c = write(FID_GUIDE_DISTANCE, distanceMeters)
+        val status = sdk { helper.sdkSimpleGuidance(icon, distanceMeters) }
         if (icon != lastIcon) {
-            val line = "guide gaode=${s.maneuverGaode} panel=${s.panelIcon} -> icon=$icon " +
-                "(${HudInstrumentIcons.name(icon)}) dist=${s.distanceMeters} raw=$a/$b/$c sdk=$status"
+            val line = "guide $origin -> icon=$icon " +
+                "(${HudInstrumentIcons.name(icon)}) dist=$distanceMeters raw=$a/$b/$c sdk=$status"
             Log.i(TAG, line)
             TripDebugLog.event("PANEL", line)
         }
         lastIcon = icon
-        lastDistance = s.distanceMeters
+        lastDistance = distanceMeters
+        return status
     }
 
     /**
@@ -217,9 +223,14 @@ class HudInstrumentFids(
      * street on the glass, a space clears it.
      */
     private suspend fun writeStreetName(road: String) {
-        val sanitised = if (sanitizePref()) sanitizer.sanitize(road) else road
+        sendStreetName(road, sanitizePref())
+    }
+
+    /** Byte feature + SDK call; both statuses, or (null, null) when the name has not changed. */
+    private suspend fun sendStreetName(road: String, sanitize: Boolean): Pair<Int?, Int?> {
+        val sanitised = if (sanitize) sanitizer.sanitize(road) else road
         val name = sanitised.take(MAX_STREET_CHARS).ifEmpty { " " }
-        if (name == lastStreet) return
+        if (name == lastStreet) return null to null
         val bytes = name.toByteArray(Charsets.UTF_16LE)
         val status = sdk { helper.sdkSetBytes(HelperBinderProtocol.SDK_DEV_INSTRUMENT, FID_STREET_NAME, bytes) }
         val nameStatus = sdk { helper.sdkNextPathName(name) }
@@ -233,6 +244,7 @@ class HudInstrumentFids(
         // Remembered whatever the status: the donor never inspects it, and a panel that rejects
         // the feature must not be hammered with the same name on every maneuver.
         lastStreet = name
+        return status to nameStatus
     }
 
     /** `sendRestRouteInfo(hour, minute, mileage)` — five features then the SDK call, this order. */
@@ -242,15 +254,61 @@ class HudInstrumentFids(
         val hour = (totalMin / 60).coerceIn(0, 254)
         val minute = (totalMin % 60).coerceIn(0, 59)
         val mileage = s.totalDistMeters.toLong().coerceIn(0L, REST_MILEAGE_MAX)
-        if (hour == lastHour && minute == lastMinute && mileage == lastMileage) return
+        sendRestRoute(hour, minute, mileage)
+    }
+
+    /** Five features then the SDK call; null when the remaining route has not changed. */
+    private suspend fun sendRestRoute(hour: Int, minute: Int, mileageMeters: Long): Int? {
+        val mileage = mileageMeters.coerceIn(0L, REST_MILEAGE_MAX)
+        if (hour == lastHour && minute == lastMinute && mileage == lastMileage) return null
         write(FID_TRIP_MILEAGE, mileage.toInt())
         write(FID_TRIP_HOUR, hour)
         write(FID_TRIP_MINUTE, minute)
         write(FID_TRIP_SECOND, 0)
         val arrive = Calendar.getInstance().apply { add(Calendar.MINUTE, hour * 60 + minute) }
         write(FID_ARRIVE_MINUTE, arrive.get(Calendar.MINUTE))
-        sdk { helper.sdkRestRoute(hour, minute, mileage) }
+        val status = sdk { helper.sdkRestRoute(hour, minute, mileage) }
         lastHour = hour; lastMinute = minute; lastMileage = mileage
+        return status
+    }
+
+    // ---- Entry points for the HUD panel test screen (HudPanelTester) ----
+    // The push loop never needs these: it feeds whole snapshots and fires and forgets. The test
+    // screen picks the values by hand, must await each frame, and shows the SDK status of every
+    // verb, so it needs the same writes reachable one frame at a time.
+
+    /** Statuses of one manual frame; a null means that verb had nothing new to send. */
+    data class FrameStatus(
+        val guidance: Int?,
+        val street: Int?,
+        val streetName: Int?,
+        val restRoute: Int?,
+    )
+
+    /** The donor's `ensureHudActive`, awaited: arms the panel when it is not already navigating. */
+    suspend fun ensureActiveNow() {
+        mutex.withLock { ensureActive() }
+    }
+
+    /**
+     * One hand-built frame in the donor's order (openbyd `yt` case 1 / `CanBydFidStrategy`):
+     * guidance, street name, remaining route. Change detection is the donor's, so sending the
+     * same frame twice writes nothing the second time.
+     */
+    suspend fun sendFrameNow(
+        icon: Int,
+        distanceMeters: Int,
+        road: String,
+        sanitize: Boolean,
+        hour: Int = 0,
+        minute: Int = 15,
+        mileageMeters: Long = 15_000L,
+    ): FrameStatus = mutex.withLock {
+        ensureActive()
+        val guidance = sendGuidance(icon, distanceMeters, "manual")
+        val (street, streetName) = sendStreetName(road, sanitize)
+        val rest = sendRestRoute(hour, minute, mileageMeters)
+        FrameStatus(guidance, street, streetName, rest)
     }
 
     /** Route ended: guidance cleared, navigation status back to stopped (donor `turnOffNavi`). */

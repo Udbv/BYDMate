@@ -3,6 +3,7 @@ package com.bydmate.app.cluster
 import com.bydmate.app.data.vehicle.HelperBootstrap
 import com.bydmate.app.data.vehicle.HelperClient
 import com.bydmate.app.hud.HudController
+import com.bydmate.app.hud.HudPanelTester
 import com.bydmate.app.split.SplitPreferences
 import com.bydmate.app.voice.VoiceController
 import dagger.hilt.EntryPoint
@@ -20,5 +21,6 @@ interface ClusterEntryPoint {
     fun helperBootstrap(): HelperBootstrap
     fun voiceController(): VoiceController
     fun hudController(): HudController
+    fun hudPanelTester(): HudPanelTester
     fun splitPreferences(): SplitPreferences
 }

@@ -218,6 +218,26 @@ class HudLaneWriter(
         }
     }
 
+    /** Test screen: pushes one strip and awaits it, change detection included. */
+    suspend fun updateNow(lanes: NavLanes) {
+        if (lanes.isEmpty) { clearNow(); return }
+        mutex.withLock {
+            if (lanes == lastSent) return
+            send(lanes)
+            lastSent = lanes
+        }
+    }
+
+    /** [clear], awaited: blanks the strip once, and only if something was ever sent. */
+    suspend fun clearNow() {
+        mutex.withLock {
+            val last = lastSent
+            if (last == null || last.isEmpty) return
+            send(NavLanes.CLEARED)
+            lastSent = NavLanes.CLEARED
+        }
+    }
+
     private suspend fun send(lanes: NavLanes) {
         var ok = 0
         var bad = 0

@@ -23,6 +23,7 @@ import kotlin.math.roundToInt
 import com.bydmate.app.ui.widget.LeftTapMode
 import com.bydmate.app.ui.widget.WidgetController
 import com.bydmate.app.ui.widget.WidgetPreferences
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
@@ -97,6 +98,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.horizontalScroll
@@ -1369,6 +1371,9 @@ private fun DisplaySection() {
                         hudController.setStreetTransliterate(it)
                     },
                 )
+                // openbyd's HUD Tester: hand-built frames and the 49-step demo tour, the only way
+                // to see what this cluster draws without driving a route.
+                HudPanelTestSection(entryPoint.hudPanelTester())
             }
             SettingDivider()
             SettingStatusRow(
@@ -1444,6 +1449,177 @@ private fun DisplaySection() {
  * re-reads it on every tick, so a change lands without a restart. Turning the switch on asks
  * for CAMERA — the AVM stack refuses to open the preview without it (as on the probe screen).
  */
+/**
+ * openbyd's "HUD Capability Showcase", folded into the AR-HUD card instead of its own dialog.
+ *
+ * This is the only way to find out what the instrument panel really draws: every write is
+ * accepted whatever it contains, so the glyph table, the street charset and the lane encoding
+ * can only be checked by putting a chosen frame on the glass while parked and looking at it.
+ * The status line is BYDMate's addition — openbyd shows nothing, and a blank panel with no
+ * status is a dead end.
+ */
+@Composable
+private fun HudPanelTestSection(tester: com.bydmate.app.hud.HudPanelTester) {
+    val state by tester.state.collectAsState()
+    val steps = com.bydmate.app.hud.HudPanelTestSteps.SIZE
+
+    // Opening the card starts the SDK-bound poll; leaving it stops the run and clears the panel
+    // (the donor's DisposableEffect, m70:64-75).
+    DisposableEffect(Unit) {
+        tester.onScreenOpened()
+        onDispose { tester.onScreenClosed() }
+    }
+
+    SettingDivider()
+    SettingStatusRow(
+        title = stringResource(
+            R.string.settings_hudtest_sdk_label,
+            stringResource(
+                if (state.sdkBound) R.string.settings_hudtest_sdk_connected
+                else R.string.settings_hudtest_sdk_offline
+            ),
+        ),
+        ok = state.sdkBound,
+    )
+
+    // Active-frame card: what the panel was last asked to draw.
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = CardSurfaceElevated),
+        border = BorderStroke(1.dp, CardBorder),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = stringResource(
+                    if (state.running) R.string.settings_hudtest_title_sim
+                    else R.string.settings_hudtest_title_manual
+                ),
+                color = TextPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = if (state.running)
+                    stringResource(
+                        R.string.settings_hudtest_step_elapsed,
+                        state.stepNumber, steps, state.elapsedSeconds)
+                else stringResource(R.string.settings_hudtest_custom_frame),
+                color = TextSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_hudtest_icon, state.iconId),
+                    color = AccentGreen,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = com.bydmate.app.hud.HudInstrumentIcons.name(state.iconId),
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = if (state.distanceMeters > 0)
+                        stringResource(R.string.settings_hudtest_distance, state.distanceMeters)
+                    else stringResource(R.string.settings_hudtest_arrived),
+                    color = TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+            Text(
+                text = stringResource(R.string.settings_hudtest_onto, state.streetDisplay),
+                color = TextPrimary,
+                fontSize = 12.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            Text(
+                text = stringResource(
+                    R.string.settings_hudtest_maneuver,
+                    com.bydmate.app.hud.HudPanelTestSteps.STEPS[state.stepIndex].maneuver),
+                color = TextMuted,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+    }
+
+    SettingsTextField(
+        label = stringResource(R.string.settings_hudtest_field_step, steps),
+        value = state.manualStep,
+        onValueChange = { tester.setManualStep(it) },
+        keyboardType = KeyboardType.Number,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    SettingsTextField(
+        label = stringResource(R.string.settings_hudtest_field_speed),
+        value = state.speedLimit,
+        onValueChange = { tester.setSpeedLimit(it) },
+        keyboardType = KeyboardType.Number,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    SettingsTextField(
+        label = stringResource(R.string.settings_hudtest_field_street),
+        value = state.customStreet,
+        onValueChange = { tester.setCustomStreet(it) },
+        keyboardType = KeyboardType.Text,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    SettingsTextField(
+        label = stringResource(R.string.settings_hudtest_field_lane_dist),
+        value = state.laneDistance,
+        onValueChange = { tester.setLaneDistance(it) },
+        keyboardType = KeyboardType.Number,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    SettingsTextField(
+        label = stringResource(R.string.settings_hudtest_field_lanes),
+        value = state.laneText,
+        onValueChange = { tester.setLaneText(it) },
+        keyboardType = KeyboardType.Text,
+    )
+    SettingToggleRow(
+        title = stringResource(R.string.settings_hudtest_sanitize_title),
+        description = stringResource(R.string.settings_hudtest_sanitize_desc),
+        checked = state.sanitize,
+        onCheckedChange = { tester.setSanitize(it) },
+    )
+    SettingActionRow(
+        title = stringResource(R.string.settings_hudtest_send_title),
+        description = stringResource(R.string.settings_hudtest_send_desc),
+        buttonLabel = stringResource(R.string.settings_hudtest_send),
+        onClick = { tester.sendManualFrame() },
+        style = SettingButtonStyle.Primary,
+    )
+    SettingActionRow(
+        title = stringResource(R.string.settings_hudtest_auto_title),
+        description = stringResource(R.string.settings_hudtest_auto_desc),
+        buttonLabel = stringResource(
+            if (state.running) R.string.settings_hudtest_stop else R.string.settings_hudtest_start),
+        onClick = { tester.toggle() },
+        style = if (state.running) SettingButtonStyle.Warning else SettingButtonStyle.Secondary,
+    )
+    if (state.routeActiveBlocked) {
+        SettingHint(text = stringResource(R.string.settings_hudtest_route_active))
+    }
+    state.lastError?.let { SettingHint(text = stringResource(R.string.settings_hudtest_failed, it)) }
+    if (state.lastStatus.isNotEmpty()) {
+        SettingHint(text = stringResource(R.string.settings_hudtest_status, state.lastStatus))
+    }
+}
+
 @Composable
 private fun BlindSpotCard() {
     val context = LocalContext.current
