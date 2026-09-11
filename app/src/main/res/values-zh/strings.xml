@@ -1286,9 +1286,6 @@
     <string name="settings_hud_status_on">正在向 HUD 传输</string>
     <string name="settings_hud_status_bind_failed">无法连接 SOME/IP 总线</string>
     <string name="settings_hud_hint">需要配备抬头显示的车型。数据来自 Yandex 导航窗口</string>
-    <string name="settings_hud_street_encoding_title">街道名称编码</string>
-    <string name="settings_hud_street_encoding_desc">仪表自行解码字节，其返回值不会说明使用了哪种编码。「自动」为海外功能选择 UTF-8，为国内功能选择 GBK。若仪表显示乱码，请逐个切换直至正常显示。</string>
-    <string name="settings_hud_street_encoding_auto">自动</string>
     <string name="settings_hud_dialect_title">HUD 类型</string>
     <string name="settings_hud_dialect_desc">经典：Atto 3、Seal、Sea Lion。AR-HUD：DiLink 150（唐 L 2025）。自动按固件判断：%1$s</string>
     <string name="settings_hud_dialect_auto">自动</string>
@@ -1436,4 +1433,6 @@
     <string name="tech_hint_tyres">来自胎压传感器的每个车轮的压力和温度。行驶中轮胎升温后压力会升高 0,2…0,3 bar，属于正常。若某个车轮明显低于其他，请检查是否漏气。</string>
     <string name="dashboard_trip1_label">TRIP 1</string>
     <string name="dashboard_trip2_label">TRIP 2</string>
+    <string name="settings_hud_street_translit_title">街道名称转写为拉丁字母</string>
+    <string name="settings_hud_street_translit_desc">仪表字体不含西里尔字母。开启时街道名称先转写为拉丁字母后再发送（与 openbyd 一致，已在车上验证）；关闭时按原样发送。</string>
 </resources>
