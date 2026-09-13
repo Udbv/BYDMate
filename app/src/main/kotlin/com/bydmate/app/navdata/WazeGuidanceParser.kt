@@ -49,6 +49,7 @@ object WazeGuidanceParser {
             // nothing about the shape of the junction. It becomes a code only once the arrow
             // classifier has said the arrow IS a roundabout (openbyd applies it the same way).
             exitNumber = f.exitNumber,
+            thenText = f.thenGlyph.orEmpty(),
         )
     }
 

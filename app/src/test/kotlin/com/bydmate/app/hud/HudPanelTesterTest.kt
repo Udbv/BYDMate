@@ -44,6 +44,7 @@ class HudPanelTesterTest {
         coEvery { it.sdkNextPathName(any()) } returns 0
         coEvery { it.sdkRestRoute(any(), any(), any()) } returns 0
         coEvery { it.sdkCameraGuidance(any(), any(), any()) } returns 0
+        coEvery { it.writeStatus(any(), any(), any()) } returns 0
     }
 
     private fun tester(
@@ -53,6 +54,132 @@ class HudPanelTesterTest {
     ) = HudPanelTester(helper, transliteratePref = { false }, routeActive = routeActive).also {
         it.scope = scope
         it.sanitizer = HudTextSanitizer(null)
+    }
+
+    // ---------------------------------------------------------------- raw FID rows
+
+    private val DEV = HudInstrumentFids.DEV_INSTRUMENT
+
+    @Test fun `the raw camera row writes type, distance and state in that order`() = runTest {
+        val helper = helper()
+        val tester = tester(helper, this)
+        tester.setCameraType(3)
+        tester.setCameraDistance("250")
+        tester.setCameraState("1")
+
+        assertTrue(tester.sendRawCameraNow())
+
+        coVerifyOrder {
+            helper.writeStatus(DEV, HudInstrumentFids.FID_CAMERA_TYPE, 3)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_CAMERA_DISTANCE, 250)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_CAMERA_STATE, 1)
+        }
+        val status = tester.state.value.rawCameraStatus
+        assertTrue(status, "0x43F03010=3->0" in status)
+        assertTrue(status, "0x43F0301C=250->0" in status)
+        assertTrue(status, "0x43F03018=1->0" in status)
+    }
+
+    @Test fun `the raw camera clear runs the three backwards`() = runTest {
+        val helper = helper()
+        assertTrue(tester(helper, this).clearRawCameraNow())
+
+        coVerifyOrder {
+            helper.writeStatus(DEV, HudInstrumentFids.FID_CAMERA_STATE, 0)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_CAMERA_DISTANCE, -1)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_CAMERA_TYPE, 0)
+        }
+    }
+
+    @Test fun `the raw safety row writes the safety triple in order`() = runTest {
+        val helper = helper()
+        val tester = tester(helper, this)
+        tester.setCameraType(7)
+        tester.setCameraDistance("80")
+        tester.setCameraState("1")
+
+        assertTrue(tester.sendRawSafetyNow())
+
+        coVerifyOrder {
+            helper.writeStatus(DEV, HudInstrumentFids.FID_SAFETY_TYPE, 7)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_SAFETY_DISTANCE, 80)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_SAFETY_STATE, 1)
+        }
+        assertTrue(tester.state.value.rawSafetyStatus.isNotEmpty())
+    }
+
+    @Test fun `the raw safety clear runs the three backwards`() = runTest {
+        val helper = helper()
+        assertTrue(tester(helper, this).clearRawSafetyNow())
+
+        coVerifyOrder {
+            helper.writeStatus(DEV, HudInstrumentFids.FID_SAFETY_STATE, 0)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_SAFETY_DISTANCE, -1)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_SAFETY_TYPE, 0)
+        }
+    }
+
+    @Test fun `the then row writes icon, distance and action in order, from its own defaults`() = runTest {
+        val helper = helper()
+        val tester = tester(helper, this)
+
+        assertTrue(tester.sendRawThenNow())
+
+        coVerifyOrder {
+            helper.writeStatus(DEV, HudInstrumentFids.FID_THEN_ICON, 2)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_THEN_DISTANCE, 500)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_THEN_ACTION, 0)
+        }
+    }
+
+    @Test fun `the then row sends the values typed into it`() = runTest {
+        val helper = helper()
+        val tester = tester(helper, this)
+        tester.setThenIcon("9")
+        tester.setThenDistance("120")
+        tester.setThenAction("1")
+
+        assertTrue(tester.sendRawThenNow())
+
+        coVerifyOrder {
+            helper.writeStatus(DEV, HudInstrumentFids.FID_THEN_ICON, 9)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_THEN_DISTANCE, 120)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_THEN_ACTION, 1)
+        }
+    }
+
+    @Test fun `the then clear runs the three backwards`() = runTest {
+        val helper = helper()
+        assertTrue(tester(helper, this).clearRawThenNow())
+
+        coVerifyOrder {
+            helper.writeStatus(DEV, HudInstrumentFids.FID_THEN_ACTION, 0)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_THEN_DISTANCE, -1)
+            helper.writeStatus(DEV, HudInstrumentFids.FID_THEN_ICON, 0)
+        }
+    }
+
+    @Test fun `a live route blocks every raw row`() = runTest {
+        val helper = helper()
+        val tester = tester(helper, this, routeActive = { true })
+
+        assertFalse(tester.sendRawCameraNow())
+        assertFalse(tester.sendRawSafetyNow())
+        assertFalse(tester.sendRawThenNow())
+
+        coVerify(exactly = 0) { helper.writeStatus(DEV, any(), any()) }
+        assertTrue(tester.state.value.routeActiveBlocked)
+    }
+
+    @Test fun `a refused raw write still reports its status`() = runTest {
+        val helper = helper()
+        coEvery { helper.writeStatus(DEV, HudInstrumentFids.FID_CAMERA_STATE, any()) } returns -1
+        val tester = tester(helper, this)
+
+        assertTrue(tester.sendRawCameraNow())
+
+        val status = tester.state.value.rawCameraStatus
+        assertTrue(status, "0x43F03018=1->-1" in status)
     }
 
     // ---------------------------------------------------------------- lane parser

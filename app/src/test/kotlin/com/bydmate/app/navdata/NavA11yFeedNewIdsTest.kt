@@ -87,6 +87,58 @@ class NavA11yFeedNewIdsTest {
         assertEquals(NavA11yFeed.DISCOVERY_MAX_NEW_IDS, lines.size)
     }
 
+    // -- id-less rows inside the maneuver and report lists ---------------------------------
+
+    @Test fun `an id-less row inside a known container is reported with its container`() {
+        deliver(wazeRoot(listOf(
+            node("routeDetailsRecycler", children = listOf(
+                node(null, text = "Turn right", desc = "in 300 m", cls = "android.widget.TextView"),
+            )),
+        )))
+
+        val line = lines.single { it.startsWith("new text=") }
+        assertTrue(line, "text='Turn right'" in line)
+        assertTrue(line, "desc='in 300 m'" in line)
+        assertTrue(line, "class=TextView" in line)
+        assertTrue(line, "under=routeDetailsRecycler" in line)
+    }
+
+    @Test fun `the same row text is reported once per session`() {
+        val tree = { wazeRoot(listOf(node("eventsOnRouteView", children = listOf(
+            node(null, text = "Police"),
+        )))) }
+        deliver(tree())
+        deliver(tree())
+
+        assertEquals(1, lines.count { it.startsWith("new text=") })
+    }
+
+    @Test fun `an id-less row outside the known containers stays unreported`() {
+        deliver(wazeRoot(listOf(
+            node("someOtherPanel", children = listOf(node(null, text = "Turn right"))),
+        )))
+
+        assertTrue(lines.toString(), lines.none { it.startsWith("new text=") })
+    }
+
+    @Test fun `an id-less row with neither text nor description is not reported`() {
+        deliver(wazeRoot(listOf(
+            node("eventsOnRouteContainer", children = listOf(node(null))),
+        )))
+
+        assertTrue(lines.toString(), lines.none { it.startsWith("new text=") })
+    }
+
+    @Test fun `the text cap holds`() {
+        deliver(wazeRoot(listOf(node("instructionView", children =
+            (1..NavA11yFeed.DISCOVERY_MAX_NEW_TEXTS + 40).map { node(null, text = "row $it") }))))
+
+        assertEquals(
+            NavA11yFeed.DISCOVERY_MAX_NEW_TEXTS,
+            lines.count { it.startsWith("new text=") },
+        )
+    }
+
     @Test fun `a non-Waze navigator is not walked`() {
         val root = node("root_container", children = listOf(node("lane_sign")))
         every { root.packageName } returns "ru.yandex.yandexnavi"

@@ -16,6 +16,12 @@ data class NavGuidance(
     val panelIcon: Int = 0,
     /** Roundabout exit number as Waze prints it inside the arrow (`navBarDirectionText`). */
     val exitNumber: Int? = null,
+    /**
+     * Raw `navBarThenDirection` glyph - the icon-font character Waze draws for the maneuver after
+     * the next one. Carried, logged, and so far sent nowhere: the panel has its own secondary
+     * maneuver features, but nothing maps this character onto them yet.
+     */
+    val thenText: String = "",
 )
 
 /** Pure parsers: raw Navigator widget strings -> NavGuidance. Shared by the a11y

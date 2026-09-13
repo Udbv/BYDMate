@@ -50,6 +50,25 @@ class HudInstrumentFids(
         /** Next-street name, a byte-array feature. The donor knows exactly one. */
         const val FID_STREET_NAME = 0x43FA1008          // 1140461576
 
+        // ---- Raw instrument features BYD's own catalogue lists but openbyd never writes.
+        // The SDK's sendCameraGuidanceInfo() returns 0 on this car and draws nothing for any of
+        // its twenty types (Tang L, 2026-09-13), so the panel's own feature ids are the next
+        // thing to try. Written only by the HUD tester so far; nothing here is on the push loop.
+        /** 0x43F03010 INSTRUMENT_GUIDE_INFO_CAMERA_SET - camera type. */
+        const val FID_CAMERA_TYPE = 0x43F03010
+        /** 0x43F0301C INSTRUMENT_NAVI_CAM_REMAINING_MILEAGE_SET - metres to the camera. */
+        const val FID_CAMERA_DISTANCE = 0x43F0301C
+        /** 0x43F03018 INSTRUMENT_CAMERA_DISPLAY_STATE_SET. */
+        const val FID_CAMERA_STATE = 0x43F03018
+        /** Safety-sign triple, same shape one block up. */
+        const val FID_SAFETY_TYPE = 0x43F04010
+        const val FID_SAFETY_DISTANCE = 0x43F0401C
+        const val FID_SAFETY_STATE = 0x43F04018
+        /** Secondary ("then") maneuver: icon, metres, action. */
+        const val FID_THEN_ICON = 0x43F08010
+        const val FID_THEN_DISTANCE = 0x43F08018
+        const val FID_THEN_ACTION = 0x43F08030
+
         // ---- Navigation status values (BYDAutoInstrumentDevice NAVI_*) ----
         const val NAVI_ACTIVE = 2                       // NAVI_OPEN_SET_DEST
         const val NAVI_STOPPED = 4                      // NAVI_CLOSE

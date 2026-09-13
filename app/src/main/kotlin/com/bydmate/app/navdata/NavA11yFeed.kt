@@ -36,6 +36,9 @@ object NavA11yFeed {
                 lastDumpMs = 0L
                 seenWazeIds.clear()
                 newWazeIdsLogged = 0
+                seenWazeTexts.clear()
+                newWazeTextsLogged = 0
+                lastThenText = null
             }
             field = value
         }
@@ -83,6 +86,41 @@ object NavA11yFeed {
                 "dist=${data.distanceMeters} road='${data.road}' eta=${data.etaSeconds}s " +
                 "total=${data.totalDistMeters} limit=${data.speedLimit}",
         )
+    }
+
+    /** Where a "then" line goes; the trip log in production, a collector in tests. */
+    internal var thenSink: (String) -> Unit = {
+        com.bydmate.app.diagnostics.TripDebugLog.event("THEN", it)
+    }
+
+    @Volatile private var lastThenText: String? = null
+
+    /**
+     * One line per *change* of the `navBarThenDirection` glyph.
+     *
+     * The character is drawn from Waze's own icon font, so it is neither a word nor anything the
+     * maneuver tables know; its code points are the key we need to map onto the panel's secondary
+     * maneuver icons, and a drive's worth of them is the only way to build that table. Nothing is
+     * sent to the panel from here.
+     */
+    internal fun logThen(text: String) {
+        if (text.isEmpty()) return
+        if (text == lastThenText) return
+        lastThenText = text
+        thenSink("glyph='$text' ${codePoints(text)}")
+    }
+
+    /** `U+XXXX` per code point, surrogate pairs folded into the one character they encode. */
+    internal fun codePoints(text: String): String {
+        val out = StringBuilder()
+        var i = 0
+        while (i < text.length) {
+            val cp = text.codePointAt(i)
+            if (out.isNotEmpty()) out.append(' ')
+            out.append("U+%04X".format(cp))
+            i += Character.charCount(cp)
+        }
+        return out.toString()
     }
 
     fun onEvent(service: SteeringWheelKeyService, event: AccessibilityEvent?) {
@@ -189,6 +227,7 @@ object NavA11yFeed {
                     val data = withWazeManeuverHint(root, result.data, nowMs)
                     NavGuidanceHub.update(data, NavGuidanceHub.Source.A11Y, nowMs)
                     logRead(pkg, data, nowMs)
+                    logThen(data.thenText)
                     dumpTreeOnManeuverChange(root, data.maneuverGaode, nowMs)
                     // Unconditionally, not only when the text path drew a blank: on this Waze the
                     // arrow IS the maneuver, and gating the classifier behind gaode==0 meant one
@@ -282,8 +321,9 @@ object NavA11yFeed {
     // read and writes one line the first time an id is seen in a session, with its text — this
     // is the diagnostics build, and the trip log already keeps street names and stays on the car.
 
-    /** How many nodes one discovery walk may visit. */
-    private const val DISCOVERY_MAX_NODES = 300
+    /** How many nodes one discovery walk may visit. 300 stopped short of the maneuver and
+     *  report lists, which hang far down the tree and are exactly what needs naming. */
+    private const val DISCOVERY_MAX_NODES = 800
     /** How many *new* ids a session may report; a Waze that recycles ids cannot flood the log. */
     internal const val DISCOVERY_MAX_NEW_IDS = 200
     /** How much of a node's text and description one line carries. */
@@ -294,34 +334,71 @@ object NavA11yFeed {
         com.bydmate.app.diagnostics.TripDebugLog.event("TREE", it)
     }
 
+    /**
+     * Containers whose rows carry no view id at all - the maneuver list, the reports list and the
+     * instruction panel. An id-only walk records the container and nothing inside it, so the rows
+     * that actually say what Waze is showing were never written down. Inside these subtrees the
+     * walk also records id-less nodes that carry text or a description.
+     */
+    private val DISCOVERY_TEXT_CONTAINERS = setOf(
+        "routeDetailsRecycler",
+        "eventsOnRouteContainer",
+        "eventsOnRouteView",
+        "instructionView",
+    )
+
+    /** How many id-less text lines a session may report; the lists scroll, the log must not. */
+    internal const val DISCOVERY_MAX_NEW_TEXTS = 300
+
     private val seenWazeIds = HashSet<String>()
     @Volatile private var newWazeIdsLogged = 0
+    /** Deduped by (text, desc) so a list redrawn on every frame is written once. */
+    private val seenWazeTexts = HashSet<String>()
+    @Volatile private var newWazeTextsLogged = 0
 
     /** One line per id never seen this session. Waze only; [root] belongs to the caller. */
     private fun discoverNewIds(root: AccessibilityNodeInfo) {
         if (!NavPackages.isWazePackage(runCatching { root.packageName?.toString() }.getOrNull())) return
-        if (newWazeIdsLogged >= DISCOVERY_MAX_NEW_IDS) return
-        runCatching { walkNewIds(root, intArrayOf(DISCOVERY_MAX_NODES)) }
+        if (newWazeIdsLogged >= DISCOVERY_MAX_NEW_IDS &&
+            newWazeTextsLogged >= DISCOVERY_MAX_NEW_TEXTS) return
+        runCatching { walkNewIds(root, intArrayOf(DISCOVERY_MAX_NODES), under = null) }
     }
 
-    private fun walkNewIds(node: AccessibilityNodeInfo, budget: IntArray) {
-        if (budget[0] <= 0 || newWazeIdsLogged >= DISCOVERY_MAX_NEW_IDS) return
+    private fun budgetSpent(budget: IntArray): Boolean = budget[0] <= 0 ||
+        (newWazeIdsLogged >= DISCOVERY_MAX_NEW_IDS && newWazeTextsLogged >= DISCOVERY_MAX_NEW_TEXTS)
+
+    /**
+     * [under] is the id of the nearest enclosing [DISCOVERY_TEXT_CONTAINERS] ancestor, or null
+     * outside them; it both switches the id-less text lines on and names them in the log.
+     */
+    private fun walkNewIds(node: AccessibilityNodeInfo, budget: IntArray, under: String?) {
+        if (budgetSpent(budget)) return
         budget[0]--
         val id = runCatching { node.viewIdResourceName }.getOrNull()?.substringAfter(":id/")
-        if (id != null && id.isNotEmpty() && seenWazeIds.add(id)) {
-            newWazeIdsLogged++
-            val text = clip(runCatching { node.text?.toString() }.getOrNull())
-            val desc = clip(runCatching { node.contentDescription?.toString() }.getOrNull())
-            val cls = runCatching { node.className?.toString() }.getOrNull()
-                ?.substringAfterLast('.') ?: ""
-            newIdSink("new id=$id text='$text' desc='$desc' class=$cls")
+        val text = clip(runCatching { node.text?.toString() }.getOrNull())
+        val desc = clip(runCatching { node.contentDescription?.toString() }.getOrNull())
+        val cls = runCatching { node.className?.toString() }.getOrNull()
+            ?.substringAfterLast('.') ?: ""
+        if (!id.isNullOrEmpty()) {
+            if (seenWazeIds.add(id) && newWazeIdsLogged < DISCOVERY_MAX_NEW_IDS) {
+                newWazeIdsLogged++
+                newIdSink("new id=$id text='$text' desc='$desc' class=$cls")
+            }
+        } else if (under != null && (text.isNotEmpty() || desc.isNotEmpty()) &&
+            newWazeTextsLogged < DISCOVERY_MAX_NEW_TEXTS
+        ) {
+            if (seenWazeTexts.add("$text\u0000$desc")) {
+                newWazeTextsLogged++
+                newIdSink("new text='$text' desc='$desc' class=$cls under=$under")
+            }
         }
+        val childUnder = if (!id.isNullOrEmpty() && id in DISCOVERY_TEXT_CONTAINERS) id else under
         val children = runCatching { node.childCount }.getOrDefault(0)
         for (i in 0 until children) {
-            if (budget[0] <= 0 || newWazeIdsLogged >= DISCOVERY_MAX_NEW_IDS) return
+            if (budgetSpent(budget)) return
             val child = runCatching { node.getChild(i) }.getOrNull() ?: continue
             try {
-                walkNewIds(child, budget)
+                walkNewIds(child, budget, childUnder)
             } finally {
                 @Suppress("DEPRECATION")
                 runCatching { child.recycle() }

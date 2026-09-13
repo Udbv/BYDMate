@@ -57,6 +57,13 @@ object WazeAccessibilityReader {
          * one is a maneuver statement, so it still resolves to a roundabout code on its own.
          */
         val textExitNumber: String?,
+        /**
+         * Raw text of `navBarThenDirection`, the glyph Waze paints for the maneuver after the
+         * next one ("then ..."). It is an icon-font character, not a word, so it is carried
+         * verbatim and nothing is derived from it yet: the trip log records it with its code
+         * points so the glyph-to-panel-icon table can be built from a real drive.
+         */
+        val thenGlyph: String? = null,
     )
 
     /**
@@ -225,6 +232,10 @@ object WazeAccessibilityReader {
         if (maneuver == null && maneuverDistance == null && street == null) return null
         val textExitNumber = numberedExit(maneuver)
         val directionText = firstNodeText(root, "$pkg:id/navBarDirectionText")
+        // Read on every pass, like the exit number and for the same reason: the "then" widget is
+        // reported as not visible to the user on this cluster layout while it is plainly painted.
+        val thenGlyph = firstNodeText(root, "$pkg:id/navBarThenDirection")?.trim()
+            ?.takeIf(String::isNotEmpty)
         return Fields(
             maneuver = maneuver,
             maneuverDistance = maneuverDistance,
@@ -239,6 +250,7 @@ object WazeAccessibilityReader {
                 textExitNumber?.toIntOrNull()
             },
             textExitNumber = textExitNumber,
+            thenGlyph = thenGlyph,
         )
     }
 

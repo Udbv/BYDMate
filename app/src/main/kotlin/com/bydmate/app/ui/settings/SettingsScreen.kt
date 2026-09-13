@@ -1634,6 +1634,82 @@ private fun HudPanelTestSection(tester: com.bydmate.app.hud.HudPanelTester) {
     if (state.cameraStatus.isNotEmpty()) {
         SettingHint(text = stringResource(R.string.settings_hudtest_camera_status, state.cameraStatus))
     }
+    // The same three values again, but written straight to the instrument features BYD's own
+    // catalogue names. The SDK camera call above returns 0 on the Tang L and draws nothing for
+    // any of its twenty types, so this row is the other half of the experiment: raw statuses on
+    // screen, and a PANEL line in the trip log for every send.
+    SettingActionRow(
+        title = stringResource(R.string.settings_hudtest_rawcam_send_title),
+        description = stringResource(R.string.settings_hudtest_rawcam_send_desc),
+        buttonLabel = stringResource(R.string.settings_hudtest_rawcam_send),
+        onClick = { tester.sendRawCamera() },
+        style = SettingButtonStyle.Primary,
+    )
+    SettingActionRow(
+        title = stringResource(R.string.settings_hudtest_rawcam_clear_title),
+        description = stringResource(R.string.settings_hudtest_rawcam_clear_desc),
+        buttonLabel = stringResource(R.string.settings_hudtest_rawcam_clear),
+        onClick = { tester.clearRawCamera() },
+        style = SettingButtonStyle.Secondary,
+    )
+    if (state.rawCameraStatus.isNotEmpty()) {
+        SettingHint(text = stringResource(R.string.settings_hudtest_rawcam_status, state.rawCameraStatus))
+    }
+    SettingActionRow(
+        title = stringResource(R.string.settings_hudtest_rawsafety_send_title),
+        description = stringResource(R.string.settings_hudtest_rawsafety_send_desc),
+        buttonLabel = stringResource(R.string.settings_hudtest_rawsafety_send),
+        onClick = { tester.sendRawSafety() },
+        style = SettingButtonStyle.Primary,
+    )
+    SettingActionRow(
+        title = stringResource(R.string.settings_hudtest_rawsafety_clear_title),
+        description = stringResource(R.string.settings_hudtest_rawsafety_clear_desc),
+        buttonLabel = stringResource(R.string.settings_hudtest_rawsafety_clear),
+        onClick = { tester.clearRawSafety() },
+        style = SettingButtonStyle.Secondary,
+    )
+    if (state.rawSafetyStatus.isNotEmpty()) {
+        SettingHint(text = stringResource(R.string.settings_hudtest_rawsafety_status, state.rawSafetyStatus))
+    }
+    // Secondary ("then") maneuver: its own icon / distance / action, not the camera's.
+    SettingsTextField(
+        label = stringResource(R.string.settings_hudtest_then_icon),
+        value = state.thenIcon,
+        onValueChange = { tester.setThenIcon(it) },
+        keyboardType = KeyboardType.Number,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    SettingsTextField(
+        label = stringResource(R.string.settings_hudtest_then_distance),
+        value = state.thenDistance,
+        onValueChange = { tester.setThenDistance(it) },
+        keyboardType = KeyboardType.Number,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    SettingsTextField(
+        label = stringResource(R.string.settings_hudtest_then_action),
+        value = state.thenAction,
+        onValueChange = { tester.setThenAction(it) },
+        keyboardType = KeyboardType.Number,
+    )
+    SettingActionRow(
+        title = stringResource(R.string.settings_hudtest_then_send_title),
+        description = stringResource(R.string.settings_hudtest_then_send_desc),
+        buttonLabel = stringResource(R.string.settings_hudtest_then_send),
+        onClick = { tester.sendRawThen() },
+        style = SettingButtonStyle.Primary,
+    )
+    SettingActionRow(
+        title = stringResource(R.string.settings_hudtest_then_clear_title),
+        description = stringResource(R.string.settings_hudtest_then_clear_desc),
+        buttonLabel = stringResource(R.string.settings_hudtest_then_clear),
+        onClick = { tester.clearRawThen() },
+        style = SettingButtonStyle.Secondary,
+    )
+    if (state.rawThenStatus.isNotEmpty()) {
+        SettingHint(text = stringResource(R.string.settings_hudtest_then_status, state.rawThenStatus))
+    }
     SettingToggleRow(
         title = stringResource(R.string.settings_hudtest_sanitize_title),
         description = stringResource(R.string.settings_hudtest_sanitize_desc),

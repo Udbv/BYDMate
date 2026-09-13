@@ -59,6 +59,9 @@ object NavGuidanceHub {
         val panelIcon: Int = 0,
         val panelIconMs: Long = 0L,
         val exitNumber: Int? = null,
+        /** Raw `navBarThenDirection` glyph; see [NavGuidance.thenText]. Appended with a default
+         *  for the same positional-constructor reason as the fields above. */
+        val thenText: String = "",
     )
 
     /** Rich notification payload (donor listener merge). applyCamera=false is the
@@ -92,6 +95,7 @@ object NavGuidanceHub {
         // first roundabout of the NEXT route before its own number is read.
         panelIcon = 0,
         exitNumber = null,
+        thenText = "",
     )
 
     // @Synchronized because expiry writes back: an unsynchronized write here could
@@ -237,6 +241,7 @@ object NavGuidanceHub {
             panelIcon = if (data.panelIcon > 0) data.panelIcon else prev.panelIcon,
             panelIconMs = if (data.panelIcon > 0) nowMs else prev.panelIconMs,
             exitNumber = data.exitNumber ?: prev.exitNumber,
+            thenText = data.thenText.ifEmpty { prev.thenText },
         )
         if (source == Source.A11Y) lastA11yMs = nowMs
     }

@@ -2,6 +2,7 @@ package com.bydmate.app.hud
 
 import android.util.Log
 import com.bydmate.app.data.vehicle.HelperClient
+import com.bydmate.app.diagnostics.TripDebugLog
 import com.bydmate.app.helper.HelperBinderProtocol
 import com.bydmate.app.navdata.NavGuidanceHub
 import com.bydmate.app.navdata.NavLanes
@@ -59,6 +60,12 @@ class HudPanelTester internal constructor(
         /** Camera row defaults: 300 m ahead, state 1 (the donor's "approaching" state). */
         const val DEFAULT_CAMERA_DISTANCE = "300"
         const val DEFAULT_CAMERA_STATE = "1"
+
+        /** "Then" row defaults: the donor has none - these are simply a plausible frame to look
+         *  at (icon 2 = turn right in the panel's own glyph table, 500 m ahead, action 0). */
+        const val DEFAULT_THEN_ICON = "2"
+        const val DEFAULT_THEN_DISTANCE = "500"
+        const val DEFAULT_THEN_ACTION = "0"
 
         /** No lane / not on the route, as the panel spells it. */
         const val LANE_EMPTY = 255
@@ -167,6 +174,15 @@ class HudPanelTester internal constructor(
         val cameraState: String = DEFAULT_CAMERA_STATE,
         /** Raw status of the last camera call, e.g. "type=1 dist=300 state=1 sdk=0". */
         val cameraStatus: String = "",
+        /** Raw-FID camera row: "0x43F03010=1->0 ..." for the last send or clear. */
+        val rawCameraStatus: String = "",
+        /** Raw-FID safety row, same shape. */
+        val rawSafetyStatus: String = "",
+        val thenIcon: String = DEFAULT_THEN_ICON,
+        val thenDistance: String = DEFAULT_THEN_DISTANCE,
+        val thenAction: String = DEFAULT_THEN_ACTION,
+        /** Raw-FID secondary-maneuver row, same shape. */
+        val rawThenStatus: String = "",
         val sanitize: Boolean = true,
         /** The helper daemon answered a ping: without it nothing below reaches the panel. */
         val sdkBound: Boolean = false,
@@ -248,6 +264,21 @@ class HudPanelTester internal constructor(
         _state.value = _state.value.copy(cameraState = text)
     }
 
+    fun setThenIcon(text: String) {
+        if (text.any { !it.isDigit() }) return
+        _state.value = _state.value.copy(thenIcon = text)
+    }
+
+    fun setThenDistance(text: String) {
+        if (text.any { !it.isDigit() }) return
+        _state.value = _state.value.copy(thenDistance = text)
+    }
+
+    fun setThenAction(text: String) {
+        if (text.any { !it.isDigit() }) return
+        _state.value = _state.value.copy(thenAction = text)
+    }
+
     // ---------------------------------------------------------------- camera row
 
     /**
@@ -284,6 +315,13 @@ class HudPanelTester internal constructor(
 
     private suspend fun camera(type: Int, distance: Int, state: Int): Boolean = try {
         val status = helperClient.sdkCameraGuidance(type, distance, state)
+        // Logcat on the car rotates in minutes; the trip log is the only record of what was sent
+        // that is still there when the car is home again.
+        TripDebugLog.event(
+            "PANEL",
+            "tester sdk camera type=$type (${HudCameraTypes.name(type)}) dist=$distance " +
+                "state=$state sdk=$status",
+        )
         _state.value = _state.value.copy(
             routeActiveBlocked = false,
             cameraStatus = "type=$type (${HudCameraTypes.name(type)}) dist=$distance " +
@@ -295,6 +333,130 @@ class HudPanelTester internal constructor(
         Log.e(TAG, "Failed to send camera info", e)
         _state.value = _state.value.copy(lastError = e.message ?: "Unknown error")
         false
+    }
+
+    // ---------------------------------------------------------------- raw FID rows
+
+    /**
+     * The instrument features BYD's own capability catalogue lists for the camera, the safety
+     * sign and the secondary ("then") maneuver, written straight to device 1007.
+     *
+     * They exist because the SDK path does not work on this car: `sendCameraGuidanceInfo` answers
+     * 0 for all twenty types and the panel stays blank (Tang L, 2026-09-13). A raw write has its
+     * own status, and that status is the only thing separating "the daemon refused it" from "the
+     * panel took it and drew nothing" - so every write's status goes on screen AND into the trip
+     * log, which is the only evidence that survives a drive.
+     *
+     * Order is the catalogue's own: value, then distance, then the display state that makes the
+     * panel show it; a clear runs the same three backwards (state 0, distance -1, value 0).
+     */
+    private suspend fun rawTriple(
+        row: String,
+        fidA: Int, valueA: Int,
+        fidB: Int, valueB: Int,
+        fidC: Int, valueC: Int,
+    ): String {
+        val a = helperClient.writeStatus(HudInstrumentFids.DEV_INSTRUMENT, fidA, valueA)
+        val b = helperClient.writeStatus(HudInstrumentFids.DEV_INSTRUMENT, fidB, valueB)
+        val c = helperClient.writeStatus(HudInstrumentFids.DEV_INSTRUMENT, fidC, valueC)
+        val line = "0x%08X=%d->%s 0x%08X=%d->%s 0x%08X=%d->%s".format(
+            fidA, valueA, a, fidB, valueB, b, fidC, valueC, c)
+        TripDebugLog.event("PANEL", "tester raw $row $line")
+        Log.i(TAG, "raw $row $line")
+        return line
+    }
+
+    /** Runs [body] unless a real route is guiding, and parks any failure on the card. */
+    private suspend fun guardedRaw(body: suspend () -> Unit): Boolean {
+        if (routeActive()) {
+            _state.value = _state.value.copy(routeActiveBlocked = true)
+            Log.i(TAG, "raw frame refused: a route is active")
+            return false
+        }
+        return try {
+            body()
+            _state.value = _state.value.copy(routeActiveBlocked = false, lastError = null)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write raw instrument features", e)
+            _state.value = _state.value.copy(lastError = e.message ?: "Unknown error")
+            false
+        }
+    }
+
+    fun sendRawCamera() { scope.launch { sendRawCameraNow() } }
+
+    suspend fun sendRawCameraNow(): Boolean = guardedRaw {
+        val s = _state.value
+        val line = rawTriple(
+            "camera",
+            HudInstrumentFids.FID_CAMERA_TYPE, s.cameraType,
+            HudInstrumentFids.FID_CAMERA_DISTANCE, s.cameraDistance.toIntOrNull() ?: 0,
+            HudInstrumentFids.FID_CAMERA_STATE, s.cameraState.toIntOrNull() ?: 0,
+        )
+        _state.value = _state.value.copy(rawCameraStatus = line)
+    }
+
+    fun clearRawCamera() { scope.launch { clearRawCameraNow() } }
+
+    suspend fun clearRawCameraNow(): Boolean = guardedRaw {
+        val line = rawTriple(
+            "camera clear",
+            HudInstrumentFids.FID_CAMERA_STATE, 0,
+            HudInstrumentFids.FID_CAMERA_DISTANCE, -1,
+            HudInstrumentFids.FID_CAMERA_TYPE, 0,
+        )
+        _state.value = _state.value.copy(rawCameraStatus = line)
+    }
+
+    fun sendRawSafety() { scope.launch { sendRawSafetyNow() } }
+
+    suspend fun sendRawSafetyNow(): Boolean = guardedRaw {
+        val s = _state.value
+        val line = rawTriple(
+            "safety",
+            HudInstrumentFids.FID_SAFETY_TYPE, s.cameraType,
+            HudInstrumentFids.FID_SAFETY_DISTANCE, s.cameraDistance.toIntOrNull() ?: 0,
+            HudInstrumentFids.FID_SAFETY_STATE, s.cameraState.toIntOrNull() ?: 0,
+        )
+        _state.value = _state.value.copy(rawSafetyStatus = line)
+    }
+
+    fun clearRawSafety() { scope.launch { clearRawSafetyNow() } }
+
+    suspend fun clearRawSafetyNow(): Boolean = guardedRaw {
+        val line = rawTriple(
+            "safety clear",
+            HudInstrumentFids.FID_SAFETY_STATE, 0,
+            HudInstrumentFids.FID_SAFETY_DISTANCE, -1,
+            HudInstrumentFids.FID_SAFETY_TYPE, 0,
+        )
+        _state.value = _state.value.copy(rawSafetyStatus = line)
+    }
+
+    fun sendRawThen() { scope.launch { sendRawThenNow() } }
+
+    suspend fun sendRawThenNow(): Boolean = guardedRaw {
+        val s = _state.value
+        val line = rawTriple(
+            "then",
+            HudInstrumentFids.FID_THEN_ICON, s.thenIcon.toIntOrNull() ?: 0,
+            HudInstrumentFids.FID_THEN_DISTANCE, s.thenDistance.toIntOrNull() ?: 0,
+            HudInstrumentFids.FID_THEN_ACTION, s.thenAction.toIntOrNull() ?: 0,
+        )
+        _state.value = _state.value.copy(rawThenStatus = line)
+    }
+
+    fun clearRawThen() { scope.launch { clearRawThenNow() } }
+
+    suspend fun clearRawThenNow(): Boolean = guardedRaw {
+        val line = rawTriple(
+            "then clear",
+            HudInstrumentFids.FID_THEN_ACTION, 0,
+            HudInstrumentFids.FID_THEN_DISTANCE, -1,
+            HudInstrumentFids.FID_THEN_ICON, 0,
+        )
+        _state.value = _state.value.copy(rawThenStatus = line)
     }
 
     // ---------------------------------------------------------------- screen lifecycle
