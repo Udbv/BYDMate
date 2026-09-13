@@ -64,6 +64,23 @@ class UpdateChecker @Inject constructor(
             return false
         }
 
+        /**
+         * The newest non-draft release by version, not the first in the list. GitHub does not
+         * order `/releases` by date: on 2026-09-13 `v3.16.0-dev.10` sat fifth, after dev.9..dev.6,
+         * so every car on dev.9 took the first element and reported itself up to date.
+         */
+        internal fun newestRelease(releases: List<JSONObject>): JSONObject? =
+            releases.filter { !it.optBoolean("draft", false) }
+                .fold(null as JSONObject?) { best, r ->
+                    val tag = r.optString("tag_name", "").removePrefix("v")
+                    when {
+                        tag.isEmpty() -> best
+                        best == null -> r
+                        isNewer(tag, best.optString("tag_name", "").removePrefix("v")) -> r
+                        else -> best
+                    }
+                }
+
         private data class Version(val nums: IntArray, val pre: Int?)
 
         private val VERSION_RE = Regex("""^v?(\d+)\.(\d+)(?:\.(\d+))?(?:-[a-z]+[.-]?(\d+)?)?""", RegexOption.IGNORE_CASE)
@@ -128,8 +145,7 @@ class UpdateChecker @Inject constructor(
 
         val json = if (dev) {
             val list = org.json.JSONArray(body)
-            (0 until list.length()).map { list.getJSONObject(it) }
-                .firstOrNull { !it.optBoolean("draft", false) }
+            newestRelease((0 until list.length()).map { list.getJSONObject(it) })
                 ?: throw Exception("Нет релизов в $REPO")
         } else JSONObject(body)
         val tagName = json.optString("tag_name", "").removePrefix("v")

@@ -1,5 +1,6 @@
 package com.bydmate.app.service
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,5 +38,19 @@ class UpdateCheckerVersionTest {
         assertFalse(UpdateChecker.isNewer("latest", "3.15.0"))
         assertFalse(UpdateChecker.isNewer("", "3.15.0"))
         assertTrue(UpdateChecker.isNewer("3.15.0", "unknown"))
+    }
+
+    @Test fun `newest release is chosen by version, not list position`() {
+        val list = listOf("v3.16.0-dev.9", "v3.16.0-dev.8", "v3.16.0-dev.10", "v3.16.0-dev.5")
+            .map { org.json.JSONObject().put("tag_name", it) }
+        assertEquals("v3.16.0-dev.10", UpdateChecker.newestRelease(list)?.optString("tag_name"))
+    }
+
+    @Test fun `drafts are skipped when choosing the newest release`() {
+        val list = listOf(
+            org.json.JSONObject().put("tag_name", "v9.0.0").put("draft", true),
+            org.json.JSONObject().put("tag_name", "v3.16.1-dev.1"),
+        )
+        assertEquals("v3.16.1-dev.1", UpdateChecker.newestRelease(list)?.optString("tag_name"))
     }
 }
