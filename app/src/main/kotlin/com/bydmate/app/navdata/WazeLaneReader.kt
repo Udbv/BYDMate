@@ -52,13 +52,14 @@ object WazeLaneReader {
     fun read(root: AccessibilityNodeInfo): NavLanes {
         val pkg = runCatching { root.packageName?.toString() }.getOrNull()
         if (!NavPackages.isWazePackage(pkg)) return NavLanes.NONE
-        NavLaneState.containerBounds = readContainerBounds(root, pkg!!)
-        val container = findContainer(root, pkg) ?: run {
+        val container = findContainer(root, pkg!!) ?: run {
+            NavLaneState.geometry = null
             diagnostics = Diagnostics()
             return NavLanes.NONE
         }
         return try {
             val cells = laneCells(container)
+            NavLaneState.geometry = geometryOf(root, container, cells)
             if (cells.isEmpty()) {
                 diagnostics = Diagnostics(container = describe(container), laneCount = 0)
                 return NavLanes.NONE
@@ -90,8 +91,17 @@ object WazeLaneReader {
         }
     }
 
-    /** One lane child: its horizontal position decides the order, its label the directions. */
-    internal data class Cell(val left: Int, val label: String?, val selected: Boolean)
+    /**
+     * One lane child: its horizontal position decides the order, its label the directions, and
+     * its screen rectangle is the crop the pixel classifier uses.
+     */
+    internal data class Cell(
+        val rect: NavLaneState.LaneRect,
+        val label: String?,
+        val selected: Boolean,
+    ) {
+        val left: Int get() = rect.left
+    }
 
     /** The direction of the maneuver currently in the hub, when it is one a lane can show. */
     internal fun maneuverDirection(
@@ -107,38 +117,31 @@ object WazeLaneReader {
     }
 
     /**
-     * Screen bounds of the first `laneGuidanceView` with a real size, for the pixel path.
+     * The container's own rectangle plus its cells', for the pixel path.
      *
-     * This is the only thing openbyd reads from this node (`BydAccessibilityService` :725-743):
-     * the lane arrows are drawables, so the rectangle is handed to the screenshot classifier and
-     * the tree is not consulted again. The display id travels with it because the screenshot is
-     * taken per display and a crop from the wrong one would be meaningless pixels.
+     * The container is the node the label walk already found, so the two views can never disagree
+     * about which widget the crops belong to - the drive of 2026-09-15 could not tell whether the
+     * rectangle handed to the segmenter was the lane strip or some small hint widget, because
+     * nothing wrote it down. Null when the container has no real size.
      */
-    private fun readContainerBounds(
+    private fun geometryOf(
         root: AccessibilityNodeInfo,
-        pkg: String,
-    ): NavLaneState.ContainerBounds? {
-        val nodes = runCatching {
-            root.findAccessibilityNodeInfosByViewId("$pkg:id/laneGuidanceView")
-        }.getOrNull().orEmpty()
-        var bounds: Rect? = null
-        for (node in nodes) {
-            try {
-                if (bounds != null) continue
-                val rect = Rect()
-                runCatching { node.getBoundsInScreen(rect) }
-                if (rect.width() > 0 && rect.height() > 0) bounds = rect
-            } finally {
-                recycle(node, root)
-            }
-        }
-        val rect = bounds ?: return null
-        return NavLaneState.ContainerBounds(
+        container: AccessibilityNodeInfo,
+        cells: List<Cell>,
+    ): NavLaneState.LaneGeometry? {
+        val rect = Rect()
+        runCatching { container.getBoundsInScreen(rect) }
+        if (rect.width() <= 0 || rect.height() <= 0) return null
+        return NavLaneState.LaneGeometry(
             displayId = displayIdOf(root),
-            left = rect.left,
-            top = rect.top,
-            right = rect.right,
-            bottom = rect.bottom,
+            container = NavLaneState.LaneRect(rect.left, rect.top, rect.right, rect.bottom),
+            // A container that is its own only leaf says nothing about lanes - it is the strip
+            // drawn as one view - and treating it as a single cell would hide the five real ones
+            // from the segmenter. Dropped, so the pixel path falls back to column segmentation.
+            cells = cells.map { it.rect }
+                .filter { it.width > 0 && it.height > 0 }
+                .filterNot { it.left == rect.left && it.top == rect.top &&
+                    it.right == rect.right && it.bottom == rect.bottom },
         )
     }
 
@@ -177,7 +180,7 @@ object WazeLaneReader {
                 val rect = Rect().also { r -> runCatching { node.getBoundsInScreen(r) } }
                 if (rect.width() > 0 && rect.height() > 0) {
                     cells += Cell(
-                        left = rect.left,
+                        rect = NavLaneState.LaneRect(rect.left, rect.top, rect.right, rect.bottom),
                         label = label(node),
                         selected = runCatching { node.isSelected || node.isChecked }.getOrDefault(false),
                     )
@@ -254,11 +257,24 @@ object WazeLaneReader {
         @Suppress("DEPRECATION") runCatching { node.recycle() }
     }
 
-    /** One line for the diagnostics dump. */
+    /**
+     * One line for the diagnostics dump, with the geometry the pixel path will crop.
+     *
+     * The rectangles are the point: without them a drive cannot say whether the widget the
+     * classifier looked at was the lane strip at all.
+     */
     fun diagnosticsLine(): String = diagnostics.let {
         "lanes container=${it.container ?: "-"} count=${it.laneCount} recommended=${it.recommended} " +
-            "withDirections=${it.withDirections}" +
+            "withDirections=${it.withDirections} " + geometryLine() +
             if (it.descriptions.isEmpty()) "" else " labels=${it.descriptions.joinToString("|")}"
+    }
+
+    /** `display=… container=l,t,r,b cells=n [l,t,r,b …]`, or the same with a dash for no strip. */
+    fun geometryLine(geometry: NavLaneState.LaneGeometry? = NavLaneState.geometry): String {
+        if (geometry == null) return "display=- container=- cells=0"
+        val cells = geometry.cells
+        return "display=${geometry.displayId} container=${geometry.container} cells=${cells.size}" +
+            if (cells.isEmpty()) "" else " [${cells.joinToString(" ")}]"
     }
 
     internal fun logRead(lanes: NavLanes) {

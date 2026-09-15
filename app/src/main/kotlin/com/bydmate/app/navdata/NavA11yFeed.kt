@@ -39,6 +39,7 @@ object NavA11yFeed {
                 seenWazeTexts.clear()
                 newWazeTextsLogged = 0
                 lastThenText = null
+                lastReportsLine = null
             }
             field = value
         }
@@ -237,6 +238,7 @@ object NavA11yFeed {
                     // strip's bounds where the classifier looks for them, and the classifier
                     // segments the strip before it falls back to the arrow crop.
                     readLanes(root)
+                    readReports(root, nowMs)
                     requestWazeVisualManeuver(service, root, data.exitNumber)
                     armKeepAlive()
                 }
@@ -382,14 +384,14 @@ object NavA11yFeed {
         if (!id.isNullOrEmpty()) {
             if (seenWazeIds.add(id) && newWazeIdsLogged < DISCOVERY_MAX_NEW_IDS) {
                 newWazeIdsLogged++
-                newIdSink("new id=$id text='$text' desc='$desc' class=$cls")
+                newIdSink("new id=$id text='$text' desc='$desc' class=$cls bounds=${boundsOf(node)}")
             }
         } else if (under != null && (text.isNotEmpty() || desc.isNotEmpty()) &&
             newWazeTextsLogged < DISCOVERY_MAX_NEW_TEXTS
         ) {
             if (seenWazeTexts.add("$text\u0000$desc")) {
                 newWazeTextsLogged++
-                newIdSink("new text='$text' desc='$desc' class=$cls under=$under")
+                newIdSink("new text='$text' desc='$desc' class=$cls under=$under bounds=${boundsOf(node)}")
             }
         }
         val childUnder = if (!id.isNullOrEmpty() && id in DISCOVERY_TEXT_CONTAINERS) id else under
@@ -404,6 +406,19 @@ object NavA11yFeed {
                 runCatching { child.recycle() }
             }
         }
+    }
+
+    /**
+     * `l,t,r,b` in screen coordinates, `-` when the node has none.
+     *
+     * One number per side is what answers "which widget is this" from a recorded drive: the lane
+     * strip, the hint widget beside it and the reports list are indistinguishable by id alone.
+     */
+    private fun boundsOf(node: AccessibilityNodeInfo): String {
+        val rect = android.graphics.Rect()
+        runCatching { node.getBoundsInScreen(rect) }.getOrElse { return "-" }
+        if (rect.width() <= 0 && rect.height() <= 0) return "-"
+        return "${rect.left},${rect.top},${rect.right},${rect.bottom}"
     }
 
     private fun clip(value: String?): String =
@@ -499,6 +514,30 @@ object NavA11yFeed {
             lastLaneCount = lanes.lanes.size
             WazeLaneReader.logRead(lanes)
         }
+    }
+
+    /**
+     * Waze's own reports list (`navListReportsList`), for the panel's camera sign.
+     *
+     * The list is plain text - a type and a distance per row - which is the one camera source on
+     * this build that is neither a drawable nor a notification. The nearest camera row ahead goes
+     * into the hub; [NavGuidanceHub] clears it by time when the list stops showing one.
+     */
+    @Volatile private var lastReportsLine: String? = null
+
+    private fun readReports(root: AccessibilityNodeInfo, nowMs: Long) {
+        if (!NavPackages.isWazePackage(runCatching { root.packageName?.toString() }.getOrNull())) return
+        val reports = runCatching { WazeReportsReader.read(root) }.getOrDefault(emptyList())
+        NavGuidanceHub.updateReports(reports, nowMs)
+        val line = reports.joinToString(" | ") { "${it.kind}:'${it.typeText}'@${it.distanceMeters}" }
+        if (line == lastReportsLine) return
+        lastReportsLine = line
+        reportSink(if (line.isEmpty()) "none" else line)
+    }
+
+    /** Where a reports line goes; the trip log in production, a collector in tests. */
+    internal var reportSink: (String) -> Unit = {
+        com.bydmate.app.diagnostics.TripDebugLog.event("REPORT", it)
     }
 
     /** Pure gate, unit-tested separately from the framework-bound onEvent. */

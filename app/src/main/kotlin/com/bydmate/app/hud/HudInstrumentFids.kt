@@ -5,6 +5,7 @@ import com.bydmate.app.data.vehicle.HelperClient
 import com.bydmate.app.diagnostics.TripDebugLog
 import com.bydmate.app.helper.HelperBinderProtocol
 import com.bydmate.app.navdata.NavGuidanceHub
+import com.bydmate.app.navdata.WazeReportsReader
 import java.util.Calendar
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -134,6 +135,8 @@ class HudInstrumentFids(
     /** -1 = "nothing sent yet", and also the donor's value for "no limit known" — so a route
      *  that never learns a limit writes nothing at all. */
     private var lastSpeedLimit = -1
+    /** Metres of the camera last sent, or -1 for "no camera is on the panel". */
+    private var lastCameraDistance = -1
     @Volatile var writes: Long = 0L
         private set
     @Volatile var failures: Long = 0L
@@ -169,6 +172,45 @@ class HudInstrumentFids(
         writeStreetName(s.road)
         writeRestRoute(s)
         writeSpeedLimit(s.speedLimit)
+        writeCamera(s)
+    }
+
+    /**
+     * The camera sign, from Waze's reports list (`NavGuidanceHub.updateReports`).
+     *
+     * `sdkCameraGuidance(1, metres, 1)` is the only call proven to draw on this cluster - it is
+     * what puts the speed-limit roundel there - so the camera reuses its type rather than one of
+     * the nineteen the panel ignored on the 2026-09-13 drive. Its disappearance is the donor's
+     * clear, type 0 at -1 metres (`CanBydFidStrategy` :263-271).
+     *
+     * Only on change, like everything else here, and only for a CAMERA row: a police or hazard
+     * report has no sign of its own yet and must not borrow the camera's.
+     *
+     * Deliberately separate from [writeSpeedLimit]: that path owns its own call at distance 0 and
+     * is not touched here.
+     */
+    private suspend fun writeCamera(s: NavGuidanceHub.Snapshot) {
+        val isCamera = s.cameraKind == WazeReportsReader.Kind.CAMERA &&
+            s.cameraAlert.isNotEmpty() && s.cameraDistanceMeters > 0
+        if (isCamera) {
+            if (s.cameraDistanceMeters == lastCameraDistance) return
+            lastCameraDistance = s.cameraDistanceMeters
+            val status = sdk {
+                helper.sdkCameraGuidance(HudCameraTypes.SPEED_LIMITED, s.cameraDistanceMeters, 1)
+            }
+            val line = "camera '${s.cameraAlert}' -> ${s.cameraDistanceMeters}m sdk=$status"
+            Log.i(TAG, line)
+            TripDebugLog.event("PANEL", line)
+            return
+        }
+        if (lastCameraDistance < 0) return
+        lastCameraDistance = -1
+        val status = sdk {
+            helper.sdkCameraGuidance(HudCameraTypes.NONE, HudCameraTypes.CLEAR_DISTANCE, 1)
+        }
+        val line = "camera cleared sdk=$status"
+        Log.i(TAG, line)
+        TripDebugLog.event("PANEL", line)
     }
 
     /**
@@ -421,6 +463,7 @@ class HudInstrumentFids(
             // The stop wrote both speed-limit statistics back to 0, so the next route must be
             // allowed to re-send the same number it ended with.
             lastSpeedLimit = -1
+            lastCameraDistance = -1
         }
     }
 

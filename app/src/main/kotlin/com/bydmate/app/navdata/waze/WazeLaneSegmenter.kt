@@ -176,9 +176,33 @@ object WazeLaneSegmenter {
         return Result(codes, fronts, scores, mainArrow, mainIndex)
     }
 
+    /**
+     * One lane cell's verdict: the code of the whole glyph, the code of the highlighted arrow
+     * inside it, the drawable names behind them, and the 225 shape bits of the full-glyph
+     * signature.
+     *
+     * The grid is what grows the table. Every lane crop of the 2026-09-15 drive classified as 0
+     * because Waze's lane arrows are not the `big_trans_*` drawables [WazeArrowTable] carries
+     * signatures for, and without the bits from a real drive there is nothing to add.
+     */
+    data class LaneClass(
+        val code: Int,
+        val activeCode: Int,
+        val name: String? = null,
+        val activeName: String? = null,
+        val grid: String = "",
+    ) {
+        /** True when the full-glyph signature found a drawable; a false one is a table gap. */
+        val matched: Boolean get() = name != null
+    }
+
     /** `[full lane code, highlighted direction]` for one lane crop; `[0, 0]` on any failure. */
-    internal fun classifyLane(w: Int, h: Int, px: IntArray): IntArray {
-        if (w <= 0 || h <= 0) return intArrayOf(0, 0)
+    internal fun classifyLane(w: Int, h: Int, px: IntArray): IntArray =
+        classifyLaneDetailed(w, h, px).let { intArrayOf(it.code, it.activeCode) }
+
+    /** The same classification, keeping the names and the shape bits for the trip log. */
+    fun classifyLaneDetailed(w: Int, h: Int, px: IntArray): LaneClass {
+        if (w <= 0 || h <= 0) return LaneClass(0, 0)
         return try {
             val full = ArrowSignature.compute(w, h, px, F_FULL, true)
             val fullName = full?.let { WazeArrowTable.match(it)?.name }
@@ -186,11 +210,40 @@ object WazeLaneSegmenter {
             val active = ArrowSignature.compute(w, h, px, F_ACTIVE, true)
             val activeName = active?.let { WazeArrowTable.match(it)?.name }
             val activeCode = activeName?.let { WazeArrowTable.laneCodeFor(it) } ?: code
-            intArrayOf(code, activeCode)
+            LaneClass(code, activeCode, fullName, activeName, full?.asString() ?: "")
         } catch (_: Throwable) {
-            intArrayOf(0, 0)
+            LaneClass(0, 0)
         }
     }
+
+    /**
+     * openbyd's per-column ink measure applied to a whole cell: the mean of `R+G+B+|A-255|` over
+     * its pixels. The donor calls a cell on-route when its score reaches [ON_ROUTE_FRACTION] of
+     * the strip's peak - Waze dims the lanes the route does not use, so brightness is the flag.
+     *
+     * Returns 0 for a crop that does not lie inside the buffer.
+     */
+    fun cellScore(px: IntArray, stride: Int, x0: Int, y0: Int, w: Int, h: Int): Float {
+        if (w <= 0 || h <= 0 || x0 < 0 || y0 < 0) return 0f
+        if ((y0 + h - 1) * stride + x0 + w > px.size) return 0f
+        var sum = 0.0
+        for (y in 0 until h) {
+            val base = (y0 + y) * stride + x0
+            for (x in 0 until w) {
+                val color = px[base + x]
+                sum += ((color shr 16) and 0xFF) + ((color shr 8) and 0xFF) + (color and 0xFF) +
+                    abs(((color ushr 24) and 0xFF) - 255)
+            }
+        }
+        return (sum / (w.toDouble() * h)).toFloat()
+    }
+
+    /** Fraction of the brightest cell's score at which a lane counts as on-route (donor: 0.9). */
+    const val ON_ROUTE_FRACTION = 0.9f
+
+    /** Crop helper for callers that already know the cell rectangles (the a11y tree path). */
+    fun cropOf(px: IntArray, stride: Int, x0: Int, y0: Int, w: Int, h: Int): IntArray =
+        crop(px, stride, x0, y0, w, h)
 
     private fun crop(px: IntArray, stride: Int, x0: Int, y0: Int, w: Int, h: Int): IntArray {
         val out = IntArray(w * h)

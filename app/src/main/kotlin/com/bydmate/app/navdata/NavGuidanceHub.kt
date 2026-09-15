@@ -32,6 +32,14 @@ object NavGuidanceHub {
      *  would drop the arrow during an a11y blind spell. 30 s, same as the speed limit. */
     const val MANEUVER_TIMEOUT_MS = 30_000L
     const val NO_GUIDANCE_DEACTIVATE_MS = 10_000L
+    /**
+     * How long a camera read from Waze's reports list survives without being seen again.
+     *
+     * The list is redrawn continuously while a report is ahead, so ten seconds of silence means
+     * the report is gone (passed, or cancelled by other drivers) - and a camera sign that outlives
+     * its camera is worse on the glass than none at all.
+     */
+    const val CAMERA_TIMEOUT_MS = 10_000L
     const val A11Y_PRIORITY_MS = 10_000L
 
     enum class Source { A11Y, NOTIFICATION }
@@ -62,6 +70,11 @@ object NavGuidanceHub {
         /** Raw `navBarThenDirection` glyph; see [NavGuidance.thenText]. Appended with a default
          *  for the same positional-constructor reason as the fields above. */
         val thenText: String = "",
+        /** What [cameraAlert] is, once Waze's reports list has been read: a camera, the police or
+         *  something the panel has no sign for. Appended with a default for the same reason. */
+        val cameraKind: WazeReportsReader.Kind = WazeReportsReader.Kind.OTHER,
+        /** When the reports list last showed [cameraAlert]; see [CAMERA_TIMEOUT_MS]. */
+        val cameraAlertMs: Long = 0L,
     )
 
     /** Rich notification payload (donor listener merge). applyCamera=false is the
@@ -91,6 +104,8 @@ object NavGuidanceHub {
         cameraAlert = "",
         cameraDistanceMeters = 0,
         cameraIconPng = null,
+        cameraKind = WazeReportsReader.Kind.OTHER,
+        cameraAlertMs = 0L,
         // openbyd clears lastExitNumber with the route; a stale exit would otherwise renumber the
         // first roundabout of the NEXT route before its own number is read.
         panelIcon = 0,
@@ -130,6 +145,18 @@ object NavGuidanceHub {
             current = s
             Log.i(TAG, "maneuver expired: no maneuver read for ${MANEUVER_TIMEOUT_MS / 1000}s")
         }
+        // A camera read from the reports list expires on its own clock: the list simply stops
+        // listing a report that has been passed, and nothing else ever says "it is gone".
+        if (s.cameraAlertMs != 0L && nowMs - s.cameraAlertMs > CAMERA_TIMEOUT_MS) {
+            s = s.copy(
+                cameraAlert = "",
+                cameraDistanceMeters = 0,
+                cameraKind = WazeReportsReader.Kind.OTHER,
+                cameraAlertMs = 0L,
+            )
+            current = s
+            Log.i(TAG, "camera expired: no report row for ${CAMERA_TIMEOUT_MS / 1000}s")
+        }
         // The panel glyph has its own clock: it is written by the arrow classifier, which can stop
         // matching (arrow off screen, Waze minimized) while the text path keeps a maneuver alive.
         if (s.panelIcon > 0 && nowMs - s.panelIconMs > MANEUVER_TIMEOUT_MS) {
@@ -166,6 +193,40 @@ object NavGuidanceHub {
             maneuverGaode = if (panelIcon > 0) gaodeOf(panelIcon) else current.maneuverGaode,
             maneuverGaodeMs = if (panelIcon > 0) nowMs else current.maneuverGaodeMs,
             exitNumber = exitNumber ?: current.exitNumber,
+        )
+        return changed
+    }
+
+    /**
+     * Waze's reports list, merged into the camera fields.
+     *
+     * The nearest camera row ahead wins - the list is Waze's own nearest-first order, so "nearest"
+     * is the first camera in it with a distance. Rows of any other kind are ignored here; they are
+     * still written to the trip log by the reader's caller, because the police and hazard rows are
+     * what a future sign on the panel would come from.
+     *
+     * A camera row refreshes [Snapshot.cameraAlertMs] even when nothing about it changed, so the
+     * expiry clock measures "not seen", not "not changed". No camera row at all leaves the fields
+     * alone: the list can blink out for a frame, and [CAMERA_TIMEOUT_MS] is what clears them.
+     *
+     * Never activates a route, like every other hint: a report without guidance is not navigation.
+     */
+    @Synchronized
+    fun updateReports(
+        reports: List<WazeReportsReader.NavReport>,
+        nowMs: Long = System.currentTimeMillis(),
+    ): Boolean {
+        val camera = reports.firstOrNull {
+            it.kind == WazeReportsReader.Kind.CAMERA && it.distanceMeters > 0
+        } ?: return false
+        val prev = current
+        val changed = prev.cameraAlert != camera.typeText ||
+            prev.cameraDistanceMeters != camera.distanceMeters
+        current = prev.copy(
+            cameraAlert = camera.typeText,
+            cameraDistanceMeters = camera.distanceMeters,
+            cameraKind = camera.kind,
+            cameraAlertMs = nowMs,
         )
         return changed
     }
@@ -282,6 +343,13 @@ object NavGuidanceHub {
             active = true,
             lastUpdateMs = nowMs,
             cameraAlert = if (rich.applyCamera) rich.cameraAlert else prev.cameraAlert,
+            // The expiry clock belongs to whatever wrote the alert last, so a notification camera
+            // ages out exactly like a reports-list one instead of living forever.
+            cameraAlertMs = when {
+                !rich.applyCamera -> prev.cameraAlertMs
+                rich.cameraAlert.isEmpty() -> 0L
+                else -> nowMs
+            },
             cameraDistanceMeters = when {
                 !rich.applyCamera -> prev.cameraDistanceMeters
                 rich.cameraAlert.isEmpty() -> 0

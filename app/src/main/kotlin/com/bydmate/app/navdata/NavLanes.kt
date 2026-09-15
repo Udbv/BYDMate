@@ -103,14 +103,10 @@ object NavLaneState {
     @Volatile private var pixelMs: Long = 0L
 
     /**
-     * Screen bounds of Waze's `laneGuidanceView`, and the display it was found on.
-     *
-     * This is all the accessibility tree gives for the strip (openbyd reads the same node for the
-     * same reason). It is the crop the pixel path segments; null means Waze is not showing lanes.
-     * Plain ints rather than a `Rect` so the lane pipeline stays testable off-device.
+     * A rectangle in screen coordinates. Plain ints rather than `android.graphics.Rect` so the
+     * whole lane pipeline stays testable off-device.
      */
-    data class ContainerBounds(
-        val displayId: Int,
+    data class LaneRect(
         val left: Int,
         val top: Int,
         val right: Int,
@@ -118,9 +114,30 @@ object NavLaneState {
     ) {
         val width: Int get() = right - left
         val height: Int get() = bottom - top
+
+        /** `l,t,r,b`, the shape the trip log prints. */
+        override fun toString(): String = "$left,$top,$right,$bottom"
     }
 
-    @Volatile var containerBounds: ContainerBounds? = null
+    /**
+     * Where Waze's `laneGuidanceView` is, and where each of its leaf cells is inside it.
+     *
+     * openbyd only ever read the container and re-derived the cells from the pixels
+     * (`BydAccessibilityService` :725-743), because on its build the strip had no children. This
+     * one does: the 2026-09-15 drive shows 3/5/7/8 leaves with real bounds and no labels, and the
+     * column segmentation found fewer cells than the tree has (3 against 5, 1 against 5). So the
+     * tree's own rectangles are the crops when they exist, and the segmenter is the fallback.
+     *
+     * The display id travels with them because the screenshot is taken per display and a crop from
+     * the wrong one would be meaningless pixels.
+     */
+    data class LaneGeometry(
+        val displayId: Int,
+        val container: LaneRect,
+        val cells: List<LaneRect> = emptyList(),
+    )
+
+    @Volatile var geometry: LaneGeometry? = null
 
     /**
      * Lanes from the accessibility labels - the secondary source.
@@ -151,7 +168,7 @@ object NavLaneState {
         lanes = NavLanes.NONE
         updatedMs = 0L
         pixelMs = 0L
-        containerBounds = null
+        geometry = null
     }
 }
 

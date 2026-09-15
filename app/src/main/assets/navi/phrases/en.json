@@ -22,6 +22,7 @@
   "exitNouns": ["exit"],
   "ordinalSuffixes": ["st", "nd", "rd", "th"],
   "lanes": {"left": ["left"], "straight": ["straight", "ahead"], "right": ["right"], "uturn": ["u-turn", "uturn"]},
+  "reports": {"camera": ["camera", "speed cam"], "police": ["police"], "ahead": ["ahead"]},
   "units": {
     "km": ["km"], "m": ["m"], "mi": ["mi", "mile", "miles"], "ft": ["ft", "foot", "feet"],
     "hour": ["h", "hr", "hrs", "hour", "hours"], "minute": ["min", "mins", "minute", "minutes"]

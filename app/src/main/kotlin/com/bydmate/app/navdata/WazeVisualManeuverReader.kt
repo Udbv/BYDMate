@@ -292,11 +292,18 @@ object WazeVisualManeuverReader {
     }
 
     /**
-     * The lane path: segment Waze's lane strip out of the same screenshot and publish the codes.
+     * The lane path: crop Waze's lane strip out of the same screenshot and publish the codes.
+     *
+     * Two sources for the crops, in this order:
+     *  1. the cell rectangles the accessibility tree gave ([NavLaneState.LaneGeometry.cells]).
+     *     On this Waze the strip's leaves ARE the lanes - the 2026-09-15 drive shows 3/5/7/8 of
+     *     them with real bounds - and the donor's column segmentation found fewer cells than the
+     *     tree has (3 against 5, 1 against 5), so the tree wins whenever it has children;
+     *  2. [WazeLaneSegmenter], the donor's own column segmentation, when the tree gives none.
      *
      * Returns null exactly where the donor's `processSegmentedLanes` returns false - no strip on
-     * screen, bounds that do not fit the screenshot, no cells, or a peak column score too weak to
-     * be lane artwork - and the caller then classifies the plain arrow crop as before.
+     * screen, bounds that do not fit the screenshot, no cells - and the caller then classifies the
+     * plain arrow crop as before.
      *
      * When it does produce lanes, the first on-route lane's crop is the maneuver arrow (the donor
      * hands that same crop to its arrow classifier). If no lane is on the route the lanes are
@@ -309,8 +316,9 @@ object WazeVisualManeuverReader {
         density: Float,
         exitNumber: Int?,
     ): Classification? {
-        val container = NavLaneState.containerBounds ?: return null
-        if (container.displayId != displayId) return null
+        val geometry = NavLaneState.geometry ?: return null
+        if (geometry.displayId != displayId) return null
+        val container = geometry.container
         if (!isValidBounds(container, bitmap.width, bitmap.height)) return null
         val w = container.width
         val h = container.height
@@ -319,32 +327,116 @@ object WazeVisualManeuverReader {
             bitmap.getPixels(pixels, 0, w, container.left, container.top, w, h)
         }.getOrElse { return null }
 
-        val rect = WazeLaneSegmenter.Box(
-            container.left,
-            container.top,
-            container.right,
-            container.bottom,
-        )
-        val segments = WazeLaneSegmenter.segment(pixels, w, h, rect, density)
-        val result = WazeLaneSegmenter.process(pixels, w, h, rect, segments) ?: return null
+        val fromTree = geometry.cells.isNotEmpty()
+        val result = (
+            if (fromTree) {
+                classifyTreeCells(pixels, w, h, container, geometry.cells, exitNumber)
+            } else {
+                val rect = WazeLaneSegmenter.Box(
+                    container.left,
+                    container.top,
+                    container.right,
+                    container.bottom,
+                )
+                val segments = WazeLaneSegmenter.segment(pixels, w, h, rect, density)
+                WazeLaneSegmenter.process(pixels, w, h, rect, segments)?.let { segmented ->
+                    LaneOutcome(
+                        codes = segmented.codes,
+                        fronts = segmented.fronts,
+                        scores = segmented.scores,
+                        grids = List(segmented.codes.size) { "" },
+                        mainIndex = segmented.mainArrowIndex,
+                        arrow = segmented.mainArrow?.let {
+                            classifyPixels(it.width, it.height, it.pixels, exitNumber)
+                        },
+                    )
+                }
+            }
+            ) ?: return null
 
         val distance = runCatching { NavGuidanceHub.snapshot().distanceMeters }.getOrDefault(0)
         NavLaneState.updateFromPixels(
             NavLanes.ofCodes(result.codes, result.fronts, distance),
         )
-        val arrow = result.mainArrow
-        val classification = if (arrow == null) {
-            Classification(0, null, null, "")
-        } else {
-            classifyPixels(arrow.width, arrow.height, arrow.pixels, exitNumber)
-        }
-        logLanes(result, distance, classification)
+        val classification = result.arrow ?: Classification(0, null, null, "")
+        logLanes(geometry, result, distance, classification, fromTree)
         return classification
+    }
+
+    /** What one lane pass produced, whichever path found the cells. */
+    private class LaneOutcome(
+        val codes: IntArray,
+        val fronts: IntArray,
+        val scores: FloatArray,
+        val grids: List<String>,
+        val mainIndex: Int,
+        val arrow: Classification?,
+    )
+
+    /**
+     * The tree path: each cell rectangle is cropped as-is and classified at the donor's two
+     * thresholds, and on-route is the donor's brightness rule (a cell within
+     * [WazeLaneSegmenter.ON_ROUTE_FRACTION] of the brightest one).
+     */
+    private fun classifyTreeCells(
+        pixels: IntArray,
+        w: Int,
+        h: Int,
+        container: NavLaneState.LaneRect,
+        cells: List<NavLaneState.LaneRect>,
+        exitNumber: Int?,
+    ): LaneOutcome? {
+        val n = cells.size
+        if (n == 0) return null
+        val codes = IntArray(n)
+        val fronts = IntArray(n)
+        val scores = FloatArray(n)
+        val grids = arrayOfNulls<String>(n)
+        val classes = arrayOfNulls<WazeLaneSegmenter.LaneClass>(n)
+        val crops = arrayOfNulls<IntArray>(n)
+        val widths = IntArray(n)
+        val heights = IntArray(n)
+
+        for (i in 0 until n) {
+            val cell = cells[i]
+            val x0 = cell.left - container.left
+            val y0 = cell.top - container.top
+            val cw = cell.width
+            val ch = cell.height
+            if (cw <= 0 || ch <= 0 || x0 < 0 || y0 < 0 || x0 + cw > w || y0 + ch > h) {
+                codes[i] = LANE_CODE_INVALID
+                fronts[i] = NavLaneCodes.EMPTY
+                grids[i] = ""
+                continue
+            }
+            val crop = WazeLaneSegmenter.cropOf(pixels, w, x0, y0, cw, ch)
+            crops[i] = crop
+            widths[i] = cw
+            heights[i] = ch
+            scores[i] = WazeLaneSegmenter.cellScore(pixels, w, x0, y0, cw, ch)
+            val verdict = WazeLaneSegmenter.classifyLaneDetailed(cw, ch, crop)
+            classes[i] = verdict
+            codes[i] = verdict.code
+            grids[i] = if (verdict.matched) "" else verdict.grid
+        }
+
+        val peak = scores.maxOrNull() ?: 0f
+        var mainIndex = -1
+        for (i in 0 until n) {
+            val onRoute = crops[i] != null && peak > 0f &&
+                scores[i] >= peak * WazeLaneSegmenter.ON_ROUTE_FRACTION
+            fronts[i] = if (onRoute) classes[i]?.activeCode ?: codes[i] else NavLaneCodes.EMPTY
+            if (onRoute && mainIndex == -1) mainIndex = i
+        }
+        val arrow = mainIndex.takeIf { it >= 0 }?.let { i ->
+            classifyPixels(widths[i], heights[i], crops[i]!!, exitNumber)
+        }
+        return LaneOutcome(codes, fronts, scores, grids.map { it ?: "" }, mainIndex, arrow)
     }
 
     /** openbyd's `isValidBounds` (:488-494): the crop has to lie wholly inside the screenshot. */
     internal fun isValidBounds(
-        bounds: NavLaneState.ContainerBounds,
+        bounds: NavLaneState.LaneRect,
         bitmapWidth: Int,
         bitmapHeight: Int,
     ): Boolean = bounds.width > 0 && bounds.height > 0 &&
@@ -353,26 +445,53 @@ object WazeVisualManeuverReader {
         bounds.top + bounds.height <= bitmapHeight
 
     /**
-     * One line per segmentation in the trip log: how many cells were found, what each became, and
-     * which one was taken as the maneuver arrow. Scores and codes only - never pixels.
+     * One line per lane pass in the trip log: where the strip was, what each cell became, and -
+     * for every cell whose signature matched nothing - its 225 shape bits, which is the only way
+     * to grow the lane table from a real drive. Scores, codes and silhouettes only; never pixels.
+     *
+     * Rate-limited to one line every [MIN_ATTEMPT_INTERVAL_MS] unless the codes changed, and to
+     * [MAX_GRIDS_PER_LINE] grids, so an unrecognized strip cannot fill the log.
      */
     private fun logLanes(
-        result: WazeLaneSegmenter.Result,
+        geometry: NavLaneState.LaneGeometry,
+        result: LaneOutcome,
         distance: Int,
         classification: Classification,
+        fromTree: Boolean,
     ) {
         val cells = result.codes.indices.joinToString(" | ") { i ->
             "${result.codes[i]}>${result.fronts[i]}@${result.scores[i].toInt()}" +
-                if (i == result.mainArrowIndex) "*" else ""
+                if (i == result.mainIndex) "*" else ""
         }
+        val key = "$cells ${result.grids.count { it.isNotEmpty() }}"
+        val nowMs = SystemClock.elapsedRealtime()
+        if (key == lastLaneLogKey && nowMs - lastLaneLogMs < MIN_ATTEMPT_INTERVAL_MS) return
+        lastLaneLogKey = key
+        lastLaneLogMs = nowMs
+        val grids = result.grids.withIndex()
+            .filter { it.value.isNotEmpty() }
+            .take(MAX_GRIDS_PER_LINE)
+            .joinToString(" ") { "grid#${it.index}=${it.value}" }
         com.bydmate.app.diagnostics.TripDebugLog.event(
             "LANES",
-            "pixels cells=${result.codes.size} dist=$distance arrow=" +
-                (if (result.mainArrowIndex >= 0) "#${result.mainArrowIndex}" else "none") +
+            "pixels src=${if (fromTree) "tree" else "segmenter"} " +
+                WazeLaneReader.geometryLine(geometry) +
+                " dist=$distance arrow=" +
+                (if (result.mainIndex >= 0) "#${result.mainIndex}" else "none") +
                 " icon=${classification.panelIcon} name=${classification.matchedName ?: "-"}" +
-                (if (cells.isEmpty()) "" else " $cells"),
+                (if (cells.isEmpty()) "" else " $cells") +
+                (if (grids.isEmpty()) "" else " $grids"),
         )
     }
+
+    @Volatile private var lastLaneLogKey: String? = null
+    @Volatile private var lastLaneLogMs: Long = -MIN_ATTEMPT_INTERVAL_MS
+
+    /** Unmatched grids per LANES line; eight is more than any junction the panel can draw. */
+    private const val MAX_GRIDS_PER_LINE = 8
+
+    /** The donor's "this lane does not fit the crop" code (`processSegmentedLanes`: 13). */
+    private const val LANE_CODE_INVALID = 13
 
     /** Crops [crop] out of [bitmap] and classifies the raw pixels - no resampling. */
     private fun classify(bitmap: Bitmap, crop: Rect, exitNumber: Int?): Classification? {

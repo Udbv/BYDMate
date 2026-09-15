@@ -112,20 +112,20 @@ class WazeLaneSegmenterTest {
 
     @Test
     fun `bounds outside the screenshot are rejected before any cropping`() {
-        val inside = NavLaneState.ContainerBounds(0, 10, 20, 110, 80)
+        val inside = NavLaneState.LaneRect(10, 20, 110, 80)
         assertTrue(WazeVisualManeuverReader.isValidBounds(inside, 1920, 1080))
         assertFalse(WazeVisualManeuverReader.isValidBounds(inside, 100, 1080))
         assertFalse(WazeVisualManeuverReader.isValidBounds(inside, 1920, 60))
         assertFalse(
             WazeVisualManeuverReader.isValidBounds(
-                NavLaneState.ContainerBounds(0, -1, 20, 110, 80),
+                NavLaneState.LaneRect(-1, 20, 110, 80),
                 1920,
                 1080,
             ),
         )
         assertFalse(
             WazeVisualManeuverReader.isValidBounds(
-                NavLaneState.ContainerBounds(0, 10, 20, 10, 80),
+                NavLaneState.LaneRect(10, 20, 10, 80),
                 1920,
                 1080,
             ),
