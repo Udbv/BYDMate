@@ -28,10 +28,10 @@ jobs:
       # прогона нет, там тесты обязательны.
       - name: Unit tests
         if: github.event_name == 'pull_request'
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
+        run: ./gradlew :app:testWazeDebugUnitTest --stacktrace
 
       - name: Android Lint
-        run: ./gradlew :app:lintDebug --stacktrace
+        run: ./gradlew :app:lintWazeDebug :app:lintOfficialDebug --stacktrace
 
       - name: Upload reports on failure
         if: failure()

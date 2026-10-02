@@ -77,6 +77,7 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var settingsRepository: com.bydmate.app.data.repository.SettingsRepository
     @Inject lateinit var insightsManager: com.bydmate.app.data.remote.InsightsManager
     @Inject lateinit var automationEngine: AutomationEngine
+    @Inject lateinit var ambientNightController: com.bydmate.app.data.automation.AmbientNightController
     @Inject lateinit var networkAvailableMonitor: com.bydmate.app.data.automation.NetworkAvailableMonitor
     @Inject lateinit var alicePollingManager: AlicePollingManager
     @Inject lateinit var odometerBuffer: OdometerConsumptionBuffer
@@ -1236,6 +1237,7 @@ class TrackingService : Service(), LocationListener {
                     lastDataAtMs = System.currentTimeMillis()
                     fidSubscriptionManager.onPollSnapshot(data)
                     blindSpotController.onPollSnapshot(data)
+                    com.bydmate.app.domain.calculator.PowerHistory.onTick(data, lastDataAtMs)
                     alicePollingManager.latestData = data
                     // Cache for AutoserviceChargingDetector — avoids extra parsReader.fetch() inside runCatchUp.
                     autoserviceDetector.onSample(data)
@@ -1402,6 +1404,7 @@ class TrackingService : Service(), LocationListener {
                     // Idle drain tracked via energydata zero-km records only (HistoryImporter).
                     // Live power integration removed — motor power ≠ total battery drain.
                     automationEngine.evaluate(data, sessionId)
+                    ambientNightController.onTick(data, sessionId, lastLocation.value)
                     updateNotification(data)
                     maybeLogSessionSummary(nowMs, data, sessionId)
                     maybeSendIternioTelemetry(data, nowMs)

@@ -46,7 +46,14 @@ export JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot"
 
 ## Publish
 
-Development (from `develop`, the normal case):
+Development (from `develop`, the normal case) — **CI does it**: `.github/workflows/release-dev.yml`
+builds the signed APK and publishes the pre-release by itself when a push to `develop` changes
+`versionName` (with `docs/release-notes/v<versionName>.md` present). So a dev release is: bump
+the version, add the notes, merge into `develop`. It needs the four repository secrets listed at the
+top of the workflow (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`), set once;
+without them the run fails at the keystore step, and "Re-run jobs" after adding them publishes.
+
+By hand from a PC (fallback):
 ```bash
 git checkout develop && git push origin develop
 gh release create v3.15.0-dev.2 --repo Udbv/BYDMate --target develop --prerelease \

@@ -170,6 +170,8 @@
     <string name="settings_widget_hints">• Доўгі тап па віджэце - схаваць да наступнага адкрыцця BYDMate.\n• Перацягнуць у сметніцу ўнізе - выключыць зусім.\n• Звычайны тап - адкрыць BYDMate.</string>
     <string name="settings_widget_hide_youtube_label">Хаваць пры YouTube</string>
     <string name="settings_widget_hide_youtube_description">Панэль кнопак хаваецца, пакуль YouTube на экране</string>
+    <string name="settings_widget_power_graph_label">Графік магутнасці</string>
+    <string name="settings_widget_power_graph_description">Радок унізе віджэта: імгненная магутнасць за апошнія 2 хвіліны, як у Tesla. Цяга зверху белым, рэкуперацыя знізу зялёным.</string>
     <string name="settings_widget_hide_apps_label">Хаваць у праграмах</string>
     <string name="settings_widget_hide_apps_description">Панэль кнопак хаваецца, пакуль выбраная праграма на экране</string>
     <string name="settings_widget_hide_apps_none">Не выбрана</string>
@@ -1341,6 +1343,9 @@
     <string name="settings_export_dialog_hint">Акно «This car is not from official export» закрываецца націскам яго адзінай кнопкі праз службу спецыяльных магчымасцей: без фіксаваных каардынат і незалежна ад мовы. Акно распазнаецца па загалоўку vehicledialog</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">Сляпыя зоны</string>
+    <string name="settings_ambient_night_header">Амбіент у цемры</string>
+    <string name="settings_ambient_night_sub">Уключаць у цемры. %1$s</string>
+    <string name="settings_ambient_night_desc">Машына гасіць атмасфернае падсвятленне паміж паездкамі. BYDMate уключае яго адзін раз за паездку: адразу пасля ўключэння машыны, калі ўжо цёмна, або калі сцямнее ў дарозе. Калі выключыць падсвятленне ўручную, яно застанецца выключаным да наступнага ўключэння машыны. Цемра вызначаецца па становішчы сонца па GPS, без GPS — па датчыку асветленасці.</string>
     <string name="settings_blindspot_title">Камера па паваротніку</string>
     <string name="settings_blindspot_desc">Левы паваротнік - левая камера на прыборцы, правы - акенца на галоўным экране. Па змаўчанні выключана.</string>
     <string name="settings_blindspot_threshold_title">Парог хуткасці</string>

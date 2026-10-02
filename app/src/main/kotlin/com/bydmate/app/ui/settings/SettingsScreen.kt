@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.Settings as AndroidSettings
 import android.widget.Toast
 import com.bydmate.app.camera.BlindSpotPositionOverlay
+import com.bydmate.app.data.automation.AmbientNightController
 import com.bydmate.app.camera.BlindSpotPreferences
 import com.bydmate.app.cluster.ClusterEntryPoint
 import com.bydmate.app.cluster.ClusterProjectionManager
@@ -830,6 +831,8 @@ private fun WidgetSection() {
         .collectAsStateWithLifecycle(initialValue = prefs.isHideOnYoutube())
     val hideInApps by prefs.hideInAppsFlow()
         .collectAsStateWithLifecycle(initialValue = prefs.getHideInApps())
+    val powerGraph by prefs.powerGraphFlow()
+        .collectAsStateWithLifecycle(initialValue = prefs.isPowerGraphEnabled())
     var showLeftTapPicker by remember { mutableStateOf(false) }
     var showHideInAppsPicker by remember { mutableStateOf(false) }
 
@@ -866,6 +869,12 @@ private fun WidgetSection() {
                 },
             )
             SettingHint(text = stringResource(R.string.settings_widget_hints))
+            SettingToggleRow(
+                title = stringResource(R.string.settings_widget_power_graph_label),
+                description = stringResource(R.string.settings_widget_power_graph_description),
+                checked = powerGraph,
+                onCheckedChange = { prefs.setPowerGraphEnabled(it) },
+            )
             SettingToggleRow(
                 title = stringResource(R.string.settings_widget_hide_youtube_label),
                 description = stringResource(R.string.settings_widget_hide_youtube_description),
@@ -1441,6 +1450,38 @@ private fun DisplaySection() {
     }
 
     BlindSpotCard()
+    AmbientNightCard()
+}
+
+/**
+ * «Амбиент в темноте»: reads and writes AmbientNightController's own SharedPreferences file,
+ * which the controller re-reads on every tick, so the switch lands without a restart.
+ */
+@Composable
+private fun AmbientNightCard() {
+    val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences(AmbientNightController.PREFS_NAME, Context.MODE_PRIVATE)
+    }
+    var enabled by remember { mutableStateOf(prefs.getBoolean(AmbientNightController.KEY_ENABLED, false)) }
+
+    SettingCollapsibleCard(
+        title = stringResource(R.string.settings_ambient_night_header),
+        subtitle = stringResource(
+            R.string.settings_ambient_night_sub,
+            stringResource(
+                if (enabled) R.string.settings_display_state_on
+                else R.string.settings_display_state_off
+            ),
+        ),
+        checked = enabled,
+        onCheckedChange = {
+            enabled = it
+            prefs.edit().putBoolean(AmbientNightController.KEY_ENABLED, it).apply()
+        },
+    ) {
+        SettingHint(text = stringResource(R.string.settings_ambient_night_desc))
+    }
 }
 
 /**

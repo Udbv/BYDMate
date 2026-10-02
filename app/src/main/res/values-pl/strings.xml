@@ -170,6 +170,8 @@
     <string name="settings_widget_hints">• Długie dotknięcie widżetu - ukryj do następnego otwarcia BYDMate.\n• Przeciągnij do kosza na dole - wyłącz całkiem.\n• Zwykłe dotknięcie - otwórz BYDMate.</string>
     <string name="settings_widget_hide_youtube_label">Ukrywaj przy YouTube</string>
     <string name="settings_widget_hide_youtube_description">Panel przycisków chowa się, dopóki YouTube jest na ekranie</string>
+    <string name="settings_widget_power_graph_label">Wykres mocy</string>
+    <string name="settings_widget_power_graph_description">Wiersz na dole widżetu: chwilowa moc z ostatnich 2 minut, jak w Tesli. Pobór u góry na biało, rekuperacja na dole na zielono.</string>
     <string name="settings_widget_hide_apps_label">Ukrywaj w aplikacjach</string>
     <string name="settings_widget_hide_apps_description">Panel przycisków chowa się, dopóki wybrana aplikacja jest na ekranie</string>
     <string name="settings_widget_hide_apps_none">Nie wybrano</string>
@@ -1341,6 +1343,9 @@
     <string name="settings_export_dialog_hint">Okno „This car is not from official export” jest zamykane naciśnięciem jego jedynego przycisku przez usługę ułatwień dostępu: bez stałych współrzędnych, w dowolnym języku. Okno rozpoznawane po tytule vehicledialog</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">Martwe pola</string>
+    <string name="settings_ambient_night_header">Oświetlenie ambientowe nocą</string>
+    <string name="settings_ambient_night_sub">Włączaj po zmroku. %1$s</string>
+    <string name="settings_ambient_night_desc">Samochód wyłącza oświetlenie ambientowe między jazdami. BYDMate włącza je raz na jazdę: zaraz po włączeniu auta, jeśli już jest ciemno, albo gdy ściemni się w trasie. Jeśli wyłączysz je ręcznie, zostanie wyłączone do następnego włączenia auta. Ciemność jest ustalana z położenia słońca wg GPS, a bez GPS z czujnika światła.</string>
     <string name="settings_blindspot_title">Kamera przy kierunkowskazie</string>
     <string name="settings_blindspot_desc">Lewy kierunkowskaz - lewa kamera na wskaźnikach, prawy - okienko na ekranie głównym. Domyślnie wyłączone.</string>
     <string name="settings_blindspot_threshold_title">Próg prędkości</string>
