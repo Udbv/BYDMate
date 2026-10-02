@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bydmate.app.R
+import com.bydmate.app.domain.calculator.PowerSample
 import com.bydmate.app.domain.calculator.Trend
 import com.bydmate.app.ui.components.socColor as componentsSocColor
 import com.bydmate.app.ui.theme.AccentGreen
@@ -77,6 +78,7 @@ import kotlinx.coroutines.delay
  *   left — trip duration (⏱), center — trip distance (🗺 route), right — range per 1% SOC (km/%). 13sp.
  * Row 2 (center, main): SOC% (18sp, status color) · range km (28sp bold white) · consumption + trend (18sp).
  * Row 3 (bottom, service): cabin temp (🚗), battery temperature (🔋), 12V (⚡) — 13sp.
+ * Row 4 (optional, [powerGraph]): Tesla-style power meter, adds [POWER_GRAPH_EXTRA_HEIGHT_DP].
  *
  * Icons are muted gray, values are white in service rows. Km is always white
  * regardless of SOC status (only the border + SOC % + trend text colorize).
@@ -95,6 +97,8 @@ fun FloatingWidgetView(
     alpha: Float,
     scaleFactor: Float = 1.0f,
     listening: Boolean = false,
+    powerGraph: Boolean = false,
+    powerSamples: List<PowerSample> = emptyList(),
 ) {
     val status = widgetStatus(soc, voltage12v)
     val borderColor = when (status) {
@@ -123,7 +127,7 @@ fun FloatingWidgetView(
         Column(
             modifier = Modifier
                 .alpha(alpha.coerceIn(0.3f, 1.0f))
-                .size(width = 260.dp, height = 108.dp)
+                .size(width = 260.dp, height = widgetHeightDp(powerGraph).dp)
                 .shadow(elevation = 8.dp, shape = RoundedCornerShape(14.dp))
                 .background(CardSurface, RoundedCornerShape(14.dp))
                 .then(borderModifier)
@@ -152,11 +156,21 @@ fun FloatingWidgetView(
             RowEnergy(soc = soc, rangeKm = rangeKm, consumption = consumption, trend = effectiveTrend)
             WidgetDivider()
             RowService(insideTemp = insideTemp, batTemp = batTemp, voltage12v = voltage12v)
+            if (powerGraph) {
+                WidgetDivider()
+                RowPowerGraph(powerSamples)
+            }
         }
     }
 }
 
 internal const val TRIP_DISTANCE_TREND_THRESHOLD_KM = 0.3
+
+internal const val WIDGET_BASE_HEIGHT_DP = 108
+
+/** Panel height; the window follows it, so WidgetController sizes from the same function. */
+internal fun widgetHeightDp(powerGraph: Boolean): Int =
+    WIDGET_BASE_HEIGHT_DP + if (powerGraph) POWER_GRAPH_EXTRA_HEIGHT_DP else 0
 
 // ---- Snake border (Wave B listening indication) ----
 

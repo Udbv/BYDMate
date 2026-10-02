@@ -170,6 +170,8 @@
     <string name="settings_widget_hints">• Довгий тап на віджеті - сховати до наступного відкриття BYDMate.\n• Перетягнути в кошик унизу - вимкнути зовсім.\n• Звичайний тап - відкрити BYDMate.</string>
     <string name="settings_widget_hide_youtube_label">Ховати при YouTube</string>
     <string name="settings_widget_hide_youtube_description">Панель кнопок ховається, поки YouTube на екрані</string>
+    <string name="settings_widget_power_graph_label">Графік потужності</string>
+    <string name="settings_widget_power_graph_description">Рядок унизу віджета: миттєва потужність за останні 2 хвилини, як у Tesla. Тяга зверху білим, рекуперація знизу зеленим.</string>
     <string name="settings_widget_hide_apps_label">Ховати в додатках</string>
     <string name="settings_widget_hide_apps_description">Панель кнопок ховається, поки вибраний додаток на екрані</string>
     <string name="settings_widget_hide_apps_none">Не вибрано</string>

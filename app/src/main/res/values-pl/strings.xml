@@ -170,6 +170,8 @@
     <string name="settings_widget_hints">• Długie dotknięcie widżetu - ukryj do następnego otwarcia BYDMate.\n• Przeciągnij do kosza na dole - wyłącz całkiem.\n• Zwykłe dotknięcie - otwórz BYDMate.</string>
     <string name="settings_widget_hide_youtube_label">Ukrywaj przy YouTube</string>
     <string name="settings_widget_hide_youtube_description">Panel przycisków chowa się, dopóki YouTube jest na ekranie</string>
+    <string name="settings_widget_power_graph_label">Wykres mocy</string>
+    <string name="settings_widget_power_graph_description">Wiersz na dole widżetu: chwilowa moc z ostatnich 2 minut, jak w Tesli. Pobór u góry na biało, rekuperacja na dole na zielono.</string>
     <string name="settings_widget_hide_apps_label">Ukrywaj w aplikacjach</string>
     <string name="settings_widget_hide_apps_description">Panel przycisków chowa się, dopóki wybrana aplikacja jest na ekranie</string>
     <string name="settings_widget_hide_apps_none">Nie wybrano</string>
