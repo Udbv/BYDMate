@@ -830,6 +830,8 @@ private fun WidgetSection() {
         .collectAsStateWithLifecycle(initialValue = prefs.isHideOnYoutube())
     val hideInApps by prefs.hideInAppsFlow()
         .collectAsStateWithLifecycle(initialValue = prefs.getHideInApps())
+    val powerGraph by prefs.powerGraphFlow()
+        .collectAsStateWithLifecycle(initialValue = prefs.isPowerGraphEnabled())
     var showLeftTapPicker by remember { mutableStateOf(false) }
     var showHideInAppsPicker by remember { mutableStateOf(false) }
 
@@ -866,6 +868,12 @@ private fun WidgetSection() {
                 },
             )
             SettingHint(text = stringResource(R.string.settings_widget_hints))
+            SettingToggleRow(
+                title = stringResource(R.string.settings_widget_power_graph_label),
+                description = stringResource(R.string.settings_widget_power_graph_description),
+                checked = powerGraph,
+                onCheckedChange = { prefs.setPowerGraphEnabled(it) },
+            )
             SettingToggleRow(
                 title = stringResource(R.string.settings_widget_hide_youtube_label),
                 description = stringResource(R.string.settings_widget_hide_youtube_description),

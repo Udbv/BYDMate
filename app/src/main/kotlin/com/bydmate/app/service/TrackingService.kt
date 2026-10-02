@@ -1236,6 +1236,7 @@ class TrackingService : Service(), LocationListener {
                     lastDataAtMs = System.currentTimeMillis()
                     fidSubscriptionManager.onPollSnapshot(data)
                     blindSpotController.onPollSnapshot(data)
+                    com.bydmate.app.domain.calculator.PowerHistory.onTick(data, lastDataAtMs)
                     alicePollingManager.latestData = data
                     // Cache for AutoserviceChargingDetector — avoids extra parsReader.fetch() inside runCatchUp.
                     autoserviceDetector.onSample(data)

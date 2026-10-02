@@ -41,7 +41,10 @@ import kotlinx.coroutines.cancel
 import com.bydmate.app.R
 import com.bydmate.app.domain.calculator.ConsumptionAggregator
 import com.bydmate.app.domain.calculator.ConsumptionState
+import com.bydmate.app.domain.calculator.PowerHistory
+import com.bydmate.app.domain.calculator.PowerSample
 import com.bydmate.app.domain.calculator.Trend
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
@@ -68,7 +71,6 @@ object WidgetController {
 
     // Widget dimensions in dp — matches FloatingWidgetView layout
     private const val WIDGET_WIDTH_DP = 260
-    private const val WIDGET_HEIGHT_DP = 108
     private const val DRAG_THRESHOLD_DP = 8
     private const val TRASH_RADIUS_DP = 48
     private const val LONG_PRESS_MS = 1500L
@@ -103,6 +105,7 @@ object WidgetController {
     private lateinit var prefsScaleFlow: kotlinx.coroutines.flow.Flow<Float>
     private lateinit var prefsHideOnYoutubeFlow: kotlinx.coroutines.flow.Flow<Boolean>
     private lateinit var prefsHideInAppsFlow: kotlinx.coroutines.flow.Flow<Set<String>>
+    private lateinit var prefsPowerGraphFlow: kotlinx.coroutines.flow.Flow<Boolean>
 
     // Compose state for the widget data
     private var socState = mutableStateOf<Int?>(null)
@@ -119,6 +122,9 @@ object WidgetController {
     private var trashActive = mutableStateOf(false)
     // Continuous voice session (Wave B): drives the snake-border listening indication.
     private var listeningState = mutableStateOf(false)
+    // Optional Tesla-style power row: the flag changes the window height, the samples only redraw.
+    private var powerGraphState = mutableStateOf(false)
+    private var powerSamplesState = mutableStateOf<List<PowerSample>>(emptyList())
 
     // Expandable-buttons state. expandedState drives the button layer's slide
     // animation; collapsedX/Y remember the window origin so an edge-clamped
@@ -154,12 +160,14 @@ object WidgetController {
         prefsScaleFlow = prefs.scaleFlow()
         prefsHideOnYoutubeFlow = prefs.hideOnYoutubeFlow()
         prefsHideInAppsFlow = prefs.hideInAppsFlow()
+        prefsPowerGraphFlow = prefs.powerGraphFlow()
         val metrics = viewCtx.resources.displayMetrics
 
         val initialScale = prefs.getScale()
         scaleState.value = initialScale
         val widgetWpx = (dp(viewCtx, WIDGET_WIDTH_DP) * initialScale).toInt()
-        val widgetHpx = (dp(viewCtx, WIDGET_HEIGHT_DP) * initialScale).toInt()
+        powerGraphState.value = prefs.isPowerGraphEnabled()
+        val widgetHpx = (dp(viewCtx, widgetHeightDp(powerGraphState.value)) * initialScale).toInt()
         currentWidgetWpx = widgetWpx
         currentWidgetHpx = widgetHpx
         val (startX, startY) = resolveStartPosition(prefs, metrics, widgetWpx, widgetHpx)
@@ -208,6 +216,8 @@ object WidgetController {
                     alpha = alphaState.value,
                     scaleFactor = scaleState.value,
                     listening = listeningState.value,
+                    powerGraph = powerGraphState.value,
+                    powerSamples = powerSamplesState.value,
                 )
             }
             setOnTouchListener(WidgetTouchListener(viewCtx, prefs, metrics))
@@ -395,6 +405,22 @@ object WidgetController {
             }
         }
 
+        // Power row: toggling it resizes the window (same path as a scale change); samples only
+        // flow while the row is on, so a hidden graph costs no recomposition.
+        scope.launch {
+            prefsPowerGraphFlow.collectLatest { on ->
+                if (powerGraphState.value != on) {
+                    powerGraphState.value = on
+                    applyScaleChange(scaleState.value)
+                }
+                if (on) {
+                    PowerHistory.samples.collect { powerSamplesState.value = it }
+                } else {
+                    powerSamplesState.value = emptyList()
+                }
+            }
+        }
+
         // Voice-session listening indicator (Wave B): reuses the existing ClusterEntryPoint Hilt
         // bridge (already used by SteeringWheelKeyService) to reach the @Singleton VoiceController
         // instead of adding a new global singleton.
@@ -418,7 +444,7 @@ object WidgetController {
         val ctx = view.context ?: return
         val metrics = ctx.resources.displayMetrics
         val widgetWpx = (dp(ctx, WIDGET_WIDTH_DP) * scale).toInt()
-        val widgetHpx = (dp(ctx, WIDGET_HEIGHT_DP) * scale).toInt()
+        val widgetHpx = (dp(ctx, widgetHeightDp(powerGraphState.value)) * scale).toInt()
         currentWidgetWpx = widgetWpx
         currentWidgetHpx = widgetHpx
         // Force-fit the explicit pixel size so WindowManager respects the new

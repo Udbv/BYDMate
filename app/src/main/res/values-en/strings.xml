@@ -156,6 +156,8 @@
     <string name="settings_widget_hints">- Long tap the widget - hide until BYDMate is opened next time.\n- Drag to the bin at the bottom - turn off completely.\n- Regular tap - open BYDMate.</string>
     <string name="settings_widget_hide_youtube_label">Hide over YouTube</string>
     <string name="settings_widget_hide_youtube_description">The button panel hides while YouTube is on screen</string>
+    <string name="settings_widget_power_graph_label">Power graph</string>
+    <string name="settings_widget_power_graph_description">A row at the bottom of the widget: instantaneous power over the last 2 minutes, like in a Tesla. Draw above in white, regen below in green.</string>
     <string name="settings_widget_hide_apps_label">Hide in apps</string>
     <string name="settings_widget_hide_apps_description">The button panel hides while a selected app is on screen</string>
     <string name="settings_widget_hide_apps_none">Not selected</string>
