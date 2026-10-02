@@ -1341,6 +1341,9 @@
     <string name="settings_export_dialog_hint">Вікно «This car is not from official export» закривається натисканням його єдиної кнопки через службу спеціальних можливостей: без фіксованих координат і незалежно від мови. Вікно розпізнається за заголовком vehicledialog</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">Сліпі зони</string>
+    <string name="settings_ambient_night_header">Амбієнт у темряві</string>
+    <string name="settings_ambient_night_sub">Вмикати в темряві. %1$s</string>
+    <string name="settings_ambient_night_desc">Авто гасить атмосферне підсвічування між поїздками. BYDMate вмикає його один раз за поїздку: одразу після ввімкнення авто, якщо вже темно, або коли стемніє в дорозі. Якщо вимкнути підсвічування вручну, воно залишиться вимкненим до наступного ввімкнення авто. Темрява визначається за положенням сонця за GPS, без GPS — за датчиком освітленості.</string>
     <string name="settings_blindspot_title">Камера за поворотником</string>
     <string name="settings_blindspot_desc">Лівий поворотник - ліва камера на приладовій панелі, правий - віконце на головному екрані. За замовчуванням вимкнено.</string>
     <string name="settings_blindspot_threshold_title">Поріг швидкості</string>
