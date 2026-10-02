@@ -1185,6 +1185,9 @@
     <string name="settings_export_dialog_hint">A janela “This car is not from official export” é fechada premindo o seu único botão através do serviço de acessibilidade: sem coordenadas fixas, em qualquer idioma. A janela é reconhecida pelo título vehicledialog</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">Pontos cegos</string>
+    <string name="settings_ambient_night_header">Luz ambiente à noite</string>
+    <string name="settings_ambient_night_sub">Ligar no escuro. %1$s</string>
+    <string name="settings_ambient_night_desc">O carro desliga a luz ambiente entre as viagens. O BYDMate liga-a uma vez por viagem: logo após ligar o carro, se já estiver escuro, ou quando escurecer durante o trajeto. Se a desligar manualmente, fica desligada até o carro ser ligado de novo. A escuridão é avaliada pela posição do sol via GPS, ou pelo sensor de luz quando não há GPS.</string>
     <string name="settings_blindspot_title">Câmera pela seta</string>
     <string name="settings_blindspot_desc">Seta à esquerda - câmera esquerda no painel de instrumentos, à direita - uma janelinha na tela principal. Desativado por padrão.</string>
     <string name="settings_blindspot_threshold_title">Limite de velocidade</string>

@@ -1341,6 +1341,9 @@
     <string name="settings_export_dialog_hint">Okno „This car is not from official export” jest zamykane naciśnięciem jego jedynego przycisku przez usługę ułatwień dostępu: bez stałych współrzędnych, w dowolnym języku. Okno rozpoznawane po tytule vehicledialog</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">Martwe pola</string>
+    <string name="settings_ambient_night_header">Oświetlenie ambientowe nocą</string>
+    <string name="settings_ambient_night_sub">Włączaj po zmroku. %1$s</string>
+    <string name="settings_ambient_night_desc">Samochód wyłącza oświetlenie ambientowe między jazdami. BYDMate włącza je raz na jazdę: zaraz po włączeniu auta, jeśli już jest ciemno, albo gdy ściemni się w trasie. Jeśli wyłączysz je ręcznie, zostanie wyłączone do następnego włączenia auta. Ciemność jest ustalana z położenia słońca wg GPS, a bez GPS z czujnika światła.</string>
     <string name="settings_blindspot_title">Kamera przy kierunkowskazie</string>
     <string name="settings_blindspot_desc">Lewy kierunkowskaz - lewa kamera na wskaźnikach, prawy - okienko na ekranie głównym. Domyślnie wyłączone.</string>
     <string name="settings_blindspot_threshold_title">Próg prędkości</string>

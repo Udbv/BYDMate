@@ -1188,6 +1188,9 @@
     <string name="settings_export_dialog_hint">The “This car is not from official export” window is closed by pressing its single button through the accessibility service: no fixed coordinates, any language. The window is recognized by its vehicledialog title</string>
     <!-- Blind-spot cameras -->
     <string name="settings_blindspot_header">Blind spots</string>
+    <string name="settings_ambient_night_header">Ambient light at night</string>
+    <string name="settings_ambient_night_sub">Turn on in the dark. %1$s</string>
+    <string name="settings_ambient_night_desc">The car turns the ambient light off between trips. BYDMate turns it on once per trip: right after power-on if it is already dark, or when it gets dark on the way. If you switch it off by hand, it stays off until the next power-on. Darkness is judged by the sun position from GPS, or by the light sensor when there is no GPS.</string>
     <string name="settings_blindspot_title">Camera on turn signal</string>
     <string name="settings_blindspot_desc">Left turn signal - left camera on the cluster, right one - a small window on the main screen. Off by default.</string>
     <string name="settings_blindspot_threshold_title">Speed threshold</string>
