@@ -1689,7 +1689,10 @@ private fun acquireSystemContext(): Context? = try {
  */
 private fun sdkContextOf(system: Context?): Context? = system?.let { ctx ->
     val based = try {
-        ctx.createPackageContext(BuildConfig.APPLICATION_ID, 3)
+        ctx.createPackageContext(
+            BuildConfig.APPLICATION_ID,
+            Context.CONTEXT_INCLUDE_CODE or Context.CONTEXT_IGNORE_SECURITY,
+        )
     } catch (t: Throwable) {
         System.err.println("WARN: createPackageContext failed: ${t.javaClass.name}: ${t.message}")
         ctx
