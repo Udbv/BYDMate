@@ -1544,4 +1544,9 @@
     <string name="settings_hudtest_status">Останній виклик: %1$s</string>
     <string name="settings_hudtest_failed">Помилка: %1$s</string>
     <string name="settings_hudtest_route_active">Триває навігація маршрутом — тестовий стенд не пише в панель</string>
+    <string name="settings_quiet_notification_title">Тихе сповіщення в шторці</string>
+    <string name="settings_quiet_notification_desc">Сповіщення BYDMate переходить у згорнутий список без значка в рядку стану. Повністю прибрати його не можна: Android вимагає сповіщення для роботи у фоні</string>
+    <string name="settings_blindspot_both_main_title">Обидві камери на головний екран</string>
+    <string name="settings_blindspot_both_main_desc">Ліва камера показується поруч із правою на планшеті, приладова панель не використовується</string>
+    <string name="tech_value_cell_scale">%1$.2f В</string>
 </resources>
