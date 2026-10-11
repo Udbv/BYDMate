@@ -10,7 +10,9 @@ After=network-online.target
 [Service]
 Type=simple
 User=udbv
-# The folder the sessions work in: the Home Assistant config. udbv needs write access to it.
+# The folder the sessions work in: the Home Assistant config. User= needs write access to it.
+# Not the user's home directory itself: trust is never saved there, so every start would hang on
+# the trust question.
 WorkingDirectory=/opt/homeassistant/config
 Environment=HOME=/home/udbv
 Environment=PATH=/home/udbv/.local/bin:/usr/local/bin:/usr/bin:/bin
