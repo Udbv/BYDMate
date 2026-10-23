@@ -92,7 +92,8 @@ class BlindSpotControllerOnDemandTest {
 
     private fun idle(step: Duration) {
         shadowOf(Looper.getMainLooper()).idleFor(step)
-        Thread.sleep(2)
+        // The vendor calls run on the camera thread; wait for them to post back to Main.
+        controller.awaitCameraThreadForTest()
         shadowOf(Looper.getMainLooper()).idle()
     }
 

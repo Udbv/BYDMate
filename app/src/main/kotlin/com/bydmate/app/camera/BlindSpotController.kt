@@ -52,7 +52,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.roundToInt
@@ -944,6 +946,16 @@ class BlindSpotController @Inject constructor(
     private fun cameraDispatcher(): ExecutorCoroutineDispatcher =
         cameraThread ?: Executors.newSingleThreadExecutor { r -> Thread(r, "blind-spot-camera") }
             .asCoroutineDispatcher().also { cameraThread = it }
+
+    /**
+     * Unit tests only: blocks until every call already handed to the camera thread has run (and so
+     * has posted its result back to Main). The thread is single, so one empty task is a barrier;
+     * a fixed sleep instead lost the race on a loaded CI runner.
+     */
+    internal fun awaitCameraThreadForTest() {
+        val executor = cameraThread?.executor as? ExecutorService ?: return
+        if (!executor.isShutdown) executor.submit {}.get(5, TimeUnit.SECONDS)
+    }
 
     /**
      * One overlay window: the camera preview plus the BSD border drawn around it.
