@@ -1,6 +1,7 @@
 package com.bydmate.app.data.autoservice
 
 import androidx.test.core.app.ApplicationProvider
+import com.bydmate.app.helper.HelperBinderProtocol
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
@@ -305,7 +306,7 @@ class AdbOnDeviceClientTest {
         // there sent HelperBootstrap into kill+respawn on a healthy daemon (#64/#148).
         val fake = FakeProtocol(
             connectResult = true,
-            execResponses = mapOf("ps -A -o NAME" to "init\nbydmate_helper\nzygote"),
+            execResponses = mapOf("ps -A -o NAME" to "init\n${HelperBinderProtocol.PROCESS_NAME}\nzygote"),
         )
         val client = newClient(fake)
 
@@ -326,7 +327,7 @@ class AdbOnDeviceClientTest {
     fun `readHelperLog connects lazily too`() = runTest {
         val fake = FakeProtocol(
             connectResult = true,
-            execResponses = mapOf("cat /data/local/tmp/bydmate_helper.log" to "READY via=broadcast"),
+            execResponses = mapOf("cat ${HelperBinderProtocol.LOG_PATH}" to "READY via=broadcast"),
         )
         val client = newClient(fake)
 

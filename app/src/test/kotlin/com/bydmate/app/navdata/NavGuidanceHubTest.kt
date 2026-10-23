@@ -274,10 +274,10 @@ class NavGuidanceHubTest {
     }
 
     @Test
-    fun `a route goes stale after forty seconds, not ninety`() {
-        // openbyd's window, and the keep-alive re-read fires every 20 s while a route is live, so
-        // nothing legitimate comes near it. The old value left a finished route on the glass.
-        assertEquals(40_000L, NavGuidanceHub.ACTIVE_TIMEOUT_MS)
+    fun `a route goes stale after ninety seconds`() {
+        // Upstream's window since the 4.0.1 merge: the fork's 20 s keep-alive and its 40 s went with
+        // it, and a Navigator that drops its guidance widgets mid-route (#199) must outlive 40 s.
+        assertEquals(90_000L, NavGuidanceHub.ACTIVE_TIMEOUT_MS)
     }
 
     @Test

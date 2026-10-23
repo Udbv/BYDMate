@@ -156,6 +156,9 @@ class NavA11yFeedNoGuidanceTraceTest {
             NavGuidanceHub.updateFromNotification(NavGuidanceHub.RichUpdate(
                 maneuverGaode = 2, distanceMeters = 500, road = "x",
                 cameraAlert = "camera", cameraDistanceMeters = 300), nowMs = now - 95_000)
+            // The camera ages out on its own 10 s clock (CAMERA_TIMEOUT_MS) in both runs; the exit
+            // number is cleared only by the route expiry, so it shows whether the read expired it.
+            NavGuidanceHub.setExitNumber(3)
             if (withRead) eventRead(noWidgetsRoot())
             NavGuidanceHub.update(NavGuidance(distanceMeters = 400), NavGuidanceHub.Source.A11Y, nowMs = now + 1_000)
             // Times relative to this run's clock, so the two runs compare across a millisecond tick.
@@ -166,7 +169,7 @@ class NavA11yFeedNoGuidanceTraceTest {
         val with = run(withRead = true)
         assertEquals(1, readLines.size)
         assertEquals(without, with)
-        assertEquals("camera", with.cameraAlert)
+        assertEquals(3, with.exitNumber)
     }
 
     @Test fun `flapping guidance writes at most one start line per 5 s and one walk`() {

@@ -29,13 +29,11 @@ import com.bydmate.app.diagnostics.TraceArea
 object NavGuidanceHub {
     private const val TAG = "NavGuidanceHub"
     /**
-     * How long a route survives with no source refreshing it.
-     *
-     * 40 s, down from 90: openbyd drops its navigation state after 40 s of silence, and the keep-
-     * alive re-read in [NavA11yFeed] fires every 20 s while a route is live, so nothing legitimate
-     * gets close to this. The old value kept a finished route on the glass for a minute and a half.
+     * How long a route survives with no source refreshing it. Upstream's 90 s: NavA11yFeed's timer
+     * re-reads the Navigator every 5 s while a route is live, and a Navigator that drops its
+     * guidance widgets mid-route (#199) must not end the route before that.
      */
-    const val ACTIVE_TIMEOUT_MS = 40_000L
+    const val ACTIVE_TIMEOUT_MS = 90_000L
     const val SPEED_LIMIT_TIMEOUT_MS = 30_000L
     /** Maneuver freshness. The donor holds an a11y maneuver 10 s (20 s while a distance
      *  is known) and then falls back to its SEPARATE notification-enum maneuver; here both
