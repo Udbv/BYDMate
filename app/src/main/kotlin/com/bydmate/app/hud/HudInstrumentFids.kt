@@ -30,7 +30,7 @@ class HudInstrumentFids(
     private val scope: CoroutineScope,
     /** Whether to Latinise the street name; read per write so the setting applies immediately. */
     private val sanitizePref: () -> Boolean = { true },
-    private val sanitizer: HudTextSanitizer = HudTextSanitizer.DEFAULT,
+    private val sanitizer: HudPanelTextSanitizer = HudPanelTextSanitizer.DEFAULT,
 ) {
     companion object {
         private const val TAG = "HudInstrumentFids"

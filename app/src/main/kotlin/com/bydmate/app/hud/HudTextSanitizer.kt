@@ -1,88 +1,75 @@
 package com.bydmate.app.hud
 
+import android.icu.text.Transliterator
 import android.util.Log
 import java.text.Normalizer
 
 /**
- * Latinises the text the instrument panel is asked to draw (port of openbyd 2.4.3's
- * `com.sr.openbyd.utils.HudTextSanitizer`).
+ * OpenBYD 2.5's HudTextSanitizer (`.research/decompiled/openbyd-2.5/.../utils/HudTextSanitizer.java`):
+ * the instrument's CAN road name takes no Cyrillic (the HUD of a Chinese car draws it blank or as
+ * garbage), so each character goes through ICU's "Any-Latin; Latin-ASCII" on its own, Chinese
+ * characters are kept, and the result is trimmed. A character ICU has no rule for passes as it is;
+ * when ICU throws, the character only loses its diacritics. Only ways 2 and 3's CAN road name use
+ * it; the SOME/IP frames keep the navigator's text.
  *
- * The cluster's next-street field is rendered by the car's own firmware with a Chinese font set.
- * Cyrillic reaches it as bytes and comes back as boxes or as hanzi, whichever way the firmware
- * guesses the charset. openbyd's answer — field-proven on BYD clusters — is not to fight the
- * font: transliterate to ASCII before the write, and leave CJK alone so a Chinese-market map
- * still reads correctly.
- *
- * The work is per character, exactly as in the donor: ICU's `Any-Latin; Latin-ASCII` is applied
- * to one character at a time, CJK ranges pass through untouched, and anything ICU cannot do
- * falls back to NFD + combining-mark stripping. Per-character is slower than transliterating the
- * whole string, but it is what the donor does and it keeps one bad character from taking the
- * whole street name down with it.
- *
- * [transliterate] is injectable so unit tests can drive both paths deterministically: on a plain
- * JVM the android.icu class is not there and the default is null, i.e. the fallback path.
+ * Unlike OpenBYD, Russian and Belarusian letters go through our own practical table first: ICU's
+ * per-letter ISO 9 turns Щукина into "Sukina", which tells a driver nothing.
  */
-class HudTextSanitizer(
-    private val transliterate: ((String) -> String)? = icuTransliterator(),
-) {
+internal object HudTextSanitizer {
+    private const val TAG = "HudTextSanitizer"
 
-    /** null / blank → "", CJK kept, everything else Latinised, result trimmed (donor order). */
-    fun sanitize(text: String?): String {
-        if (text == null || text.isBlank()) return ""
-        val icu = transliterate
-        val sb = StringBuilder(text.length)
-        for (ch in text) {
-            if (isCjk(ch)) {
-                sb.append(ch)
-                continue
-            }
-            val one = ch.toString()
-            sb.append(
-                if (icu == null) fallback(one)
-                else runCatching { icu(one) }.getOrElse { fallback(one) }
+    private val cyrillic = mapOf(
+        'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "yo",
+        'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m",
+        'н' to "n", 'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t", 'у' to "u",
+        'ф' to "f", 'х' to "kh", 'ц' to "ts", 'ч' to "ch", 'ш' to "sh", 'щ' to "shch", 'ъ' to "",
+        'ы' to "y", 'ь' to "", 'э' to "e", 'ю' to "yu", 'я' to "ya", 'і' to "i", 'ў' to "w",
+    )
+
+    /** Belarusian writes ъ as an apostrophe; after a Cyrillic letter it is dropped like ъ. */
+    private val apostrophes = setOf('’', 'ʼ')
+
+    private val icu: Transliterator? by lazy {
+        runCatching { Transliterator.getInstance("Any-Latin; Latin-ASCII") }
+            .onFailure { Log.e(TAG, "Failed to initialize ICU Transliterator: ${it.message}") }
+            .getOrNull()
+    }
+
+    private val combiningMarks = Regex("\\p{InCombiningDiacriticalMarks}+")
+
+    fun sanitize(text: String): String {
+        if (text.isBlank()) return ""
+        val transliterator = icu
+        val out = StringBuilder()
+        for ((i, c) in text.withIndex()) {
+            val latin = cyrillic[c.lowercaseChar()]
+            val one = c.toString()
+            out.append(
+                when {
+                    isChinese(c) -> one
+                    latin != null -> if (c.isUpperCase()) capital(latin, text, i) else latin
+                    c in apostrophes && i > 0 && isCyrillic(text[i - 1]) -> ""
+                    else -> transliterator?.let { runCatching { it.transliterate(one) }.getOrElse { fallback(one) } }
+                        ?: fallback(one)
+                }
             )
         }
-        return sb.toString().trim()
+        return out.toString().trim()
     }
 
-    companion object {
-        private const val TAG = "HudTextSanitizer"
-
-        /** Shared instance; building the ICU transliterator is not free. */
-        val DEFAULT: HudTextSanitizer by lazy { HudTextSanitizer() }
-
-        /**
-         * CJK Unified Ideographs, Extension A and the Compatibility block — the three ranges the
-         * donor lets through. A Chinese street name is already drawable by the cluster's font;
-         * romanising it would make it worse, not better.
-         */
-        fun isCjk(c: Char): Boolean =
-            c.code in 0x4E00..0x9FFF || c.code in 0x3400..0x4DBF || c.code in 0xF900..0xFAFF
-
-        private val COMBINING_MARKS = Regex("\\p{InCombiningDiacriticalMarks}+")
-
-        /**
-         * No-ICU path: decompose, drop the accents, and spell ñ out by hand (it decomposes, but
-         * the donor names it explicitly and a missing letter on the glass is worse than a
-         * redundant rule). Scripts with no Latin decomposition — Cyrillic, Greek, Arabic — come
-         * out unchanged here; only the ICU path can romanise those.
-         */
-        fun fallback(text: String): String =
-            COMBINING_MARKS.replace(Normalizer.normalize(text, Normalizer.Form.NFD), "")
-                .replace("ñ", "n")
-                .replace("Ñ", "N")
-
-        /**
-         * The ICU transliterator, or null when this runtime has no android.icu (plain JVM unit
-         * tests, or a firmware that stripped it). Null means every character takes [fallback].
-         */
-        fun icuTransliterator(): ((String) -> String)? = runCatching {
-            val t = android.icu.text.Transliterator.getInstance("Any-Latin; Latin-ASCII")
-            val step: (String) -> String = { s -> t.transliterate(s) }
-            step
-        }.getOrElse {
-            Log.w(TAG, "ICU Transliterator unavailable, using the NFD fallback: ${it.message}")
-            null
-        }
+    /** An all-caps word stays all caps (ЖУКОВА is ZHUKOVA); otherwise only the first letter is (Жукова is Zhukova). */
+    private fun capital(latin: String, text: String, i: Int): String {
+        val capsNeighbour = text.getOrNull(i - 1)?.isUpperCase() == true || text.getOrNull(i + 1)?.isUpperCase() == true
+        return if (capsNeighbour) latin.uppercase() else latin.replaceFirstChar { it.uppercaseChar() }
     }
+
+    private fun isCyrillic(c: Char): Boolean = Character.UnicodeBlock.of(c) == Character.UnicodeBlock.CYRILLIC
+
+    private fun fallback(text: String): String =
+        combiningMarks.replace(Normalizer.normalize(text, Normalizer.Form.NFD), "").replace("ñ", "n").replace("Ñ", "N")
+
+    /** CJK unified ideographs, extension A and the compatibility block, as OpenBYD counts them. */
+    @Suppress("MagicNumber") // the Unicode block bounds
+    private fun isChinese(c: Char): Boolean =
+        c.code in 0x4E00 until 0xA000 || c.code in 0x3400 until 0x4DC0 || c.code in 0xF900 until 0xFB00
 }

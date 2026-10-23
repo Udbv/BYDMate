@@ -3,10 +3,8 @@ package com.bydmate.app.camera
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Color
-import android.graphics.Matrix
 import android.graphics.PixelFormat
 import android.graphics.Rect
-import android.graphics.RectF
 import android.graphics.SurfaceTexture
 import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
@@ -29,10 +27,16 @@ import com.bydmate.app.cluster.ClusterProjectionManager
 import com.bydmate.app.cluster.MAX_PROJECTION_PCT
 import com.bydmate.app.cluster.cameraNeedsCompositor
 import com.bydmate.app.cluster.geometryFor
+import com.bydmate.app.data.camera.CameraStateMonitor
+import com.bydmate.app.data.nativestack.FidAddresses
+import com.bydmate.app.data.push.FidPushChannel
 import com.bydmate.app.data.remote.DiParsData
 import com.bydmate.app.data.autoservice.SentinelDecoder
 import com.bydmate.app.data.vehicle.BatchReadItem
 import com.bydmate.app.data.vehicle.HelperClient
+import com.bydmate.app.diagnostics.Trace
+import com.bydmate.app.diagnostics.TraceArea
+import com.bydmate.app.ui.widget.WidgetController
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -43,31 +47,82 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.cancelChildren
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.Executors
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.min
 import kotlin.math.roundToInt
+
+/** Transacts the fast loop reads its telemetry by (Leopard 3, on-car 2026-07-31). */
+internal const val BLIND_SPOT_TX_INT = 5
+internal const val BLIND_SPOT_TX_FLOAT = 7
+
+/** Fast-loop telemetry in batch order: FidMap field name and the transact it answers on. */
+private val BLIND_SPOT_BATCH_FIELDS = listOf(
+    "turnSignal" to BLIND_SPOT_TX_INT,     // turn signal mask: 1=off 2=L 4=R 6=hazard
+    "speed" to BLIND_SPOT_TX_FLOAT,        // km/h
+    "gear" to BLIND_SPOT_TX_INT,           // gear: 1=P 2=R 3=N 4=D
+)
+
+private val BLIND_SPOT_BSD_FIELDS = listOf(
+    "bsdLeft" to BLIND_SPOT_TX_INT,
+    "bsdRight" to BLIND_SPOT_TX_INT,
+)
+
+/** Fields the fast loop reads this tick, in the order the INDEX_* constants expect. */
+internal fun blindSpotBatchFields(withBsd: Boolean): List<Pair<String, Int>> =
+    if (withBsd) BLIND_SPOT_BATCH_FIELDS + BLIND_SPOT_BSD_FIELDS else BLIND_SPOT_BATCH_FIELDS
+
+/**
+ * The batch at the addresses in force right now. Read out of [FidAddresses] on every tick and
+ * never cached: the firmware catalog can keep any of these fids somewhere else (Song DiLink 4.0,
+ * dump 2026-09-18: speed moved to 303038472), and the resolved table is installed after the app
+ * has already started — a loop holding the compiled constant reads a sentinel forever, which the
+ * loss watchdog turns into a camera that never opens.
+ */
+internal fun blindSpotBatchItems(withBsd: Boolean): List<BatchReadItem> =
+    blindSpotBatchFields(withBsd).map { (field, tx) ->
+        val address = FidAddresses.of(field)
+        BatchReadItem(tx, address.device, address.fid)
+    }
+
+private const val PROJECTION_DISPLAY_NAME = "XDJAScreenProjection"
+
+/**
+ * The cluster projection panel the blind-spot windows go to, or null when this car has none.
+ * The settings card asks the same question to decide whether the cluster opt-in is offered.
+ */
+fun blindSpotClusterDisplay(context: Context): Display? {
+    val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+    val projection = dm.displays.filter {
+        it.name.contains(PROJECTION_DISPLAY_NAME, ignoreCase = true)
+    }
+    return projection.firstOrNull { it.name.endsWith("_1") } ?: projection.firstOrNull()
+}
 
 /**
  * Turn signal → blind-spot camera.
  *
  * The main poll (1 s) only arms the pipeline: once the car is near the speed threshold a fast
  * loop takes over and reads blink/speed/gear through the daemon every 150 ms, because a turn
- * signal that shows up a second late is useless. The camera is opened warm (both previews
- * bound, both windows parked off screen) while the car is moving, so a show is one
- * updateViewLayout rather than a vendor-stack open. Hiding moves the window off screen rather
+ * signal that shows up a second late is useless. The camera is opened on demand, when a turn
+ * signal asks for a view (both previews bound at once, the other window parked off screen), and
+ * closed once no signal has wanted it for [COOL_DOWN_MS]: a blinker pulled again inside that
+ * reuses the open camera, and a show is then one updateViewLayout. Holding it open at every
+ * speed above the threshold loaded the head unit. Hiding moves the window off screen rather
  * than dropping its alpha, so the vendor keeps filling a live surface.
  *
  * Left goes on the cluster (that is where the driver looks before a left lane change), in the
  * window geometry the navigation projection uses, right goes into a small window on the main
  * screen. Without a projection display the left view falls back to a second main-screen window,
- * mirrored across the right one. Reverse gear closes everything: the factory rear view owns the
- * screens there.
+ * mirrored across the right one. Two opt-ins move them: both on the main screen (#183), or both
+ * on the cluster (#240), where the right camera gets a second cluster window of the same geometry.
+ * Reverse gear closes everything: the factory rear view owns the screens there. So does the
+ * factory 360 view for as long as it is in the foreground.
  *
  * Threading: window work runs on Main, every vendor-stack call runs on a private
  * single camera thread ([cameraDispatcher]) because open/close block for hundreds of
@@ -80,6 +135,10 @@ class BlindSpotController @Inject constructor(
     private val helper: HelperClient,
     /** Shared with [ClusterProjectionManager] — one instance, one timeline (#135). */
     private val clusterJournal: ClusterJournal,
+    /** Tells when the factory 360 view is on screen; its windows own the screen, not ours. */
+    private val cameraStateMonitor: CameraStateMonitor,
+    /** Turn signal / gear / BSD events straight from the car, ahead of the 150 ms tick. */
+    private val fidPush: FidPushChannel,
 ) {
     private val probe = AvmCameraProbe()
     private val telemetry = BlindSpotTelemetryGate()
@@ -91,6 +150,15 @@ class BlindSpotController @Inject constructor(
     // Touched from the poll collector (IO) and from onDestroy; everything below them lives on Main.
     @Volatile private var serviceScope: CoroutineScope? = null
     @Volatile private var fastLoop: Job? = null
+    @Volatile private var pushWatcher: Job? = null
+
+    /**
+     * Wakes the fast loop the moment the car reports a blinker, a gear or a BSD change, instead of
+     * waiting out the rest of the tick. Conflated: several events inside one tick are one wake, and
+     * the tick itself still re-reads every value, so a transient blinker mask never decides
+     * anything on its own.
+     */
+    private val wake = Channel<Unit>(Channel.CONFLATED)
 
     /** Created on first camera use, closed in [stop]; recreated if the service starts again
      *  (this singleton outlives TrackingService — WorkManager restarts it into the same process). */
@@ -98,15 +166,24 @@ class BlindSpotController @Inject constructor(
     private var compositorJob: Job? = null
 
     private var clusterWindow: PreviewWindow? = null   // left camera, cluster display
-    private var pipWindow: PreviewWindow? = null       // right camera, main screen
+    private var pipWindow: PreviewWindow? = null       // right camera, main screen (or cluster, #240)
     /** True while [clusterWindow] is the mirrored PiP on the main screen (this car has no
      *  projection display) — the cluster compositor must stay untouched then. */
     private var clusterOnMainScreen = false
+    /** True while [pipWindow] carries the right camera on the cluster panel (#240) instead of
+     *  the main screen. */
+    private var pipOnCluster = false
 
     /** Whether the attached windows were built with the "both on the main screen" opt-in on. */
     private var mirrorByChoice = false
+    /** Same for the "both on the cluster" opt-in (#240). */
+    private var clusterByChoice = false
+    /** [blindSpotRoutingReason] of the attached windows, for the show log. */
+    private var routingReason = "none"
     /** Geometry the PiP window currently carries; a mismatch with the settings re-applies it. */
     private var appliedPipRect: Rect? = null
+    /** Geometry the left main-screen window currently has; null when there is no such window. */
+    private var appliedLeftRect: Rect? = null
     /** Projection-overlay attach counter as of our own attach; a later value means the overlay
      *  was (re)added above our cluster window and we have to re-attach on top of it. */
     private var lastOverlayEpoch = 0
@@ -117,7 +194,18 @@ class BlindSpotController @Inject constructor(
     private var shownSide = BlindSpotSide.NONE
     /** elapsedRealtime of the last transition to a shown side; the stall watchdog counts from here. */
     private var shownAt = 0L
-    private var lastRequestedSide = BlindSpotSide.NONE
+    private val backoff = BlindSpotBackoff()
+    /** Last seen state of the factory 360 view, so only the transition is logged. */
+    private var lastNativeCameraForeground = false
+    /** Last raw turn-signal mask seen on the push channel, for the dump; null until one arrives. */
+    @Volatile private var lastTurnSignal: Int? = null
+    /** elapsedRealtime of [lastTurnSignal]. */
+    @Volatile private var lastTurnSignalAt = 0L
+    /** Last arming decision from the 1 s poll and why, for the dump; also drives the transition log. */
+    @Volatile private var lastArmed = false
+    @Volatile private var lastArmedReason = "unknown"
+    /** True while the loss watchdog is closing the pipeline, so only the transition is logged. */
+    private var telemetryLost = false
     private var cameraOpen = false
     private var compositorPowered = false   // last CONFIRMED compositor state
     private var compositorTarget = false    // last requested state, in flight or applied
@@ -125,18 +213,32 @@ class BlindSpotController @Inject constructor(
 
     private var windowsAttachedAt = 0L
     private var cameraOpenedAt = 0L
+    /** Whether the last tick's decision wanted the camera; its rising edge is a show request. */
+    private var cameraWanted = false
+    private val showLog = BlindSpotShowLog()
     private var coolingSince = 0L
-    private var retryAt = 0L
     private var tearingDown = false
 
     /** Called from TrackingService.onCreate; the scope dies with the service, and so does the loop. */
     fun start(scope: CoroutineScope) {
         serviceScope = scope
+        pushWatcher?.cancel()
+        pushWatcher = scope.launch {
+            fidPush.events.collect { event ->
+                if (isWakeFid(event.fid)) wake.trySend(Unit)
+                if (event.fid == com.bydmate.app.data.nativestack.FidAddresses.fid("turnSignal")) {
+                    lastTurnSignal = event.intValue
+                    lastTurnSignalAt = SystemClock.elapsedRealtime()
+                }
+            }
+        }
     }
 
     fun stop() {
         fastLoop?.cancel()
         fastLoop = null
+        pushWatcher?.cancel()
+        pushWatcher = null
         serviceScope = null
         ownScope.launch {
             teardownNow("service stop")
@@ -154,7 +256,50 @@ class BlindSpotController @Inject constructor(
      */
     fun onPollSnapshot(data: DiParsData) {
         val armed = blindSpotArmed(prefs.enabled, data.gear, data.speed, prefs.thresholdKmh)
+        val reason = blindSpotArmedReason(prefs.enabled, data.gear, data.speed, prefs.thresholdKmh)
+        if (armed != lastArmed) {
+            Log.i(TAG, "armed=$armed reason=$reason speed=${data.speed} gear=${data.gear}")
+            Trace.event(TraceArea.CAMERA, "armed", "on" to armed, "reason" to reason, "speed" to data.speed, "gear" to data.gear)
+            lastArmed = armed
+        }
+        lastArmedReason = reason
         if (armed) startFastLoop() else stopFastLoop()
+    }
+
+    /** Dump lines for the settings dump's "--- blind spot ---" section: enable switch, threshold,
+     *  the arming gate and why, the last turn-signal push, the addresses the fast loop reads on
+     *  this car, whether the vendor camera stack and the factory 360 view are in the way, and the
+     *  camera lookup itself — the probe journal runs before log recording starts, so without these
+     *  two lines a car that finds no camera sends a dump that cannot say why. */
+    fun dumpLines(): List<String> {
+        val turnSignal = lastTurnSignal
+        val cameraStack = when {
+            !discovered -> "untested"
+            probe.cameraId >= 0 -> "available"
+            else -> "unavailable"
+        }
+        return listOf(
+            "enabled=${prefs.enabled}",
+            "threshold_kmh=${prefs.thresholdKmh}",
+            "both_on_main=${prefs.bothOnMain} both_on_cluster=${prefs.bothOnCluster}",
+            "armed=$lastArmed",
+            "reason=$lastArmedReason",
+            if (turnSignal != null) {
+                "last_turn_signal=$turnSignal age=${SystemClock.elapsedRealtime() - lastTurnSignalAt}ms"
+            } else {
+                "last_turn_signal=(none)"
+            },
+            "batch=" + blindSpotBatchFields(prefs.bsdGlow).joinToString(" ") { (field, _) ->
+                val address = FidAddresses.of(field)
+                "$field ${address.device}/${address.fid}"
+            },
+            "native_camera_foreground=${cameraStateMonitor.active.value}",
+            "camera_stack=$cameraStack",
+            "camera_probe=" +
+                probe.discoverJournal.joinToString(" | ").ifEmpty { "(not run)" },
+            "camera_log=" +
+                probe.log.value.takeLast(DUMP_LOG_LINES).joinToString(" | ").ifEmpty { "(empty)" },
+        )
     }
 
     private fun startFastLoop() {
@@ -162,13 +307,19 @@ class BlindSpotController @Inject constructor(
         val scope = serviceScope ?: return
         Log.i(TAG, "fast loop start")
         telemetry.reset(SystemClock.elapsedRealtime())
+        telemetryLost = false
         fastLoop = scope.launch(Dispatchers.Main) {
             while (isActive) {
                 tick()
-                delay(TICK_MS)
+                // At most TICK_MS, less when the car pushes a blinker/gear/BSD change first.
+                withTimeoutOrNull(TICK_MS) { wake.receive() }
             }
         }
     }
+
+    /** True for the fids whose change is worth a tick of its own, at the addresses in force now. */
+    private fun isWakeFid(fid: Int): Boolean =
+        WAKE_FIELDS.any { com.bydmate.app.data.nativestack.FidAddresses.fid(it) == fid }
 
     private fun stopFastLoop() {
         val loop = fastLoop ?: return
@@ -199,17 +350,19 @@ class BlindSpotController @Inject constructor(
         // The screen preference can flip mid-drive too, and the routing is decided once, at
         // attach time. Comparing against the preference the attached windows were built from
         // keeps this off the display manager on every tick.
-        if ((clusterWindow != null || pipWindow != null) && mirrorByChoice != prefs.bothOnMain) {
+        val screenPrefsChanged =
+            mirrorByChoice != prefs.bothOnMain || clusterByChoice != prefs.bothOnCluster
+        if ((clusterWindow != null || pipWindow != null) && screenPrefsChanged) {
             awaitTeardown("blind-spot screen preference changed")
             return
         }
 
-        // Our cluster window and the navigation projection overlay share the display AND the
+        // Our cluster windows and the navigation projection overlay share the display AND the
         // window type, so z-order is attach order: an overlay added after us covers us. Only a
         // full teardown fixes it — the camera surfaces are bound to these windows' TextureViews,
         // so re-attaching means re-opening the camera anyway. The mirrored main-screen fallback
         // is on another display and never collides.
-        if (clusterWindow != null && !clusterOnMainScreen) {
+        if (anyWindowOnCluster()) {
             val epoch = ClusterProjectionManager.overlayEpoch()
             if (epoch != lastOverlayEpoch) {
                 awaitTeardown("projection overlay restacked above camera")
@@ -218,20 +371,41 @@ class BlindSpotController @Inject constructor(
         }
 
         val glow = prefs.bsdGlow
-        val pairs = helper.readBatch(if (glow) BATCH_WITH_BSD else BATCH_CORE)
+        val pairs = helper.readBatch(blindSpotBatchItems(glow))
         val now = SystemClock.elapsedRealtime()
         val sample = pairs?.let {
             BlindSpotSample(it.intAt(INDEX_BLINK), it.floatAt(INDEX_SPEED), it.intAt(INDEX_GEAR))
         }
         val state = telemetry.onSample(sample, now)
         if (state.mustClose) {
+            // Edge, not level: a held loss must not write a line every 150 ms, but a silent
+            // exit leaves nothing in the log at all (Song DiLink 4.0, 2026-09-18).
+            if (!telemetryLost) {
+                telemetryLost = true
+                Log.w(
+                    TAG,
+                    "telemetry lost: blink=${sample?.blink} speed=${sample?.speedKmh} " +
+                        "gear=${sample?.gear} readFailures=${telemetry.readFailures}",
+                )
+            }
             if (anythingUp()) awaitTeardown("telemetry lost")
             return
         }
+        telemetryLost = false
 
         // A missing gear is not "not reverse": fall back to the last snapshot that read cleanly,
         // which the loss watchdog above keeps younger than 3 s.
         val gearIsReverse = (sample?.gear ?: state.lastValid?.gear) == BLIND_SPOT_GEAR_REVERSE
+        val nativeCameraForeground = cameraStateMonitor.active.value
+        if (nativeCameraForeground != lastNativeCameraForeground) {
+            lastNativeCameraForeground = nativeCameraForeground
+            val verb = if (nativeCameraForeground) "closed" else "may warm again"
+            Log.i(TAG, "native camera foreground=$nativeCameraForeground: blind-spot $verb")
+            Trace.event(TraceArea.CAMERA, "native-360", "on" to nativeCameraForeground)
+            clusterJournal.append(
+                "camera: native 360 ${if (nativeCameraForeground) "up, close" else "down, may warm again"}"
+            )
+        }
         val decision = decideBlindSpot(
             BlindSpotInput(
                 blink = sample?.blink,
@@ -239,6 +413,7 @@ class BlindSpotController @Inject constructor(
                 gearIsReverse = gearIsReverse,
                 thresholdKmh = prefs.thresholdKmh,
                 telemetryAgeMs = state.ageMs,
+                nativeCameraForeground = nativeCameraForeground,
             )
         )
 
@@ -246,13 +421,24 @@ class BlindSpotController @Inject constructor(
             if (anythingUp()) awaitTeardown("reverse")
             return
         }
+        // The factory 360 owns the screen like reverse does, and a camera kept warm under it
+        // streams two previews nobody sees: the 360 stuttered (tester dump 2026-10-03).
+        if (nativeCameraForeground) {
+            if (anythingUp()) awaitTeardown("native 360")
+            return
+        }
 
         // A fresh signal cancels the error backoff once: the driver is asking for the view now.
         // Edge, not level — otherwise a held blinker would retry the camera every tick.
-        if (decision.show != lastRequestedSide) {
-            if (decision.show != BlindSpotSide.NONE) retryAt = 0L
-            lastRequestedSide = decision.show
-        }
+        backoff.request(decision.show)
+
+        // Looked up once the loop is armed rather than on the first blinker, so the first show
+        // of the drive does not wait for the vendor lookup on top of the open.
+        if (!discovered) discoverCamera()
+
+        val askedSide = blindSpotSignalSide(sample?.blink)
+        if (decision.cameraWarm && !cameraWanted) showLog.requested(askedSide, cameraOpen, now)
+        cameraWanted = decision.cameraWarm
 
         if (decision.cameraWarm) {
             coolingSince = 0L
@@ -260,7 +446,8 @@ class BlindSpotController @Inject constructor(
         } else {
             if (coolingSince == 0L) coolingSince = now
             if (now - coolingSince >= COOL_DOWN_MS && anythingUp()) {
-                awaitTeardown("cold for ${COOL_DOWN_MS / 1000} s")
+                val why = if (askedSide == BlindSpotSide.NONE) "signal off" else "below speed"
+                awaitTeardown("$why for ${COOL_DOWN_MS / 1000} s")
             }
         }
 
@@ -276,7 +463,21 @@ class BlindSpotController @Inject constructor(
 
     /** Brings up the windows and the camera, and watches the two ways they fail to start. */
     private suspend fun ensureWarm(now: Long) {
-        if (now < retryAt) return
+        if (backoff.blocked(now)) return
+
+        // The camera lookup comes before the windows: a car with no camera stack at all (Song
+        // DiLink 4.0, 2026-09-18 — BmmCameraInfo missing) must not get windows that nothing will
+        // ever draw into, flashing on every blinker tick.
+        if (!discovered || (probe.cameraId < 0 && now - probe.lastDiscoverAt >= REDISCOVER_MS)) {
+            discoverCamera()
+        }
+        if (probe.cameraId < 0) {
+            // Wait out the rest of the lookup interval, not a fresh one: a blinker pulled again
+            // at second 50 must not push the next lookup from 60 to 110.
+            clusterJournal.append("camera: none found, next lookup in ${REDISCOVER_MS / 1000} s")
+            backoff.fail(probe.lastDiscoverAt, REDISCOVER_MS)
+            return
+        }
 
         if (clusterWindow == null && pipWindow == null) {
             attachWindows()
@@ -296,13 +497,7 @@ class BlindSpotController @Inject constructor(
                 if (now - windowsAttachedAt >= SURFACE_TIMEOUT_MS) failCamera("no surface", now)
                 return
             }
-            val opened = withContext(cameraDispatcher()) {
-                if (!discovered) {
-                    discovered = true
-                    probe.discover()
-                }
-                probe.cameraId >= 0 && probe.openWarm(surfaces)
-            }
+            val opened = withContext(cameraDispatcher()) { probe.openWarm(surfaces) }
             if (!opened) {
                 failCamera("open failed", now)
                 return
@@ -310,7 +505,7 @@ class BlindSpotController @Inject constructor(
             // The windows can have gone away while the vendor stack was opening (a teardown from
             // the poll thread, a destroyed surface): do not keep a camera nobody can see.
             if (clusterWindow == null && pipWindow == null) {
-                withContext(cameraDispatcher()) { probe.close() }
+                withContext(cameraDispatcher()) { probe.close("windows gone") }
                 return
             }
             cameraOpen = true
@@ -325,6 +520,11 @@ class BlindSpotController @Inject constructor(
         if (!gotFrame) {
             if (now - cameraOpenedAt >= FIRST_FRAME_TIMEOUT_MS) failCamera("no frame", now)
             return
+        }
+        if (showLog.awaitingFrame) {
+            val window = if (showLog.side == BlindSpotSide.RIGHT) pipWindow else clusterWindow
+            // Only a frame of the side asked for ends the measurement; the other window's does not.
+            window?.validFrameAt?.takeIf { it > 0L }?.let { showLog.firstFrame(it, cameraOpenedAt) }
         }
 
         // The vendor stream can go quiet while the camera stays open (field 2026-08-25): the
@@ -343,11 +543,18 @@ class BlindSpotController @Inject constructor(
         if (clusterStalled || pipStalled) failCamera("frame stall", now)
     }
 
+    private suspend fun discoverCamera() {
+        discovered = true
+        withContext(cameraDispatcher()) { probe.discover() }
+        Log.i(TAG, "camera discover: id=${probe.cameraId} " + probe.discoverJournal.joinToString(" | "))
+    }
+
     private suspend fun failCamera(reason: String, now: Long) {
         Log.w(TAG, "camera error: $reason; retry in ${RETRY_DELAY_MS / 1000} s")
+        Trace.event(TraceArea.CAMERA, "fail", "reason" to reason)
         clusterJournal.append("camera: error $reason, retry in ${RETRY_DELAY_MS / 1000} s")
         awaitTeardown(reason)
-        retryAt = now + RETRY_DELAY_MS
+        backoff.fail(now, RETRY_DELAY_MS)
     }
 
     private fun attachedWindowCount(): Int =
@@ -355,6 +562,25 @@ class BlindSpotController @Inject constructor(
 
     private fun anythingUp(): Boolean =
         clusterWindow != null || pipWindow != null || cameraOpen || compositorPowered || compositorTarget
+
+    /** True while a window of ours sits on the projection display, whichever side it carries. */
+    private fun anyWindowOnCluster(): Boolean =
+        (clusterWindow != null && !clusterOnMainScreen) || (pipWindow != null && pipOnCluster)
+
+    /** Where [side]'s window actually is right now, for the log: none when it never attached. */
+    private fun shownTarget(side: BlindSpotSide): String {
+        val window = when (side) {
+            BlindSpotSide.LEFT -> clusterWindow
+            BlindSpotSide.RIGHT -> pipWindow
+            BlindSpotSide.NONE -> null
+        }
+        val onMain = if (side == BlindSpotSide.LEFT) clusterOnMainScreen else !pipOnCluster
+        return when {
+            window == null -> "none"
+            onMain -> "main"
+            else -> "cluster"
+        }
+    }
 
     private fun attachWindows() {
         // Read BEFORE the addView below: an overlay added between this read and our attach shows
@@ -365,41 +591,60 @@ class BlindSpotController @Inject constructor(
         // driver asked for both cameras on the main screen (#183): the left camera falls back to a
         // mirrored window there, and setClusterContainerMode is never called — powering a
         // compositor that does not exist, or that the driver opted out of, would black the cluster
-        // out.
+        // out. The "both on the cluster" opt-in (#240) moves the right camera there as well.
         mirrorByChoice = prefs.bothOnMain
+        clusterByChoice = prefs.bothOnCluster
         val panel = clusterDisplay()
-        val display = if (blindSpotUsesMirror(mirrorByChoice, panel != null)) null else panel
-        if (display == null) {
+        routingReason = blindSpotRoutingReason(mirrorByChoice, clusterByChoice, panel != null)
+        fun screenOf(side: BlindSpotSide) =
+            blindSpotScreen(side, mirrorByChoice, clusterByChoice, panel != null)
+        if (panel == null || screenOf(BlindSpotSide.LEFT) == BlindSpotScreen.MAIN) {
             attachMirrorWindow()
         } else {
-            clusterGeometry(display)?.let { geo ->
-                val params = WindowManager.LayoutParams(
-                    geo.width, geo.height,
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                    OVERLAY_FLAGS,
-                    // TRANSLUCENT let the navi underneath bleed through on-car; the window is
-                    // parked off screen instead, which works on an opaque format too.
-                    PixelFormat.OPAQUE,
-                ).apply {
-                    // Absolute position on the panel, and hiding the window means moving it
-                    // off screen — both need the corner gravity.
-                    gravity = Gravity.TOP or Gravity.START
-                    x = geo.xOffset
-                    y = geo.yOffset
-                }
-                val window = PreviewWindow("cluster")
-                val displayContext = context.createDisplayContext(display)
-                if (window.attach(displayContext, params, offscreenX(geo.width))) {
-                    clusterWindow = window
-                }
+            clusterWindow = attachClusterWindow(panel, "cluster", BlindSpotSide.LEFT)
+        }
+        if (panel != null && screenOf(BlindSpotSide.RIGHT) == BlindSpotScreen.CLUSTER) {
+            pipWindow = attachClusterWindow(panel, "cluster-right", BlindSpotSide.RIGHT)
+            pipOnCluster = pipWindow != null
+        } else {
+            val rect = pipRect()
+            val pip = PreviewWindow("pip", BlindSpotSide.RIGHT, rotatable = true)
+            if (pip.attach(context, pipParams(rect), offscreenX(rect.width()))) {
+                pipWindow = pip
+                appliedPipRect = rect
             }
         }
-        val rect = pipRect()
-        val pip = PreviewWindow("pip")
-        if (pip.attach(context, pipParams(rect), offscreenX(rect.width()))) {
-            pipWindow = pip
-            appliedPipRect = rect
+        Log.i(
+            TAG,
+            "windows: left=${shownTarget(BlindSpotSide.LEFT)} " +
+                "right=${shownTarget(BlindSpotSide.RIGHT)} reason=$routingReason",
+        )
+    }
+
+    /**
+     * A camera window on the cluster panel, in [clusterGeometry]. Both sides get the same
+     * geometry when they share the panel (#240): only one is on screen at a time, the other is
+     * parked off screen like every hidden window.
+     */
+    private fun attachClusterWindow(display: Display, label: String, side: BlindSpotSide): PreviewWindow? {
+        val geo = clusterGeometry(display) ?: return null
+        val params = WindowManager.LayoutParams(
+            geo.width, geo.height,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            OVERLAY_FLAGS,
+            // TRANSLUCENT let the navi underneath bleed through on-car; the window is
+            // parked off screen instead, which works on an opaque format too.
+            PixelFormat.OPAQUE,
+        ).apply {
+            // Absolute position on the panel, and hiding the window means moving it
+            // off screen — both need the corner gravity.
+            gravity = Gravity.TOP or Gravity.START
+            x = geo.xOffset
+            y = geo.yOffset
         }
+        val window = PreviewWindow(label, side, rotatable = false)
+        val displayContext = context.createDisplayContext(display)
+        return if (window.attach(displayContext, params, offscreenX(geo.width))) window else null
     }
 
     /**
@@ -425,54 +670,54 @@ class BlindSpotController @Inject constructor(
         )
     }
 
-    /** Left camera on a car without a cluster to project onto: the right PiP mirrored across the
-     *  screen, so the two windows sit symmetrically wherever the driver placed the right one. */
+    /** Left camera on a car without a cluster to project onto: its own place once the driver set
+     *  one (#183), the right PiP mirrored across the screen until then. */
     private fun attachMirrorWindow() {
-        val rect = mirrorRect(pipRect())
-        val window = PreviewWindow("left-pip")
+        val rect = leftPipRect()
+        val window = PreviewWindow("left-pip", BlindSpotSide.LEFT, rotatable = true)
         if (window.attach(context, pipParams(rect), offscreenX(rect.width()))) {
             clusterWindow = window
             clusterOnMainScreen = true
+            appliedLeftRect = rect
         }
     }
 
-    /** Re-applies the PiP geometry after the user changed the width or dragged the window. */
+    /** Re-applies the PiP geometry after the user changed the width or dragged a window. */
     private fun applyPipGeometry() {
-        if (pipWindow == null && !clusterOnMainScreen) return
+        // A right window on the cluster (#240) keeps the cluster geometry, not the PiP slider's.
+        if ((pipWindow == null || pipOnCluster) && !clusterOnMainScreen) return
         val rect = pipRect()
-        if (rect == appliedPipRect) return
+        // The left window has its own saved corner, so it can move while the right one stands still.
+        val left = if (clusterOnMainScreen) leftPipRect() else null
+        if (rect == appliedPipRect && left == appliedLeftRect) return
         var applied = true
         pipWindow?.let { if (!it.setGeometry(rect, offscreenX(rect.width()))) applied = false }
-        if (clusterOnMainScreen) {
-            val mirror = mirrorRect(rect)
+        if (left != null) {
             clusterWindow?.let {
-                if (!it.setGeometry(mirror, offscreenX(mirror.width()))) applied = false
+                if (!it.setGeometry(left, offscreenX(left.width()))) applied = false
             }
         }
-        if (applied) appliedPipRect = rect
-    }
-
-    /** Reflection of a main-screen rect across the vertical axis of the screen. */
-    private fun mirrorRect(rect: Rect): Rect {
-        val screenWidth = realMetrics(defaultDisplay()).widthPixels
-        val left = (screenWidth - rect.right).coerceAtLeast(0)
-        return Rect(left, rect.top, left + rect.width(), rect.bottom)
+        if (applied) {
+            appliedPipRect = rect
+            appliedLeftRect = left
+        }
     }
 
     /** Main-screen PiP geometry: 16:9 of the width slider, at the corner the user dragged it to
      *  (the default slot until then), clamped to the screen. */
     private fun pipRect(): Rect {
         val metrics = realMetrics(defaultDisplay())
-        val widthPct = prefs.pipWidthPct
-        val x = prefs.pipXPx
-        val y = prefs.pipYPx
-        if (x == BlindSpotPreferences.UNSET_PX || y == BlindSpotPreferences.UNSET_PX) {
-            return BlindSpotPreferences.defaultPipRect(metrics.widthPixels, metrics.heightPixels, widthPct)
-        }
-        val size = BlindSpotPreferences.pipSize(metrics.widthPixels, widthPct)
-        val left = x.coerceIn(0, (metrics.widthPixels - size.width).coerceAtLeast(0))
-        val top = y.coerceIn(0, (metrics.heightPixels - size.height).coerceAtLeast(0))
-        return Rect(left, top, left + size.width, top + size.height)
+        return BlindSpotPreferences.placedPipRect(
+            metrics.widthPixels, metrics.heightPixels, prefs.pipShape, prefs.pipXPx, prefs.pipYPx)
+    }
+
+    /** Geometry of the left window on the main screen; mirrors [pipRect] while it has no own place. */
+    private fun leftPipRect(): Rect {
+        val metrics = realMetrics(defaultDisplay())
+        return BlindSpotPreferences.leftPipRect(
+            metrics.widthPixels, metrics.heightPixels, prefs.pipShape,
+            prefs.leftPipXPx, prefs.leftPipYPx, pipRect(),
+        )
     }
 
     private fun pipParams(rect: Rect): WindowManager.LayoutParams =
@@ -491,11 +736,7 @@ class BlindSpotController @Inject constructor(
 
     /** Display of the cluster projection panel, or null when this car has none. */
     private fun clusterDisplay(): Display? {
-        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        val projection = dm.displays.filter {
-            it.name.contains(PROJECTION_DISPLAY_NAME, ignoreCase = true)
-        }
-        val display = projection.firstOrNull { it.name.endsWith("_1") } ?: projection.firstOrNull()
+        val display = blindSpotClusterDisplay(context)
         if (display == null) Log.i(TAG, "no projection display; cluster window skipped")
         return display
     }
@@ -525,27 +766,48 @@ class BlindSpotController @Inject constructor(
         val previous = shownSide
         shownSide = side
         if (side != BlindSpotSide.NONE) shownAt = SystemClock.elapsedRealtime()
-        Log.i(TAG, "show $previous -> $side")
-        if (side == BlindSpotSide.LEFT) {
-            requestCompositor(true)
+        if (side == BlindSpotSide.NONE) {
+            Log.i(TAG, "show $previous -> $side")
         } else {
-            clusterWindow?.setGlow(false)
-            if (previous == BlindSpotSide.LEFT) requestCompositor(false)
+            Log.i(TAG, "show $previous -> $side target=${shownTarget(side)} reason=$routingReason")
         }
+        syncWidgetSuppression()
+        // The compositor follows whether the shown side sits on the cluster: a flip between two
+        // cluster windows (#240) keeps it up, so the panel never drops to the stock frame between
+        // them; the window going off screen is what hides the old side.
+        if (shownTarget(side) == "cluster") {
+            requestCompositor(true)
+        } else if (shownTarget(previous) == "cluster") {
+            requestCompositor(false)
+        }
+        if (side != BlindSpotSide.LEFT) clusterWindow?.setGlow(false)
         if (side != BlindSpotSide.RIGHT) pipWindow?.setGlow(false)
+    }
+
+    /**
+     * Keeps the floating dashboard widget out of the camera image: it is drawn above our window
+     * on the main screen (VadimV, 2026-09-12). Nothing is persisted — the release just lets the
+     * widget's own rules decide again, and a teardown releases it too, so it can never stay hidden.
+     */
+    private fun syncWidgetSuppression() {
+        WidgetController.setSuppressed(
+            WIDGET_SUPPRESS_REASON,
+            blindSpotCoversMainScreen(shownSide, clusterOnMainScreen, !pipOnCluster),
+        )
     }
 
     /** Fire-and-forget compositor switch for the show path; one job at a time. */
     private fun requestCompositor(on: Boolean) {
         if (on == compositorTarget) return
-        // Only the window that actually sits on the projection display needs the compositor, and
+        // Only a window that actually sits on the projection display needs the compositor, and
         // only when the user lets us drive it (auto-container on, same gate as the projection);
         // the mirrored main-screen fallback must never touch a cluster that has none. Skipped on
         // the way UP, the target never flips, so no power-down runs on the way back either.
+        // anyWindowOnCluster() already leaves the main-screen windows out.
         if (on && !cameraNeedsCompositor(
                 ClusterProjectionManager.autoContainerEnabled(context),
-                clusterWindow != null,
-                clusterOnMainScreen)) return
+                anyWindowOnCluster(),
+                clusterOnMainScreen = false)) return
         compositorTarget = on
         compositorJob?.cancel()
         compositorJob = ownScope.launch { applyCompositor(on) }
@@ -620,12 +882,17 @@ class BlindSpotController @Inject constructor(
         if (!anythingUp()) return
         if (tearingDown) return
         tearingDown = true
-        Log.i(TAG, "teardown: $reason")
+        val openFor = if (cameraOpen) {
+            " (camera open ${(SystemClock.elapsedRealtime() - cameraOpenedAt) / 1000.0} s)"
+        } else {
+            ""
+        }
+        Log.i(TAG, "teardown: $reason$openFor")
         try {
             // Camera first: nothing may write into a surface that is about to be released.
             if (cameraOpen) {
                 clusterJournal.append("camera: teardown $reason")
-                withContext(cameraDispatcher()) { probe.close() }
+                withContext(cameraDispatcher()) { probe.close(reason) }
                 cameraOpen = false
             }
             applyShow(BlindSpotSide.NONE)
@@ -640,16 +907,23 @@ class BlindSpotController @Inject constructor(
             clusterWindow = null
             clusterOnMainScreen = false
             mirrorByChoice = false
+            clusterByChoice = false
             releaseWindow(pipWindow)
             pipWindow = null
+            pipOnCluster = false
             appliedPipRect = null
+            appliedLeftRect = null
         } finally {
             // No windows left, so nothing is shown regardless of where the flips left them.
             shownSide = BlindSpotSide.NONE
-            lastRequestedSide = BlindSpotSide.NONE
+            // Nothing is shown any more, so the widget comes back even if applyShow above failed.
+            syncWidgetSuppression()
             windowsAttachedAt = 0L
             cameraOpenedAt = 0L
             coolingSince = 0L
+            // The next signal is a fresh request, whatever closed this one.
+            cameraWanted = false
+            showLog.reset()
             tearingDown = false
         }
     }
@@ -678,6 +952,10 @@ class BlindSpotController @Inject constructor(
      */
     private inner class PreviewWindow(
         private val label: String,
+        /** Which camera fills this window; the crop turns the picture by it (#207). */
+        private val side: BlindSpotSide,
+        /** Main-screen PiP: only those follow the "portrait window" setting. */
+        private val rotatable: Boolean,
     ) : TextureView.SurfaceTextureListener {
         private var wm: WindowManager? = null
         private var params: WindowManager.LayoutParams? = null
@@ -689,6 +967,10 @@ class BlindSpotController @Inject constructor(
 
         /** elapsedRealtime of the last surface update; read from the fast loop, written on Main. */
         @Volatile var lastFrameAt = 0L
+            private set
+
+        /** elapsedRealtime of the first honest frame ([hasValidFrame]); 0 until there is one. */
+        @Volatile var validFrameAt = 0L
             private set
 
         private var shownX = 0
@@ -737,7 +1019,7 @@ class BlindSpotController @Inject constructor(
             container = frame
             textureView = texture
             glow = border
-            Log.i(TAG, "$label window attached")
+            Log.i(TAG, "$label window attached rotated=$rotated")
             true
         } catch (e: Throwable) {
             Log.w(TAG, "$label window failed: ${e.javaClass.simpleName}: ${e.message}")
@@ -833,6 +1115,7 @@ class BlindSpotController @Inject constructor(
             wm = null
             frames = 0
             lastFrameAt = 0L
+            validFrameAt = 0L
             shown = false
             Log.i(TAG, "$label window removed")
             return true
@@ -843,7 +1126,10 @@ class BlindSpotController @Inject constructor(
             surface = Surface(texture)
             frames = 0
             lastFrameAt = 0L
+            validFrameAt = 0L
             applyCrop(width, height)
+            // The camera is opened on demand, and this surface is what the open waits for.
+            wake.trySend(Unit)
         }
 
         override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) {
@@ -861,46 +1147,28 @@ class BlindSpotController @Inject constructor(
         }
 
         override fun onSurfaceTextureUpdated(texture: SurfaceTexture) {
-            if (frames < 2) frames++
-            lastFrameAt = SystemClock.elapsedRealtime()
+            val now = SystemClock.elapsedRealtime()
+            if (frames < 2 && ++frames == 2) validFrameAt = now
+            lastFrameAt = now
         }
+
+        /** True while this window shows the picture turned a quarter-turn (#207). */
+        private val rotated: Boolean get() = rotatable && prefs.pipRotate90
 
         /** Centered crop of the side buffer to the window's own aspect, scaled to fill it —
          *  the cluster (1280×480) and the 16:9 PiP need different crops of the same source. */
         private fun applyCrop(width: Int, height: Int) {
             if (width <= 0 || height <= 0) return
             val view = textureView ?: return
-            val aspect = width.toFloat() / height
-            val cropW = min(SOURCE_WIDTH, SOURCE_HEIGHT * aspect)
-            val cropH = min(SOURCE_HEIGHT, SOURCE_WIDTH / aspect)
-            val left = (SOURCE_WIDTH - cropW) / 2f
-            val top = (SOURCE_HEIGHT - cropH) / 2f
-            // Untransformed, the whole buffer fills the view — so the crop in view coordinates
-            // is the source rect scaled by view/source, and FILL blows it back up to the window.
-            val src = RectF(
-                left / SOURCE_WIDTH * width, top / SOURCE_HEIGHT * height,
-                (left + cropW) / SOURCE_WIDTH * width, (top + cropH) / SOURCE_HEIGHT * height,
-            )
-            val dst = RectF(0f, 0f, width.toFloat(), height.toFloat())
-            view.setTransform(Matrix().apply { setRectToRect(src, dst, Matrix.ScaleToFit.FILL) })
+            view.setTransform(BlindSpotCrop.cropMatrix(rotated, side, width, height))
         }
     }
 
     private companion object {
         const val TAG = "BlindSpot"
+        /** Suppression key handed to WidgetController while a window covers the main screen. */
+        const val WIDGET_SUPPRESS_REASON = "blind-spot camera"
 
-        // Telemetry read through the daemon (Leopard 3, on-car 2026-07-31).
-        const val TX_INT = 5
-        const val TX_FLOAT = 7
-        val BATCH_CORE = listOf(
-            BatchReadItem(TX_INT, 1004, 950009900),      // turn signal mask: 1=off 2=L 4=R 6=hazard
-            BatchReadItem(TX_FLOAT, 1013, -1807745016),  // speed, km/h
-            BatchReadItem(TX_INT, 1011, 555745336),      // gear: 1=P 2=R 3=N 4=D
-        )
-        val BATCH_WITH_BSD = BATCH_CORE + listOf(
-            BatchReadItem(TX_INT, 1038, 1098907664),     // BSD left
-            BatchReadItem(TX_INT, 1038, 1098907666),     // BSD right
-        )
         const val INDEX_BLINK = 0
         const val INDEX_SPEED = 1
         const val INDEX_GEAR = 2
@@ -914,11 +1182,18 @@ class BlindSpotController @Inject constructor(
         const val PREVIEW_INDEX_LEFT = 2
         const val PREVIEW_INDEX_RIGHT = 3
 
+        /** FidMap fields whose push event wakes the fast loop early. */
+        private val WAKE_FIELDS = listOf("turnSignal", "gear", "bsdLeft", "bsdRight")
+
         const val TICK_MS = 150L
         const val COOL_DOWN_MS = 10_000L
         const val SURFACE_TIMEOUT_MS = 8_000L
         const val FIRST_FRAME_TIMEOUT_MS = 3_000L
         const val RETRY_DELAY_MS = 3_000L
+        /** Quiet time between two camera lookups on a car where none of the tags answered. */
+        const val REDISCOVER_MS = 60_000L
+        /** Probe log lines carried into the dump; the rest stays in the in-memory ring. */
+        const val DUMP_LOG_LINES = 12
         const val GLOW_HALF_PERIOD_MS = 800L
         const val GLOW_MIN_ALPHA = 0.35f
         const val GLOW_STROKE_DP = 12f
@@ -928,7 +1203,6 @@ class BlindSpotController @Inject constructor(
         /** Extra px past the edge so a hidden window cannot show a seam. */
         const val OFFSCREEN_MARGIN_PX = 100
 
-        const val PROJECTION_DISPLAY_NAME = "XDJAScreenProjection"
         // Deliberately no FLAG_NOT_TOUCHABLE: stock AOSP (DisplayPolicy.adjustWindowParamsLw)
         // clamps a system-alert window that is NOT_TOUCHABLE and not a trusted overlay down to
         // the maximum obscuring opacity for touch (0.8), and re-applies it on every relayout, so
@@ -939,10 +1213,6 @@ class BlindSpotController @Inject constructor(
         const val OVERLAY_FLAGS = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-
-        /** Per-side AVM buffer on Leopard 3; only its aspect matters for the crop. */
-        const val SOURCE_WIDTH = 1920f
-        const val SOURCE_HEIGHT = 1300f
 
         /** Raw (status, value) pair → int, with the same sentinel filtering a single read applies. */
         fun List<Pair<Int, Int>>.intAt(index: Int): Int? = getOrNull(index)

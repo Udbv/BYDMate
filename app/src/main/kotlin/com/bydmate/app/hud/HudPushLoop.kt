@@ -1,6 +1,8 @@
 package com.bydmate.app.hud
 
 import android.util.Log
+import com.bydmate.app.diagnostics.Trace
+import com.bydmate.app.diagnostics.TraceArea
 import com.bydmate.app.navdata.NavGuidanceHub
 import java.util.Calendar
 import java.util.Locale
@@ -58,6 +60,9 @@ class HudPushLoop(
     // session", so the first frame of a new session is always written.
     private var journalledGaode = NO_MANEUVER
     private var journalledSuppress = false
+    // The road last classified and its script class (#269); null = nothing yet this guidance session.
+    private var classifiedRoad: String? = null
+    private var roadScript: String? = null
 
     /** Ticks spent with an inactive hub; drives the idle diagnostic cadence. */
     private var idleTicks = 0L
@@ -120,6 +125,8 @@ class HudPushLoop(
                 com.bydmate.app.diagnostics.TripDebugLog.event("HUD", "idle: $why")
                 com.bydmate.app.diagnostics.TripDebugLog.drain()
             }
+            classifiedRoad = null
+            roadScript = null
             return false
         }
         // The classic glass gets the sign as a PNG in f7; the AR-HUD draws its own from f11/f15.
@@ -147,6 +154,7 @@ class HudPushLoop(
         val rc = if (roadInfo) sink.fireEvent(HudSomeIpBridge.TOPIC_NAVI, frame) else 0
         framesSent++
         lastFrameTs = System.currentTimeMillis()
+        val rcChanged = rc != lastRc
         lastRc = rc
         if (rc != 0) nonZeroRcCount++
         if (d == HudDialect.AR_HUD) {
@@ -171,7 +179,17 @@ class HudPushLoop(
                 (if (d == HudDialect.AR_HUD) " roadInfo=$roadInfo " +
                     "fids=${instrumentFidsEnabled()}/${instrumentFids?.writes ?: 0}/fail${instrumentFids?.failures ?: 0} fix=${HudVehicleState.fix != null}" else ""))
         }
+        NavGuidanceHub.countFrame(rc)
+        traceRoadScript(s.road)
         amap?.onSnapshot(s)
+        // A drive log alone must show whether frames leave the app and with which rc
+        // (#198: the dump is often taken before the drive, so its counters read zero).
+        // Logged on the first frame of a session, on every maneuver change and whenever
+        // the rc flips; a stable maneuver with a stable rc stays silent.
+        if (!wasActive || s.maneuverGaode != journalledGaode || rcChanged) {
+            Log.i(TAG, "frame gaode=${s.maneuverGaode} dist=${s.distanceMeters}m rc=$rc sent=$framesSent" +
+                " amap=${amap?.capable == true} src=${s.maneuverSource.ifEmpty { "none" }} raw=\"${s.maneuverRaw}\"")
+        }
         journalManeuver(s, cameraActive)
         return true
     }
@@ -179,10 +197,10 @@ class HudPushLoop(
     /** Records what both channels carried, but only when the maneuver code or the
      *  arrow-suppression flag changed — the loop itself runs twice a second (#94). */
     private fun journalManeuver(s: NavGuidanceHub.Snapshot, suppressArrow: Boolean) {
-        val journal = maneuvers ?: return
         if (s.maneuverGaode == journalledGaode && suppressArrow == journalledSuppress) return
         journalledGaode = s.maneuverGaode
         journalledSuppress = suppressArrow
+        val journal = maneuvers ?: return
         val amapBroadcasting = amap?.capable == true
         journal.append(
             maneuverGaode = s.maneuverGaode,
@@ -191,7 +209,21 @@ class HudPushLoop(
             amapIcon = if (amapBroadcasting) HudAmapBroadcaster.gaodeToAmapIcon(s.maneuverGaode) else null,
             roundaboutNum = if (amapBroadcasting && s.maneuverGaode in 25..34) s.maneuverGaode - 24 else null,
             suppressArrow = suppressArrow,
+            source = s.maneuverSource,
+            raw = s.maneuverRaw,
         )
+    }
+
+    /** The script class of the street the frame carries (f10 keeps the navigator's text, #269):
+     *  classified when the street changes, traced when its class does. The running line's own
+     *  suffix is ours and left out. */
+    private fun traceRoadScript(road: String) {
+        if (road == classifiedRoad) return
+        classifiedRoad = road
+        val script = HudRoadScript.classify(road)
+        if (script == roadScript) return
+        roadScript = script
+        Trace.event(TraceArea.HUD, "road", "chan" to "someip", "script" to script, "len" to road.length)
     }
 
     /** Donor running line (f10): beyond 3 km to go, enrich the street with remaining

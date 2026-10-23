@@ -18,8 +18,9 @@ object HudProtobufBuilder {
     const val MAX_ROAD_CHARS = 200
 
     /** Below 11 m the glass glitches the distance readout, so byd-hud
-     *  (HudDisplayPolicy) reports 0..10 m as 11 m. */
-    private const val MIN_DISTANCE_METERS = 11
+     *  (HudDisplayPolicy) reports 0..10 m as 11 m. The CAN fields and the Amap broadcast
+     *  draw "现在" there (#294) and take the same floor for a known 1..10 m. */
+    const val MIN_DISTANCE_METERS = 11
 
     /** GAODE maneuver -> f28, the animated chevron the glass draws natively.
      *  Real enum (byd-hud `GMapsDirectManeuverMap.nativeFor`, field-tested donor):
@@ -96,7 +97,8 @@ object HudProtobufBuilder {
         if (speedSignPng != null) writeBytesField(inner, 7, speedSignPng)
         if (maneuverIconPng != null) writeBytesField(inner, 8, maneuverIconPng)
         writeVarintField(inner, 9, displayDistance(distanceMeters).toLong())
-        if (road.isNotEmpty()) writeBytesField(inner, 10, road.toByteArray(Charsets.UTF_8))
+        // An empty name goes as one space, never left out (OpenBYD updateNavigation).
+        writeBytesField(inner, 10, road.ifEmpty { " " }.toByteArray(Charsets.UTF_8))
         if (speedLimit > 0) writeVarintField(inner, 11, speedLimit.toLong())
         writeVarintField(inner, 16, 2L)
         if (etaString != null) writeBytesField(inner, 26, etaString.toByteArray(Charsets.UTF_8))

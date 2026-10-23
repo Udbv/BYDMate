@@ -2,8 +2,10 @@ package com.bydmate.app.data.vehicle
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.bydmate.app.data.autoservice.AdbConnectFailure
 import com.bydmate.app.data.autoservice.AdbOnDeviceClient
 import com.bydmate.app.helper.HelperBinderHolder
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -34,7 +36,7 @@ class HelperBootstrapTest {
         // The broadcast holder is a process-wide object; a leftover binder or reject reason
         // from another test would make the recorded holder state non-deterministic.
         HelperBinderHolder.clear()
-        HelperBinderHolder.expectedToken = null
+        HelperBinderHolder.armToken(null)
     }
 
     /** Records kill/spawn calls; spawn can flip the helper alive via [onSpawn]. processAlive is
@@ -67,8 +69,10 @@ class HelperBootstrapTest {
         var connected = true
         override suspend fun connect() = Result.success(Unit)
         override suspend fun isConnected() = connected
+        override fun lastConnectFailure(): AdbConnectFailure? = null
         override suspend fun exec(cmd: String): String? = null
         override suspend fun grantUsageStatsAppop(packageName: String) = true
+        override suspend fun grantWriteSecureSettings(packageName: String) = true
         override suspend fun spawnHelper(token: String): Boolean {
             spawnCalls++
             spawnTokens += token
@@ -88,13 +92,35 @@ class HelperBootstrapTest {
 
     /** Fakes the two methods ensureRunning exercises: isAlive() and daemonVersion().
      *  [version] defaults to null so stale/dead scenarios work without explicit setup. */
-    private class FakeHelper(
+    private open class FakeHelper(
         @Volatile var alive: Boolean,
         @Volatile var version: Long? = null,
     ) : HelperClientImpl() {
         override suspend fun isAlive(): Boolean = alive
         override suspend fun daemonVersion(): Long? = version
     }
+
+    /** Minimal IBinder carrying our daemon's descriptor — enough for the holder's accept
+     *  path (android.os.Binder cannot be used: transact is final there). */
+    private class FakeDaemonBinder : android.os.IBinder {
+        override fun isBinderAlive(): Boolean = true
+        override fun pingBinder(): Boolean = true
+        override fun getInterfaceDescriptor(): String =
+            com.bydmate.app.helper.HelperBinderProtocol.DESCRIPTOR
+        override fun queryLocalInterface(descriptor: String): android.os.IInterface? = null
+        @Suppress("OVERRIDE_DEPRECATION")
+        override fun dump(fd: java.io.FileDescriptor, args: Array<String>?) {}
+        override fun dumpAsync(fd: java.io.FileDescriptor, args: Array<String>?) {}
+        override fun transact(code: Int, data: android.os.Parcel, reply: android.os.Parcel?, flags: Int) = false
+        override fun linkToDeath(recipient: android.os.IBinder.DeathRecipient, flags: Int) {}
+        override fun unlinkToDeath(recipient: android.os.IBinder.DeathRecipient, flags: Int): Boolean = true
+    }
+
+    private fun binderPayload(binder: android.os.IBinder, token: String): android.os.Bundle =
+        android.os.Bundle().apply {
+            putBinder(com.bydmate.app.helper.HelperBinderProtocol.KEY_BINDER, binder)
+            putString(com.bydmate.app.helper.HelperBinderProtocol.KEY_TOKEN, token)
+        }
 
     @Test
     fun `fresh daemon of current version is reused without kill or spawn`() = runTest {
@@ -106,6 +132,34 @@ class HelperBootstrapTest {
         assertTrue(boot.ensureRunning())
         assertEquals("reuse must not kill", 0, adb.killCalls)
         assertEquals("reuse must not respawn", 0, adb.spawnCalls)
+    }
+
+    @Test
+    fun `daemonEverAlive is false on fresh prefs, set by a success, kept after a later failure`() = runTest {
+        val adb = FakeAdb()
+        val helper = FakeHelper(alive = true, version = baselineVersion())
+        val boot = HelperBootstrap(adb, helper, ctx())
+        assertFalse("fresh install never saw a daemon", boot.daemonEverAlive())
+
+        assertTrue(boot.ensureRunning())
+        assertTrue(boot.daemonEverAlive())
+
+        // Daemon gone and the respawn cannot be dispatched: ensureRunning fails...
+        helper.alive = false
+        helper.version = null
+        adb.onSpawn = { false }
+        assertFalse(boot.ensureRunning())
+        // ...but "ADB once worked here" is never cleared.
+        assertTrue(boot.daemonEverAlive())
+    }
+
+    @Test
+    fun `daemonEverAlive stays false when the daemon never comes up`() = runTest {
+        val adb = FakeAdb().apply { onSpawn = { false } }
+        val boot = HelperBootstrap(adb, FakeHelper(alive = false), ctx())
+
+        assertFalse(boot.ensureRunning())
+        assertFalse(boot.daemonEverAlive())
     }
 
     @Test
@@ -479,13 +533,187 @@ class HelperBootstrapTest {
     }
 
     @Test
-    fun `a spawn that never answers disarms its token`() = runTest {
+    fun `a spawn that never answers keeps its token armed for a late binder`() = runTest {
+        // trinket firmwares boot the daemon slower than our poll window and publish the
+        // binder by broadcast afterwards (crazyhack, Song Plus, 2026-09-12). Disarming the
+        // token here threw that healthy binder away and every write failed until a respawn.
         val adb = FakeAdb()
         val boot = HelperBootstrap(adb, FakeHelper(alive = false), ctx())
 
         assertFalse(boot.ensureRunning())
-        // The spawn window is closed: a late intent carrying that token must no longer be taken.
-        assertEquals(null, HelperBinderHolder.expectedToken)
+        assertEquals(adb.spawnTokens.last(), HelperBinderHolder.expectedToken)
+
+        val late = FakeDaemonBinder()
+        assertEquals(
+            com.bydmate.app.helper.BinderAcceptResult.ACCEPTED,
+            HelperBinderHolder.accept(binderPayload(late, adb.spawnTokens.last())),
+        )
+    }
+
+    // Re-announce adoption: an app process recreated on a broadcast-only firmware must not kill
+    // the live daemon (#64/#148, crazyhack Song Plus build 459).
+
+    /** Simulates the daemon re-announcing [afterMs] into the wait: the binder lands in the holder
+     *  and the daemon starts answering with [version]. */
+    private fun kotlinx.coroutines.CoroutineScope.reannounceAfter(
+        afterMs: Long, helper: FakeHelper, version: Long?,
+    ) = launch {
+        kotlinx.coroutines.delay(afterMs)
+        HelperBinderHolder.armToken(TOKEN)
+        HelperBinderHolder.accept(binderPayload(FakeDaemonBinder(), TOKEN))
+        helper.version = version
+    }
+
+    @Test
+    fun `a re-announce of the right version is adopted without killing the daemon`() = runTest {
+        prefs().edit().putString(TRANSPORT_KEY, "broadcast").apply()
+        val adb = FakeAdb()
+        adb.processAlive = true                       // the daemon process is alive in ps
+        val helper = FakeHelper(alive = false)        // no binder in this fresh process yet
+        val boot = HelperBootstrap(adb, helper, ctx())
+        reannounceAfter(1_000L, helper, baselineVersion())
+
+        assertTrue("the live daemon must be adopted", boot.ensureRunning())
+        assertEquals("an adopted daemon must not be killed", 0, adb.killCalls)
+        assertEquals("an adopted daemon must not be respawned", 0, adb.spawnCalls)
+    }
+
+    @Test
+    fun `a binder that arrives during the liveness checks is adopted, not killed`() = runTest {
+        // daemonVersion(), isAlive() and helperHeartbeat() are all round trips; a re-announce
+        // landing between them used to fail the "holder is empty" gate and the healthy daemon
+        // was killed anyway.
+        prefs().edit().putString(TRANSPORT_KEY, "broadcast").apply()
+        val adb = FakeAdb()
+        adb.processAlive = true
+        val helper = object : FakeHelper(alive = false) {
+            override suspend fun isAlive(): Boolean {
+                HelperBinderHolder.armToken(TOKEN)
+                HelperBinderHolder.accept(binderPayload(FakeDaemonBinder(), TOKEN))
+                version = baselineVersion()
+                return super.isAlive()
+            }
+        }
+        val boot = HelperBootstrap(adb, helper, ctx())
+
+        assertTrue("the already-arrived binder must be adopted", boot.ensureRunning())
+        assertEquals("an adopted daemon must not be killed", 0, adb.killCalls)
+        assertEquals("an adopted daemon must not be respawned", 0, adb.spawnCalls)
+    }
+
+    @Test
+    fun `no re-announce within the wait falls back to kill and spawn`() = runTest {
+        prefs().edit().putString(TRANSPORT_KEY, "broadcast").apply()
+        val adb = FakeAdb()
+        adb.processAlive = true
+        val helper = FakeHelper(alive = false)
+        adb.onSpawn = { helper.alive = true; helper.version = baselineVersion(); true }
+        val boot = HelperBootstrap(adb, helper, ctx())
+
+        assertTrue(boot.ensureRunning())
+        assertEquals("a silent daemon is still killed", 1, adb.killCalls)
+        assertEquals("and replaced", 1, adb.spawnCalls)
+    }
+
+    @Test
+    fun `without a recorded broadcast transport nothing is waited for`() = runTest {
+        // Leopard 3 / DiLink 5: the pref is never written, so the kill path runs immediately.
+        val adb = FakeAdb()
+        adb.processAlive = true
+        val helper = FakeHelper(alive = false)
+        adb.onSpawn = { helper.alive = true; helper.version = baselineVersion(); true }
+        val boot = HelperBootstrap(adb, helper, ctx())
+        // A binder arriving 1 s in would be adopted if we were waiting; it must not be.
+        reannounceAfter(1_000L, helper, baselineVersion())
+
+        assertTrue(boot.ensureRunning())
+        assertEquals("no wait on the addService path", 1, adb.killCalls)
+        assertEquals(1, adb.spawnCalls)
+    }
+
+    @Test
+    fun `a re-announce from a daemon of another version goes through the kill path`() = runTest {
+        prefs().edit().putString(TRANSPORT_KEY, "broadcast").apply()
+        val adb = FakeAdb()
+        adb.processAlive = true
+        val helper = FakeHelper(alive = false)
+        val boot = HelperBootstrap(adb, helper, ctx())
+        // The daemon that survived an app update is genuinely stale: adopting it would leave the
+        // app talking to a daemon without the new handlers.
+        reannounceAfter(1_000L, helper, baselineVersion() xor 1L)
+        adb.onSpawn = { helper.version = baselineVersion(); true }
+
+        assertTrue(boot.ensureRunning())
+        assertEquals("a stale re-announce must still be killed", 1, adb.killCalls)
+        assertEquals(1, adb.spawnCalls)
+    }
+
+    @Test
+    fun `a failed dispatch keeps the live daemon's persisted token`() = runTest {
+        // ADB down after a process restart: the spawn cannot be dispatched, but the daemon from
+        // the previous process is alive and re-announces with the token it was spawned with.
+        // Overwriting or dropping that token would leave it unauthenticatable forever.
+        prefs().edit().putString(TOKEN_KEY, TOKEN).apply()
+        val adb = FakeAdb()
+        adb.onSpawn = { false }
+        val boot = HelperBootstrap(adb, FakeHelper(alive = false), ctx())
+
+        assertFalse(boot.ensureRunning())
+        assertEquals("the persisted token must survive a failed dispatch", TOKEN,
+            prefs().getString(TOKEN_KEY, null))
+        assertEquals("and the holder must fall back to it", TOKEN, HelperBinderHolder.expectedToken)
+
+        // Proof that it still works: the live daemon's re-announce is adopted.
+        assertEquals(
+            com.bydmate.app.helper.BinderAcceptResult.ACCEPTED,
+            HelperBinderHolder.accept(binderPayload(FakeDaemonBinder(), TOKEN)),
+        )
+    }
+
+    @Test
+    fun `a dispatched spawn does not persist its token by itself`() = runTest {
+        // Persisting here would name a daemon that may never have come up: a spawn that lost the
+        // lock race exits with ALREADY_RUNNING while the live daemon keeps its own token. Only an
+        // accepted binder persists a token (the receiver does it).
+        val adb = FakeAdb()
+        val helper = FakeHelper(alive = false)
+        adb.onSpawn = { helper.alive = true; helper.version = baselineVersion(); true }
+        val boot = HelperBootstrap(adb, helper, ctx())
+
+        assertTrue(boot.ensureRunning())
+        assertFalse("the spawn path must not write a token", prefs().contains(TOKEN_KEY))
+    }
+
+    @Test
+    fun `a spawn that never answers leaves the live daemon's token in prefs`() = runTest {
+        // The lock-race case: heartbeat briefly said false, the fresh process exited with
+        // ALREADY_RUNNING, and the daemon that is really running still carries the old token.
+        prefs().edit().putString(TOKEN_KEY, TOKEN).apply()
+        val adb = FakeAdb()
+        val boot = HelperBootstrap(adb, FakeHelper(alive = false), ctx())
+
+        assertFalse(boot.ensureRunning())
+        assertEquals(
+            HelperBootstrap.SpawnFailReason.DAEMON_SILENT,
+            boot.lastSpawnFailure()?.reason,
+        )
+        assertEquals("the live daemon's token must stay", TOKEN, prefs().getString(TOKEN_KEY, null))
+    }
+
+    @Test
+    fun `clearLastSpawnFailure drops the recorded failure`() = runTest {
+        val adb = FakeAdb()
+        val boot = HelperBootstrap(adb, FakeHelper(alive = false), ctx())
+
+        assertFalse(boot.ensureRunning())
+        assertTrue("a failure must be on record first", boot.lastSpawnFailure() != null)
+
+        boot.clearLastSpawnFailure()
+
+        assertEquals(null, boot.lastSpawnFailure())
+        listOf("helper_last_fail_ts", "helper_last_fail_reason", "helper_last_fail_log").forEach {
+            assertFalse("$it must be removed", prefs().contains(it))
+        }
     }
 
     @Test
@@ -516,5 +744,8 @@ class HelperBootstrapTest {
     companion object {
         private const val PREFS = "helper"
         private const val KEY = "spawned_version_code"
+        private const val TOKEN_KEY = "helper_spawn_token"
+        private const val TRANSPORT_KEY = "helper_last_transport"
+        private const val TOKEN = "0123456789abcdef0123456789abcdef"
     }
 }

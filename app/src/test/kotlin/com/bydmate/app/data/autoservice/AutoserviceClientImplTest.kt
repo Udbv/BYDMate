@@ -21,11 +21,13 @@ class AutoserviceClientImplTest {
         val calls = mutableListOf<String>()
         override suspend fun connect(): Result<Unit> = Result.success(Unit)
         override suspend fun isConnected(): Boolean = connected
+        override fun lastConnectFailure(): AdbConnectFailure? = null
         override suspend fun exec(cmd: String): String? {
             calls += cmd
             return responses[cmd]
         }
         override suspend fun grantUsageStatsAppop(packageName: String): Boolean = true
+        override suspend fun grantWriteSecureSettings(packageName: String): Boolean = true
         override suspend fun spawnHelper(token: String): Boolean = false
         override suspend fun killHelper(): Boolean = false
         override suspend fun readHelperLog(): String? = null
@@ -222,5 +224,33 @@ class AutoserviceClientImplTest {
         val client = AutoserviceClientImpl(adb)
 
         assertFalse(client.isAvailable())
+    }
+
+    // #329: Android 14 puts whitespace (spaces or a tab) between "Parcel(" and the first word.
+    @Test
+    fun `Android 14 Parcel with whitespace after the paren parses (issue 329 fixture)`() = runTest {
+        val lines = requireNotNull(javaClass.classLoader?.getResource(FIXTURE_329)).readText().lines()
+            .filter { it.startsWith("get") }
+        fun reply(line: String) = line.substringAfter("parse failed: ")
+        val intCmd = "service call autoservice 5 i32 1014 i32 1145045032"
+        val f1Cmd = "service call autoservice 7 i32 1014 i32 1032871984"
+        val f2Cmd = "service call autoservice 7 i32 1014 i32 1246777400"
+        val tabCmd = "service call autoservice 5 i32 1014 i32 1"
+        val adb = FakeAdb(responses = mapOf(
+            intCmd to reply(lines[0]),
+            f1Cmd to reply(lines[1]),
+            f2Cmd to reply(lines[2]),
+            tabCmd to "Result: Parcel(\t00000000 00000064   ....d...)"
+        ))
+        val client = AutoserviceClientImpl(adb)
+
+        assertEquals(100, client.getInt(dev = 1014, fid = 1145045032))
+        assertEquals(java.lang.Float.intBitsToFloat(0x44124667), client.getFloat(1014, 1032871984)!!, 0.01f)
+        assertEquals(75.0f, client.getFloat(1014, 1246777400)!!, 0.01f)
+        assertEquals(100, client.getInt(dev = 1014, fid = 1))
+    }
+
+    private companion object {
+        const val FIXTURE_329 = "native-stack-fixtures/parcel-android14-whitespace-20261014.txt"
     }
 }

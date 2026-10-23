@@ -4,11 +4,30 @@ import android.graphics.Rect
 import android.os.DeadObjectException
 import android.os.IBinder
 import android.os.Parcel
+import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import java.io.ByteArrayOutputStream
+import com.bydmate.app.data.autoservice.SentinelDecoder
+import com.bydmate.app.diagnostics.Trace
+import com.bydmate.app.diagnostics.TraceArea
 import com.bydmate.app.helper.HelperBinderHolder
+import com.bydmate.app.helper.DisplayDevice
 import com.bydmate.app.helper.HelperBinderProtocol
+import com.bydmate.app.helper.offreport.OffReportStatus
+import com.bydmate.app.helper.offreport.readOffReportStatus
+import com.bydmate.app.helper.offreport.writeOffReportArm
+import com.bydmate.app.helper.push.FID_REC_NO_ERROR
+import com.bydmate.app.helper.push.FidPushResult
+import com.bydmate.app.helper.push.FidPushStatus
+import com.bydmate.app.helper.push.FidPushSub
+import com.bydmate.app.helper.push.FidRecStart
+import com.bydmate.app.helper.push.FidRecStatus
+import com.bydmate.app.helper.push.readResultTable
+import com.bydmate.app.helper.push.readRecStatus
+import com.bydmate.app.helper.push.readStatusTable
+import com.bydmate.app.helper.push.writeRecStartRequest
+import com.bydmate.app.helper.push.writeSubscribeRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -37,6 +56,41 @@ internal fun helperServiceBinder(): IBinder? = try {
 data class BatchReadItem(val tx: Int, val dev: Int, val fid: Int)
 
 /**
+ * TX_HUD_NAVI_STATUS answer: [outcome] is HelperBinderProtocol.HUD_NAVI_CALLED / _ABSENT / _THREW,
+ * [sdkReturn] what sendAutoNaviStatus returned when it was called.
+ */
+data class HudNaviReply(val outcome: Int, val sdkReturn: Int) {
+    /** The SDK took the status: called, and answered a non-negative code. */
+    val accepted: Boolean get() = outcome == HelperBinderProtocol.HUD_NAVI_CALLED && sdkReturn >= 0
+}
+
+/**
+ * TX_SET_SCREEN_BACKLIGHT answer: [outcome] is one of HelperBinderProtocol.SCREEN_BACKLIGHT_*,
+ * [status] the last getPowerScreenStatus read (0 = off, 1 = on, -1 = none), [detail] the method
+ * the daemon found and its reads, or the exception.
+ */
+data class ScreenBacklightReply(val outcome: Int, val status: Int, val detail: String)
+
+/** One TX_HUD_SDK call: the instrument SDK method way 3 makes after its raw writes, as OpenBYD does. */
+sealed class HudSdkCall(val method: Int, val sdkName: String) {
+    data class Guidance(val turnKind: Int, val distanceM: Int) :
+        HudSdkCall(HelperBinderProtocol.HUD_SDK_GUIDANCE, "sendSimpleGuidanceInfo")
+    data class PathName(val name: String) : HudSdkCall(HelperBinderProtocol.HUD_SDK_PATH_NAME, "sendNextPathName")
+    data class RestRoute(val hours: Int, val minutes: Int, val mileageM: Long) :
+        HudSdkCall(HelperBinderProtocol.HUD_SDK_REST_ROUTE, "sendRestRouteInfo")
+
+    /** The request after the method selector, in the order the daemon reads it. */
+    fun writeTo(p: Parcel) {
+        p.writeInt(method)
+        when (this) {
+            is Guidance -> { p.writeInt(turnKind); p.writeInt(distanceM) }
+            is PathName -> p.writeString(name)
+            is RestRoute -> { p.writeInt(hours); p.writeInt(minutes); p.writeLong(mileageM) }
+        }
+    }
+}
+
+/**
  * Windowing state of a running task as reported by TX_GET_TASK_STATE.
  * [taskId] == -1 means the package has no running task (other fields are 0 in that case).
  * [displayId] is the Android display the task lives on: 0 = main screen, 2 = cluster fission
@@ -53,6 +107,21 @@ data class SplitTaskState(
     val bottom: Int,
     val displayId: Int = 0,
 )
+
+/**
+ * Outcome of a TX_SET_DISPLAY_DENSITY call. [ok] is the daemon's status for the `wm density`
+ * write; [readback] is what `wm density -d <id>` printed right after it (empty against a daemon
+ * that predates the readback, or when the command printed nothing). Diagnostic only — no caller
+ * branches on the readback, it goes into the cluster journal.
+ */
+data class DensityResult(val ok: Boolean, val readback: String = "")
+
+/**
+ * WindowManager-side readback of the cluster displays (TX_CLUSTER_WM_DIAG), for the dump only.
+ * [displays] is one `init=…` line per display, [taskConfig] the projected activity's last
+ * reported configuration (or a single "(no ActivityRecord for …)" line).
+ */
+data class ClusterWmDiag(val displays: List<String>, val taskConfig: List<String>)
 
 /**
  * One root task of the vehicle's native 3:7 split, as reported by TX_SPLIT37_AREA_INFO.
@@ -78,6 +147,55 @@ data class Split37AreaInfo(
     val wide: Split37Root?,
     val full: Split37Root?,
 )
+
+/**
+ * Diagnostic snapshot of one native split root and one task in it (TX_SPLIT37_ROOT_STATE), for
+ * the journal only. Components are short flattened names (`pkg/.Activity`); every field is null
+ * when the daemon could not read it. [children] are (taskId, name) in the framework's order.
+ */
+data class Split37RootState(
+    val rootTop: String?,
+    val rootVisible: Boolean?,
+    val children: List<Pair<Int, String>>?,
+    val taskVisible: Boolean?,
+    val taskTop: String?,
+)
+
+/** Sanity cap on TX_SPLIT37_ROOT_STATE children: a pane root holds a handful of tasks. */
+private const val MAX_SPLIT37_ROOT_CHILDREN = 64
+
+/** Parses a TX_SPLIT37_ROOT_STATE reply; null on a non-OK status or a truncated parcel. */
+private fun readSplit37RootState(reply: Parcel): Split37RootState? {
+    if (reply.dataAvail() < 4) return null
+    if (reply.readInt() != HelperBinderProtocol.SPLIT37_OK) return null
+    val rootTop = reply.readString()
+    if (reply.dataAvail() < 8) return null
+    val rootVisible = visibilityFlag(reply.readInt())
+    val count = reply.readInt()
+    // A count past any real root is a foreign or corrupt parcel, not children to allocate.
+    if (count > MAX_SPLIT37_ROOT_CHILDREN) return null
+    val children = if (count < 0) null else List(count) {
+        if (reply.dataAvail() < 4) return null
+        reply.readInt() to reply.readString().orEmpty()
+    }
+    if (reply.dataAvail() < 4) return null
+    val taskVisible = visibilityFlag(reply.readInt())
+    val taskTop = reply.readString()
+    return Split37RootState(
+        rootTop?.takeIf { it.isNotEmpty() },
+        rootVisible,
+        children,
+        taskVisible,
+        taskTop?.takeIf { it.isNotEmpty() },
+    )
+}
+
+/** Daemon visibility flag: 1 / 0, anything else (-1) = not read. */
+private fun visibilityFlag(value: Int): Boolean? = when (value) {
+    1 -> true
+    0 -> false
+    else -> null
+}
 
 /** Result of the daemon's direct freeform launch (TX_LAUNCH_FREEFORM). */
 enum class FreeformLaunchResult { OK, UNAVAILABLE, FAILED }
@@ -136,6 +254,30 @@ sealed class DumpFidsResult {
 }
 
 /**
+ * Thrown by [HelperClient.writeStatus] when its [beforeSend][HelperClient.writeStatus] guard
+ * refuses the send from inside the transport lock, right before the transact. Lets
+ * [VehicleApiImpl.doWriteOutcome] tell a guard refusal apart from every other write failure
+ * (daemon unreachable, exception) without overloading the raw status int.
+ */
+class WriteGuardRefused : Exception()
+
+/**
+ * Reader handed to [HelperClient.writeStatus]'s beforeSend guard: a live speed re-check must go
+ * through the daemon, not ADB — ADB's AutoserviceClient shares a `@Synchronized` monitor with
+ * every other in-flight ADB call, and a guard blocked on THAT monitor cannot be interrupted by its
+ * own [runInterruptible]/timeout, holding the write's transport mutex past its budget while every
+ * unrelated helper call queues behind it (2026-09-27, review round 3). [HelperClientImpl] binds
+ * this straight to its already-held transport lock (via `transactBodyUnlocked`), never to
+ * [HelperClient.readBatch] — that would try to re-take the (non-reentrant) mutex the guard is
+ * already running inside and deadlock.
+ */
+fun interface LockedReader {
+    /** tx=7 (getFloat bits) read of [dev]/[fid]; null on any failure or sentinel bits — decoded
+     *  exactly like NativeParsReader decodes a tx=7 batch reply. */
+    suspend fun readFloat(dev: Int, fid: Int): Float?
+}
+
+/**
  * Client for the in-vehicle helper daemon registered as the `bydmate_helper`
  * binder service (ServiceManager.getService + IBinder.transact).
  *
@@ -166,8 +308,18 @@ interface HelperClient {
      */
     suspend fun writeBytes(dev: Int, fid: Int, bytes: ByteArray): Int?
 
-    /** Raw autoservice setInt status (1 real, 0 no-op, <0 error, null daemon unreachable). */
-    suspend fun writeStatus(dev: Int, fid: Int, value: Int): Int?
+    /**
+     * Raw autoservice setInt status (1 real, 0 no-op, <0 error, null daemon unreachable).
+     * [beforeSend], when given, runs inside the transport mutex, immediately before EACH
+     * transact attempt — a dead-binder retry re-checks it too, so no queue wait and no stale
+     * verdict from before a retry can separate the check from the actual send. It is handed a
+     * [LockedReader] bound to this same already-held lock, so a last-instant re-check reads a
+     * live value through the daemon instead of a separate (and separately blockable) ADB call.
+     * The guard gets its own bounded budget (GUARD_TIMEOUT_MS, well under the shared timeout) so
+     * it cannot hold the mutex for long either. A false return, or a guard that does not finish
+     * in time, skips the transact entirely and [writeStatus] throws [WriteGuardRefused].
+     */
+    suspend fun writeStatus(dev: Int, fid: Int, value: Int, beforeSend: (suspend (LockedReader) -> Boolean)? = null): Int?
     suspend fun isAlive(): Boolean
 
     // ---- BYD SDK path (TX_SDK_SET / TX_SDK_NAVI): the calls openbyd's CarControlImpl makes. ----
@@ -261,12 +413,26 @@ interface HelperClient {
      */
     suspend fun logClusterDisplayDiag(): Boolean
 
+    /**
+     * The firmware's full display inventory as the daemon reads it under shell uid (#194).
+     * Needed on firmwares that whitelist DisplayManager per app, where the app uid sees display 0
+     * only and the cluster surface is invisible to [android.hardware.display.DisplayManager].
+     * Null when the daemon is unreachable, too old to know the TX, or answered a failure status;
+     * an empty list means the dump carried no display at all.
+     */
+    suspend fun listDisplays(): List<DisplayDevice>?
+
     /** Write [value] to Settings.Global [key] via `settings put global` under shell uid.
      *  Daemon-whitelisted to sentrymode_enabled_switch and enable_freeform_support. */
     suspend fun putGlobalSetting(key: String, value: Int): Boolean
 
+    /** Reads Settings.Global [key] back through the daemon; null when it is unreadable or the
+     *  daemon is too old to answer. Same whitelist as [putGlobalSetting]. */
+    suspend fun getGlobalSetting(key: String): Int?
+
     /** Disable ([hidden]=true) or re-enable the native BYD assistant family via `pm disable-user/enable`
-     *  under shell uid. Daemon-whitelisted to com.byd.autovoice (+ .engine/.tts). Reversible. */
+     *  under shell uid. Daemon-whitelisted to com.byd.autovoice (+ .engine/.tts) and
+     *  com.byd.vrassistant. Reversible. */
     suspend fun setAppHidden(packageName: String, hidden: Boolean): Boolean
 
     /**
@@ -284,6 +450,11 @@ interface HelperClient {
      *  TETHER_PRIVILEGED). True on daemon status 0. Needs on-car validation. */
     suspend fun setHotspot(enable: Boolean): Boolean
 
+    /** Central screen backlight on / off inside the daemon (TX_SET_SCREEN_BACKLIGHT, #275). Null
+     *  when the daemon is unreachable or too old to know the transaction; [isAlive] tells the
+     *  two apart. */
+    suspend fun setScreenBacklight(on: Boolean): ScreenBacklightReply?
+
     /**
      * Direct freeform launch: find-or-launch [packageName], switch its task to freeform,
      * move it to [displayId] with the given window bounds and focus it. UNAVAILABLE = the
@@ -300,8 +471,17 @@ interface HelperClient {
     ): FreeformLaunchResult
 
     /** `wm density` override on a NON-default display via the daemon; [density] 0 = reset.
-     *  Maps the projection scale regulator onto the real cluster display in direct mode. */
-    suspend fun setDisplayDensity(displayId: Int, density: Int): Boolean
+     *  Maps the projection scale regulator onto the real cluster display in direct mode.
+     *  The result carries the daemon's `wm density -d <id>` readback for the cluster journal. */
+    suspend fun setDisplayDensity(displayId: Int, density: Int): DensityResult
+
+    /**
+     * WindowManager's own view of the displays plus the projected activity's last reported
+     * configuration, read by the daemon under shell uid for the diagnostic dump ([projectedPkg]
+     * decides which ActivityRecord is looked up). Null when the daemon is unreachable or too old
+     * to know the transaction. Diagnostic only: nothing is written on the car.
+     */
+    suspend fun clusterWmDiag(projectedPkg: String): ClusterWmDiag?
 
     /**
      * Reads the windowing state (taskId, windowingMode, bounds) for [packageName]'s running task.
@@ -333,6 +513,13 @@ interface HelperClient {
      * HelperBootstrap to detect stale daemons after an APK update.
      */
     suspend fun daemonVersion(): Long?
+
+    /**
+     * Tells the daemon this process now holds its Binder, so it stops re-announcing it by
+     * broadcast (#64/#148). Returns the daemon's status (0 = registered), or null against a
+     * daemon too old for TX_REGISTER_CLIENT — non-fatal, that daemon just keeps re-announcing.
+     */
+    suspend fun registerClient(): Int?
 
     /**
      * Returns the package name of the currently foreground (top-of-stack) task, or null when the
@@ -457,6 +644,70 @@ interface HelperClient {
      * outdated", never as a firmware verdict. Null also covers every non-OK daemon status.
      */
     suspend fun split37ChangeMode(mode: Int): Int?
+
+    /**
+     * What stands in the split root [rootTaskId] and whether [taskId] is visible
+     * (TX_SPLIT37_ROOT_STATE) — a read for the journal, never a decision input. Null on any
+     * transport failure, any non-OK status and on a daemon that does not know the verb.
+     */
+    suspend fun split37RootState(rootTaskId: Int, taskId: Int): Split37RootState?
+
+    /**
+     * Installs the fid push subscription (TX_PUSH_SUBSCRIBE): [callback] is the app binder the
+     * daemon pushes events to, [subs] the resolved fid/device pairs. Returns the daemon's
+     * per-fid outcome table, or null when the daemon is unreachable or does not know the verb.
+     */
+    suspend fun pushSubscribe(callback: IBinder, subs: List<FidPushSub>): List<FidPushResult>?
+
+    /** Drops the push subscription (TX_PUSH_UNSUBSCRIBE). False on any transport failure. */
+    suspend fun pushUnsubscribe(): Boolean
+
+    /** Live push counters for the dump (TX_PUSH_STATUS); null when the daemon is unreachable. */
+    suspend fun pushStatus(): FidPushStatus?
+
+    /**
+     * Starts the diagnostic fid recorder (TX_REC_START) over [devices], or over every known device
+     * when the array is empty. Returns how many devices were attempted and how many fids came back
+     * registered, or null when the daemon is unreachable or does not know the verb.
+     */
+    suspend fun recStart(devices: IntArray): FidRecStart?
+
+    /** Stops the recorder (TX_REC_STOP). False on any transport failure. */
+    suspend fun recStop(): Boolean
+
+    /** Live recorder counters (TX_REC_STATUS); null when the daemon is unreachable. */
+    suspend fun recStatus(): FidRecStatus?
+
+    /**
+     * Arms the power-off Telegram report (TX_OFFREPORT_ARM); [lateMark] is the line a report
+     * delivered later carries, with `{{time}}`. False when the daemon is unreachable or too old to
+     * know the verb; [isAlive] tells the two apart.
+     */
+    suspend fun offReportArm(id: String, token: String, chatId: Long, text: String, lateMark: String): Boolean
+
+    /**
+     * Drops the armed power-off report and the pending ones (TX_OFFREPORT_DISARM). False on any
+     * transport failure, and while the daemon could not delete every pending file.
+     */
+    suspend fun offReportDisarm(): Boolean
+
+    /** Where report [id] stands in the daemon (TX_OFFREPORT_STATUS); null when there is no answer. */
+    suspend fun offReportStatus(id: String): OffReportStatus?
+
+    /**
+     * BYDAutoInstrumentDevice.sendAutoNaviStatus([status]) inside the daemon (TX_HUD_NAVI_STATUS);
+     * [HelperBinderProtocol.HUD_NAVI_PROBE] only asks whether the firmware has the method. Null
+     * when the daemon is unreachable or too old to know the transaction; [isAlive] tells the two
+     * apart.
+     */
+    suspend fun hudNaviStatus(status: Int): HudNaviReply?
+
+    /** Way 3's instrument SDK [call] inside the daemon (TX_HUD_SDK); null when the daemon is
+     *  unreachable or too old to know the transaction. */
+    suspend fun hudSdk(call: HudSdkCall): HudNaviReply?
+
+    /** Raw autoservice setBuffer status (transact 14); null when the daemon is unreachable or too old. */
+    suspend fun writeBufferStatus(dev: Int, fid: Int, bytes: ByteArray): Int?
 }
 
 @Singleton
@@ -465,6 +716,25 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
     @Volatile private var cached: IBinder? = null
     /** Last transport reported by [noteSource] — kept so the log line is printed only on change. */
     @Volatile private var lastSource: String? = null
+    /** The daemon binder the trace last reported, so it records a change, not every lookup. */
+    @Volatile private var tracedBinder: IBinder? = null
+    /** Which write lines reach logcat: every sparse write, a streaming fid once a minute. */
+    private val writeLogGate = WriteLogGate()
+
+    /** Test seam: invoked right before every attempt to acquire [mutex] in [transactParsed],
+     *  i.e. right before the write path takes the lock — lets a test observe "about to enter the
+     *  queue" deterministically instead of racing a countdown placed before the whole call
+     *  (2026-09-27, review round 3). No-op in production. */
+    @Volatile internal var onBeforeLock: (() -> Unit)? = null
+
+    /** Test seam: read-only view of whether [mutex] is currently held, so a test can prove a
+     *  guard read ran WHILE the transport lock was held, by ordering rather than by a wall-clock
+     *  wait (2026-09-27, review round 5). No production behaviour depends on this. */
+    internal val transportLockedForTest: Boolean get() = mutex.isLocked
+
+    /** Bound to [transactBodyUnlocked] (never [readBatch]) so a guard's beforeSend can read a
+     *  live value through the daemon without re-taking the mutex it is already running inside. */
+    private val lockedReader = LockedReader { dev, fid -> readFloatLocked(dev, fid) }
 
     /** Intermediate holder for one TX_DUMP_FIDS chunk reply (chunked transport, Q4). */
     private data class DumpChunkReply(val status: Int, val totalLength: Int, val bytes: ByteArray?)
@@ -490,15 +760,20 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
         }
     }
 
-    override suspend fun writeStatus(dev: Int, fid: Int, value: Int): Int? {
-        val status = transact(HelperBinderProtocol.TX_WRITE) {
+    override suspend fun writeStatus(dev: Int, fid: Int, value: Int, beforeSend: (suspend (LockedReader) -> Boolean)?): Int? {
+        val status = transactParsed(HelperBinderProtocol.TX_WRITE, {
             it.writeInt(dev); it.writeInt(fid); it.writeInt(value)
-        }?.first
+        }, beforeSend = beforeSend) { reply -> if (reply.dataAvail() >= 4) reply.readInt() else null }
         // status forwarded from the autoservice setInt return code: 1 = real action,
         // 0 = accepted no-op (fid ineffective on this trim), <0 = error, null =
         // daemon unreachable. INFO so a "green" automation that physically did
         // nothing (no-op) is distinguishable from one that actually moved the actuator.
-        Log.i(TAG, "write dev=$dev fid=$fid value=$value status=$status accepted=${status != null && writeAccepted(status)}")
+        // Streaming writers (music card progress, HUD guidance) get a line a minute (WriteLogGate).
+        val accepted = status != null && writeAccepted(status)
+        writeLogGate.onWrite("$dev:$fid", status, accepted, SystemClock.elapsedRealtime())?.let { quiet ->
+            Log.i(TAG, "write dev=$dev fid=$fid value=$value status=$status accepted=$accepted" +
+                if (quiet > 0) " (+$quiet unlogged)" else "")
+        }
         return status
     }
 
@@ -678,16 +953,56 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
             status == 0
         } ?: false
 
+    // LIST_DISPLAYS_TIMEOUT_MS, not the default 2s: the daemon spawns `dumpsys display`, whose
+    // own bound is 4s, and a cold DiLink can take most of it.
+    override suspend fun listDisplays(): List<DisplayDevice>? =
+        transactParsed(HelperBinderProtocol.TX_LIST_DISPLAYS, { }, timeoutMs = LIST_DISPLAYS_TIMEOUT_MS) { reply ->
+            if (reply.dataAvail() < 8) return@transactParsed null
+            val status = reply.readInt()
+            val count = reply.readInt()
+            if (status != 0 || count < 0) return@transactParsed null
+            val out = ArrayList<DisplayDevice>(count)
+            repeat(count) {
+                // A truncated reply (foreign transport, old daemon) must not be read as an
+                // inventory that simply lacks the cluster: bail out to null instead.
+                if (reply.dataAvail() <= 0) return@transactParsed null
+                val id = reply.readInt()
+                val name = reply.readString() ?: ""
+                val width = reply.readInt()
+                val height = reply.readInt()
+                val densityDpi = reply.readInt()
+                val ownerPkg = reply.readString().orEmpty()
+                val ownerUid = reply.readInt()
+                val flags = reply.readString().orEmpty()
+                out += DisplayDevice(
+                    id, name, width, height, densityDpi,
+                    ownerPkg.ifEmpty { null }, ownerUid,
+                    flags.split(",").filter { f -> f.isNotBlank() },
+                )
+            }
+            out
+        }
+
     override suspend fun putGlobalSetting(key: String, value: Int): Boolean =
         statusOk(HelperBinderProtocol.TX_PUT_GLOBAL_SETTING) {
             it.writeString(key); it.writeInt(value)
         }
+
+    override suspend fun getGlobalSetting(key: String): Int? =
+        transact(HelperBinderProtocol.TX_GET_GLOBAL_SETTING) { it.writeString(key) }
+            ?.let { (status, value) -> if (readAccepted(status)) value else null }
 
     override suspend fun setClusterContainerMode(on: Boolean): Boolean =
         statusOk(HelperBinderProtocol.TX_SET_CLUSTER_MODE) { it.writeInt(if (on) 1 else 0) }
 
     override suspend fun setHotspot(enable: Boolean): Boolean =
         statusOk(HelperBinderProtocol.TX_SET_HOTSPOT) { it.writeInt(if (enable) 1 else 0) }
+
+    override suspend fun setScreenBacklight(on: Boolean): ScreenBacklightReply? =
+        transactParsed(HelperBinderProtocol.TX_SET_SCREEN_BACKLIGHT, { it.writeInt(if (on) 1 else 0) }) { reply ->
+            if (reply.dataAvail() < 8) return@transactParsed null
+            ScreenBacklightReply(reply.readInt(), reply.readInt(), reply.readString().orEmpty())
+        }
 
     // Two-stage budget instead of the single transactParsed timeout: the daemon plans its own work
     // against FORCE_TIMEOUT_MS (~9.5s cold-start launch retry loop, then the pin loop, the grace
@@ -724,9 +1039,31 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
             }
         }
 
-    override suspend fun setDisplayDensity(displayId: Int, density: Int): Boolean =
-        statusOk(HelperBinderProtocol.TX_SET_DISPLAY_DENSITY) {
+    override suspend fun setDisplayDensity(displayId: Int, density: Int): DensityResult =
+        transactParsed(HelperBinderProtocol.TX_SET_DISPLAY_DENSITY, {
             it.writeInt(displayId); it.writeInt(density)
+        }) { reply ->
+            if (reply.dataAvail() < 4) return@transactParsed DensityResult(false)
+            val status = reply.readInt()
+            if (reply.dataAvail() >= 4) reply.readInt()   // reserved second int
+            // 3rd field (additive): an old daemon sends nothing here, and readString on an empty
+            // parcel is what we must never call — hence the explicit dataAvail guard.
+            val readback = if (reply.dataAvail() > 0) reply.readString().orEmpty() else ""
+            DensityResult(readAccepted(status), readback)
+        } ?: DensityResult(false)
+
+    // WM_DIAG_TIMEOUT_MS: the daemon runs two bounded dumpsys calls (4 s each) back to back.
+    override suspend fun clusterWmDiag(projectedPkg: String): ClusterWmDiag? =
+        transactParsed(HelperBinderProtocol.TX_CLUSTER_WM_DIAG, { it.writeString(projectedPkg) },
+            timeoutMs = WM_DIAG_TIMEOUT_MS) { reply ->
+            if (reply.dataAvail() < 4) return@transactParsed null
+            if (reply.readInt() != 0) return@transactParsed null
+            val displays = reply.readString().orEmpty()
+            val taskConfig = reply.readString().orEmpty()
+            ClusterWmDiag(
+                displays.lines().filter { it.isNotBlank() },
+                taskConfig.lines().filter { it.isNotBlank() },
+            )
         }
 
     override suspend fun getTaskState(packageName: String): SplitTaskState? =
@@ -764,6 +1101,16 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
     override suspend fun daemonVersion(): Long? =
         transact(HelperBinderProtocol.TX_GET_VERSION) { }
             ?.let { (status, value) -> if (readAccepted(status)) value.toLong() else null }
+
+    override suspend fun registerClient(): Int? {
+        val rc = transactParsed(HelperBinderProtocol.TX_REGISTER_CLIENT,
+            { it.writeStrongBinder(clientToken) }) { reply ->
+            if (reply.dataAvail() < 4) return@transactParsed null
+            reply.readInt()
+        }
+        Log.i(TAG, "registerClient rc=$rc")
+        return rc
+    }
 
     override suspend fun getTopTaskPackage(): String? =
         withContext(Dispatchers.IO) {
@@ -982,6 +1329,11 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
             if (status == HelperBinderProtocol.SPLIT37_OK) areaMode else null
         }
 
+    override suspend fun split37RootState(rootTaskId: Int, taskId: Int): Split37RootState? =
+        transactParsed(HelperBinderProtocol.TX_SPLIT37_ROOT_STATE, { d ->
+            d.writeInt(rootTaskId); d.writeInt(taskId)
+        }, parse = ::readSplit37RootState)
+
     /** Reads one (rootTaskId, l, t, r, b) block of a TX_SPLIT37_AREA_INFO reply; null = area absent. */
     private fun readSplit37Root(reply: Parcel): Split37Root? {
         val rootTaskId = reply.readInt()
@@ -1005,6 +1357,94 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
             status == 0
         } ?: false
 
+    override suspend fun pushSubscribe(callback: IBinder, subs: List<FidPushSub>): List<FidPushResult>? =
+        transactParsed(HelperBinderProtocol.TX_PUSH_SUBSCRIBE, { p ->
+            p.writeStrongBinder(callback)
+            writeSubscribeRequest(p, subs)
+        }) { reply ->
+            if (reply.dataAvail() < 4) return@transactParsed null
+            if (reply.readInt() != 0) return@transactParsed null
+            readResultTable(reply)
+        }
+
+    override suspend fun pushUnsubscribe(): Boolean =
+        statusOk(HelperBinderProtocol.TX_PUSH_UNSUBSCRIBE) { }
+
+    override suspend fun pushStatus(): FidPushStatus? =
+        transactParsed(HelperBinderProtocol.TX_PUSH_STATUS, { }) { reply ->
+            if (reply.dataAvail() < 4) return@transactParsed null
+            if (reply.readInt() != 0) return@transactParsed null
+            readStatusTable(reply)
+        }
+
+    override suspend fun recStart(devices: IntArray): FidRecStart? =
+        transactParsed(
+            HelperBinderProtocol.TX_REC_START,
+            { p -> writeRecStartRequest(p, devices) },
+            // Registering every fid of ~45 devices is dozens of vendor calls, well past the 2s
+            // default; the recorder is diagnostic, so waiting is cheaper than a false "unreachable".
+            timeoutMs = FORCE_TIMEOUT_MS,
+        ) { reply ->
+            if (reply.dataAvail() < 12) return@transactParsed null
+            if (reply.readInt() != 0) return@transactParsed null
+            FidRecStart(reply.readInt(), reply.readInt(), reply.readString().orEmpty().ifEmpty { FID_REC_NO_ERROR })
+        }
+
+    override suspend fun recStop(): Boolean =
+        statusOk(HelperBinderProtocol.TX_REC_STOP) { }
+
+    override suspend fun recStatus(): FidRecStatus? =
+        transactParsed(HelperBinderProtocol.TX_REC_STATUS, { }) { reply ->
+            if (reply.dataAvail() < 4) return@transactParsed null
+            if (reply.readInt() != 0) return@transactParsed null
+            readRecStatus(reply)
+        }
+
+    override suspend fun offReportArm(id: String, token: String, chatId: Long, text: String, lateMark: String): Boolean =
+        transactParsed(
+            HelperBinderProtocol.TX_OFFREPORT_ARM,
+            { p -> writeOffReportArm(p, id, token, chatId, text, lateMark) },
+            // The daemon only stores the report and answers; registration and reads run on its
+            // worker, so the call holds the shared channel for a few ms, never a vendor call.
+        ) { reply -> reply.dataAvail() >= 4 && reply.readInt() == 0 } ?: false
+
+    override suspend fun offReportDisarm(): Boolean =
+        transactParsed(HelperBinderProtocol.TX_OFFREPORT_DISARM, { }) { reply ->
+            reply.dataAvail() >= 4 && reply.readInt() == 0
+        } ?: false
+
+    override suspend fun offReportStatus(id: String): OffReportStatus? =
+        transactParsed(HelperBinderProtocol.TX_OFFREPORT_STATUS, { it.writeString(id) }) { reply ->
+            if (reply.dataAvail() < 4 || reply.readInt() != 0) return@transactParsed null
+            readOffReportStatus(reply)
+        }
+
+    override suspend fun hudNaviStatus(status: Int): HudNaviReply? {
+        val reply = transact(HelperBinderProtocol.TX_HUD_NAVI_STATUS) { it.writeInt(status) }
+            ?.let { (outcome, sdkReturn) -> HudNaviReply(outcome, sdkReturn) }
+        Log.i(TAG, "hudNaviStatus status=$status outcome=${reply?.outcome} ret=${reply?.sdkReturn}")
+        return reply
+    }
+
+    // No line per call: way 3 counts the answers and logs them once per route.
+    override suspend fun hudSdk(call: HudSdkCall): HudNaviReply? =
+        transact(HelperBinderProtocol.TX_HUD_SDK) { call.writeTo(it) }
+            ?.let { (outcome, sdkReturn) -> HudNaviReply(outcome, sdkReturn) }
+
+    override suspend fun writeBufferStatus(dev: Int, fid: Int, bytes: ByteArray): Int? {
+        val status = transact(HelperBinderProtocol.TX_WRITE_BUFFER) {
+            it.writeInt(dev); it.writeInt(fid); it.writeByteArray(bytes)
+        }?.first
+        // Same raw autoservice status convention as writeStatus, forwarded untouched; null also
+        // covers a daemon too old to know TX_WRITE_BUFFER (transact returns false).
+        val accepted = status != null && writeAccepted(status)
+        writeLogGate.onWrite("buf:$dev:$fid", status, accepted, SystemClock.elapsedRealtime())?.let { quiet ->
+            Log.i(TAG, "writeBuffer dev=$dev fid=$fid bytes=${bytes.size} status=$status accepted=$accepted" +
+                if (quiet > 0) " (+$quiet unlogged)" else "")
+        }
+        return status
+    }
+
     /** (status,value) reply; true iff status == 0. Shared by the boolean projection ops. */
     private suspend fun statusOk(code: Int, writeArgs: (Parcel) -> Unit): Boolean =
         transact(code, writeArgs)?.let { (status, _) -> readAccepted(status) } ?: false
@@ -1014,25 +1454,34 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
         code: Int,
         writeArgs: (Parcel) -> Unit,
         timeoutMs: Long = REQ_TIMEOUT_MS,
+        beforeSend: (suspend (LockedReader) -> Boolean)? = null,
         parse: (Parcel) -> T?,
     ): T? =
         withContext(Dispatchers.IO) {
             withTimeoutOrNull(timeoutMs) {
-                mutex.withLock { transactBodyUnlocked(code, writeArgs, parse) }
+                onBeforeLock?.invoke()
+                mutex.withLock { transactBodyUnlocked(code, writeArgs, beforeSend, parse) }
             }
         }
 
     /**
      * Shared transact body. Assumes [mutex] is already held by the caller.
      * Returns the parsed reply or null on any failure; retries ONCE on a dead cached binder.
+     * [beforeSend], when given, is checked right after the binder is resolved and immediately
+     * before EACH transact attempt below — the retry on a dead binder re-checks it too, so a
+     * verdict from before the retry never reaches the second send (2026-09-27, review round 2).
+     * It is handed [lockedReader], bound to THIS already-held lock via a direct
+     * [transactBodyUnlocked] call, never [readBatch] (which would re-take the mutex and deadlock).
      */
-    private fun <T> transactBodyUnlocked(
+    private suspend fun <T> transactBodyUnlocked(
         code: Int,
         writeArgs: (Parcel) -> Unit,
+        beforeSend: (suspend (LockedReader) -> Boolean)? = null,
         parse: (Parcel) -> T?,
     ): T? {
         repeat(2) { attempt ->
             val binder = ensureBinder() ?: return null
+            if (beforeSend != null && !runGuard { beforeSend(lockedReader) }) throw WriteGuardRefused()
             val data = Parcel.obtain()
             val reply = Parcel.obtain()
             try {
@@ -1053,6 +1502,43 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
         return null
     }
 
+    /**
+     * Runs [beforeSend] under its own [GUARD_TIMEOUT_MS] budget, well under the shared
+     * [REQ_TIMEOUT_MS]: a guard slow to decide (e.g. a laggy speed read) must not hold this
+     * mutex for the whole shared write budget, and a caller waiting behind it must not see that
+     * slowness surface as a generic "helper unreachable" — a guard that does not finish in time
+     * is refused exactly like a plain false return (2026-09-27, review round 2).
+     */
+    private suspend fun runGuard(beforeSend: suspend () -> Boolean): Boolean =
+        withTimeoutOrNull(GUARD_TIMEOUT_MS) { beforeSend() } ?: false
+
+    /**
+     * [LockedReader]'s implementation: a single-item TX_READ_BATCH round-trip, same wire format
+     * [readBatch] uses, but through [transactBodyUnlocked] directly — [readBatch] goes through
+     * [transactParsed], which would try to re-take [mutex] and deadlock, since this only ever
+     * runs from inside a beforeSend guard that is already holding it. Decoded exactly like
+     * NativeParsReader decodes a tx=7 batch reply: sentinel bits -> null.
+     *
+     * This read is a synchronous binder transact exactly like every other helper call made under
+     * this mutex, including the write that follows it; [withTimeoutOrNull] cannot interrupt a
+     * blocked `binder.transact`, so a hung daemon/autoservice holds the mutex here the same way it
+     * would during the write itself. Accepted (2026-09-27, review round 5), not a new failure class.
+     */
+    private suspend fun readFloatLocked(dev: Int, fid: Int): Float? {
+        val item = BatchReadItem(tx = 7, dev = dev, fid = fid) // 7 = getFloat bits
+        return transactBodyUnlocked(HelperBinderProtocol.TX_READ_BATCH, { p ->
+            p.writeInt(1)
+            p.writeInt(item.tx); p.writeInt(item.dev); p.writeInt(item.fid)
+        }) { reply ->
+            if (reply.dataAvail() < 4 || reply.readInt() != 1 || reply.dataAvail() < 8) {
+                return@transactBodyUnlocked null
+            }
+            val status = reply.readInt()
+            val word = reply.readInt()
+            if (status != 0) null else SentinelDecoder.parseFloatFromShellInt(word)
+        }
+    }
+
     /** (status, value) wrapper used by read/write/ping. */
     private suspend fun transact(code: Int, writeArgs: (Parcel) -> Unit): Pair<Int, Int>? =
         transactParsed(code, writeArgs) { reply ->
@@ -1063,7 +1549,16 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
 
     private fun ensureBinder(): IBinder? {
         cached?.takeIf { it.isBinderAlive }?.let { return it }
-        return resolveBinder()?.also { cached = it }
+        return resolveBinder()?.also { cached = it }.also(::traceBinder)
+    }
+
+    /** Trace: the daemon went away, came up, or both (it restarted between two lookups). */
+    private fun traceBinder(binder: IBinder?) {
+        val was = tracedBinder
+        if (binder === was) return
+        tracedBinder = binder
+        if (was != null) Trace.event(TraceArea.APP, "helper-lost")
+        if (binder != null) Trace.event(TraceArea.APP, "helper-connected", "via" to lastSource)
     }
 
     /**
@@ -1101,11 +1596,23 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
          * as a failure). A read is accepted only on status == 0.
          * See HelperClientStatusTest.
          */
+        /** Our end of TX_REGISTER_CLIENT: the daemon links to this Binder's death to learn that
+         *  our process is gone. Process-wide and lazy — it must outlive every client instance,
+         *  and constructing it eagerly would drag android.os.Binder into plain JVM tests. */
+        private val clientToken: android.os.Binder by lazy { android.os.Binder() }
+
         internal fun writeAccepted(status: Int): Boolean = status >= 0
         internal fun readAccepted(status: Int): Boolean = status == 0
 
         private const val TAG = "HelperClient"
         private const val REQ_TIMEOUT_MS = 2000L
+        /** Budget for a [writeStatus] beforeSend guard (e.g. DriveModeChannel's terrain speed
+         *  re-check): well under REQ_TIMEOUT_MS so a slow guard cannot hold the transport mutex
+         *  for the whole shared write budget, or make a caller behind it wait the full 2 s just
+         *  to be told the helper looked "unreachable" (2026-09-27, review round 2). 1 s fits one
+         *  on-device `service call` speed read over ADB with room for load; a tighter budget would
+         *  refuse terrain switches whenever the read is merely slow. */
+        private const val GUARD_TIMEOUT_MS = 1_000L
         /** Budget for one daemon-side forcing op. For TX_LAUNCH_FREEFORM it is counted from the
          *  moment the channel is held, and the daemon spends it as: launch retry loop (~9.5s on a
          *  cold start) + pin loop + grace poll sleeps, capped by its GRACE_DEADLINE_MS = 11.5s, plus
@@ -1128,6 +1635,15 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
          *  the joined string. 4.5 s matches RAISE_TIMEOUT_MS (same cold-DiLink baseline); no mutex
          *  is held during this call so the budget can be generous. Applied PER chunk transact. */
         private const val DUMP_FIDS_TIMEOUT_MS = 4_500L
+
+        /** TX_LIST_DISPLAYS budget: one `dumpsys display` under the daemon's own 4 s bound,
+         *  plus marshalling. Runs inside a projection attempt, so it must not sit on the
+         *  default 2 s and report "no cluster display" on a merely slow head unit. */
+        private const val LIST_DISPLAYS_TIMEOUT_MS = 5_000L
+
+        /** TX_CLUSTER_WM_DIAG budget: two `dumpsys` calls under the daemon's own 4 s bound each,
+         *  plus marshalling. Dump-only, so a generous budget costs nothing at runtime. */
+        private const val WM_DIAG_TIMEOUT_MS = 10_000L
 
         /** Safety cap on the number of TX_DUMP_FIDS loop iterations (chunks). 64 × 64 KiB = 4 MiB,
          *  far above any realistic SDK catalog size; guards against a misbehaving daemon. */

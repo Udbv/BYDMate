@@ -31,7 +31,7 @@ class NativeParsReaderTest {
     private fun nativeReader(auto: AutoserviceClient, settings: SettingsRepository): NativeParsReader {
         val gate = mockk<BatchReadGate>()
         coEvery { gate.mode() } returns BatchMode.OFF
-        return NativeParsReader(auto, settings, mockk<HelperClient>(), gate)
+        return NativeParsReader(auto, settings, mockk<HelperClient>(), gate, kindMonitor())
     }
 
     private fun loadFixture(): JSONObject {
@@ -282,6 +282,59 @@ class NativeParsReaderTest {
         assertEquals(1, data.occupancyRM)
         assertEquals(3, data.lightLevel)
         assertEquals(0, data.keyBatteryStatus)
+    }
+
+    /** tx=7 float fids: the motor currents must reach DiParsData so the «Техника» split works. */
+    @Test
+    fun `motor currents decode into DiParsData`() = runTest {
+        val auto = mockk<AutoserviceClient>()
+        coEvery { auto.isAvailable() } returns true
+        coEvery { auto.getInt(any(), any()) } returns null
+        coEvery { auto.getIntRaw(any(), any()) } returns null
+        coEvery { auto.getFloat(any(), any()) } returns null
+        coEvery { auto.getFloat(fid("soc").device, fid("soc").fid) } returns 87.0f
+        coEvery {
+            auto.getFloat(fid("motorCurrentFront").device, fid("motorCurrentFront").fid)
+        } returns 7.9f
+        coEvery {
+            auto.getFloat(fid("motorCurrentRear").device, fid("motorCurrentRear").fid)
+        } returns 45.3f
+
+        val settings = mockk<SettingsRepository>()
+        coEvery { settings.getBatteryCapacity() } returns 72.9
+
+        val data = nativeReader(auto, settings).fetch()
+        assertNotNull(data)
+        assertEquals(7.9f, data!!.motorCurrentFront!!, 0.01f)
+        assertEquals(45.3f, data.motorCurrentRear!!, 0.01f)
+    }
+
+    /** The BMS remaining-energy float must reach the snapshot the Dashboard and «Техника» read. */
+    @Test
+    fun `battery remaining energy decodes into DiParsData`() = runTest {
+        val auto = mockk<AutoserviceClient>()
+        coEvery { auto.isAvailable() } returns true
+        coEvery { auto.getInt(any(), any()) } returns null
+        coEvery { auto.getIntRaw(any(), any()) } returns null
+        coEvery { auto.getFloat(any(), any()) } returns null
+        coEvery { auto.getFloat(fid("soc").device, fid("soc").fid) } returns 100.0f
+        coEvery {
+            auto.getFloat(fid("batteryRemainKwh").device, fid("batteryRemainKwh").fid)
+        } returns java.lang.Float.intBitsToFloat(0x42900000)
+
+        val settings = mockk<SettingsRepository>()
+        coEvery { settings.getBatteryCapacity() } returns 72.9
+
+        val data = nativeReader(auto, settings).fetch()
+        assertNotNull(data)
+        assertEquals(72.0, data!!.batteryRemainKwh!!, 0.001)
+    }
+
+    /** A car that does not report it answers the float sentinel, which the client filters. */
+    @Test
+    fun `battery remaining energy stays null without a reading`() = runTest {
+        val data = sensorReader().fetch()
+        assertNull(data!!.batteryRemainKwh)
     }
 
     @Test

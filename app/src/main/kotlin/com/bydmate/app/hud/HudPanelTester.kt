@@ -147,7 +147,7 @@ class HudPanelTester internal constructor(
          * off, the name itself when sanitising changes nothing, and both otherwise — which is
          * the whole point, since it says what the panel was actually handed.
          */
-        fun displayStreet(road: String, sanitize: Boolean, sanitizer: HudTextSanitizer): String {
+        fun displayStreet(road: String, sanitize: Boolean, sanitizer: HudPanelTextSanitizer): String {
             if (!sanitize) return "[RAW] $road"
             val s = sanitizer.sanitize(road)
             return if (s == road) road else "[SANITIZED] $s ($road)"
@@ -201,7 +201,7 @@ class HudPanelTester internal constructor(
      *  when the screen is already gone. Replaced by tests with a TestScope. */
     internal var scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    internal var sanitizer: HudTextSanitizer = HudTextSanitizer.DEFAULT
+    internal var sanitizer: HudPanelTextSanitizer = HudPanelTextSanitizer.DEFAULT
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()

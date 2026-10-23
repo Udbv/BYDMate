@@ -6,6 +6,7 @@ import com.bydmate.app.data.local.dao.LastStateDao
 import com.bydmate.app.data.local.dao.TripDao
 import com.bydmate.app.data.local.entity.TripEntity
 import com.bydmate.app.data.remote.diParsData
+import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -22,6 +23,9 @@ class TripRecorderActiveTest {
     private fun setup(): Triple<TripRecorder, TripDao, LastStateDao> {
         val tripDao = mockk<TripDao>(relaxed = true)
         val lastState = mockk<LastStateDao>(relaxed = true)
+        // Row already exists (the loop wrote a snapshot before any trip opened), so
+        // openTrip()'s row-missing fallback does not engage -- matches real usage.
+        coEvery { lastState.openTrip(any(), any(), any(), any(), any(), any()) } returns 1
         val energy = mockk<EnergyDataReader> { every { isAvailable() } returns false }
         val clock = mutableListOf(1_000L, 2_000L, 3_000L, 4_000L)
         val recorder = TripRecorder(
@@ -51,8 +55,32 @@ class TripRecorderActiveTest {
         assertEquals(72.9 * 0.10, t.kwhConsumed!!, 0.001)
         assertEquals(72.9, t.kwhPer100km!!, 0.001)  // 7.29 kWh / 10 km * 100
         assertEquals(TripSource.NATIVE_POLLING, t.source)
-        coVerify(exactly = 1) { lastState.openTrip(startTs = 1_000L, startSoc = 80, startMileage = 100.0, startTotalElec = null, now = 1_000L) }
+        coVerify(exactly = 1) { lastState.openTrip(startTs = 1_000L, startSoc = 80, startMileage = 100.0, startTotalElec = null, startExteriorTemp = null, now = 1_000L) }
         coVerify(exactly = 1) { lastState.clearOpenTrip() }
+    }
+
+    @Test fun `an implausible odometer delta drops the distance instead of inserting it`() = runTest {
+        // The odometer scale changed under an open trip (catalog resolved mid-session on
+        // Song Plus): 8647.2 km at open, 86472.0 at close would be a 77 825 km trip.
+        val (rec, tripDao, _) = setup()
+        rec.consume(diParsData(powerState = 2, soc = 80, mileage = 8647.2))
+        rec.consume(diParsData(powerState = 1, soc = 70, mileage = 86472.0))
+
+        val captured = slot<TripEntity>()
+        coVerify(exactly = 1) { tripDao.insert(capture(captured)) }
+        assertNull(captured.captured.distanceKm)
+        assertNull(captured.captured.kwhPer100km)
+        assertEquals(72.9 * 0.10, captured.captured.kwhConsumed!!, 0.001)
+    }
+
+    @Test fun `a plausible odometer delta is kept`() = runTest {
+        val (rec, tripDao, _) = setup()
+        rec.consume(diParsData(powerState = 2, soc = 80, mileage = 100.0))
+        rec.consume(diParsData(powerState = 1, soc = 70, mileage = 150.5))
+
+        val captured = slot<TripEntity>()
+        coVerify(exactly = 1) { tripDao.insert(capture(captured)) }
+        assertEquals(50.5, captured.captured.distanceKm!!, 0.001)
     }
 
     @Test fun `totalElec delta gives consumption even when SOC unchanged`() = runTest {
@@ -64,7 +92,7 @@ class TripRecorderActiveTest {
         val t = captured.captured
         assertEquals(0.4, t.kwhConsumed!!, 0.001)
         assertEquals(0.4 / 3.0 * 100.0, t.kwhPer100km!!, 0.001)
-        coVerify(exactly = 1) { lastState.openTrip(startTs = 1_000L, startSoc = 80, startMileage = 100.0, startTotalElec = 1000.0, now = 1_000L) }
+        coVerify(exactly = 1) { lastState.openTrip(startTs = 1_000L, startSoc = 80, startMileage = 100.0, startTotalElec = 1000.0, startExteriorTemp = null, now = 1_000L) }
     }
 
     @Test fun `totalElec delta preferred over coarse SOC delta`() = runTest {
@@ -92,7 +120,7 @@ class TripRecorderActiveTest {
         rec.consume(diParsData(powerState = 2, soc = 78, mileage = 102.0))
         rec.consume(diParsData(powerState = 1, soc = 78, mileage = 102.0))
         coVerify(exactly = 1) { tripDao.insert(any()) }
-        coVerify(exactly = 1) { lastState.openTrip(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 1) { lastState.openTrip(any(), any(), any(), any(), any(), any()) }
     }
 
     @Test fun `zero distance leaves kwhPer100km null even with consumption`() = runTest {
@@ -124,5 +152,29 @@ class TripRecorderActiveTest {
         rec.consume(diParsData(powerState = 0, soc = 75, mileage = 105.0))  // OFF -> close
         coVerify(exactly = 1) { tripDao.insert(any()) }
         coVerify(exactly = 1) { lastState.clearOpenTrip() }
+    }
+
+    /** Outside temperature is sampled at both ends of the drive, straight off the snapshot. */
+    @Test fun `close writes the start and finish outside temperature`() = runTest {
+        val (rec, tripDao, _) = setup()
+        rec.consume(diParsData(powerState = 2, soc = 80, mileage = 100.0, exteriorTemp = -7))
+        rec.consume(diParsData(powerState = 1, soc = 70, mileage = 110.0, exteriorTemp = -3))
+
+        val captured = slot<TripEntity>()
+        coVerify(exactly = 1) { tripDao.insert(capture(captured)) }
+        assertEquals(-7, captured.captured.exteriorTemp)
+        assertEquals(-3, captured.captured.exteriorTempEnd)
+    }
+
+    /** A firmware without the outside-temperature fid leaves both ends empty, not zero. */
+    @Test fun `no temperature in the snapshot leaves both ends null`() = runTest {
+        val (rec, tripDao, _) = setup()
+        rec.consume(diParsData(powerState = 2, soc = 80, mileage = 100.0))
+        rec.consume(diParsData(powerState = 1, soc = 70, mileage = 110.0))
+
+        val captured = slot<TripEntity>()
+        coVerify(exactly = 1) { tripDao.insert(capture(captured)) }
+        assertNull(captured.captured.exteriorTemp)
+        assertNull(captured.captured.exteriorTempEnd)
     }
 }

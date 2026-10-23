@@ -11,6 +11,7 @@ import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -28,6 +29,8 @@ import com.bydmate.app.service.UpdateChecker
 import com.bydmate.app.ui.components.ConsumptionThresholds
 import com.bydmate.app.ui.components.LocalConsumptionThresholds
 import com.bydmate.app.ui.navigation.AppNavigation
+import com.bydmate.app.ui.restore.PostRestoreDialog
+import com.bydmate.app.ui.restore.PostRestoreViewModel
 import com.bydmate.app.ui.theme.BYDMateTheme
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Locale
@@ -38,6 +41,7 @@ class MainActivity : AppCompatActivity() {
 
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var updateChecker: UpdateChecker
+    private val postRestoreViewModel: PostRestoreViewModel by viewModels()
 
     companion object {
         private const val TAG = "MainActivity"
@@ -83,8 +87,12 @@ class MainActivity : AppCompatActivity() {
             var lang by remember {
                 mutableStateOf(prefs.getString(LocalePreferences.KEY_LANG, null) ?: DEFAULT_LANG)
             }
+            var fontScale by remember { mutableStateOf(LocalePreferences.readFontScale(prefs)) }
             DisposableEffect(prefs) {
                 val listener = SharedPreferences.OnSharedPreferenceChangeListener { p, key ->
+                    if (key == LocalePreferences.KEY_FONT_SCALE) {
+                        fontScale = LocalePreferences.readFontScale(p)
+                    }
                     if (key == LocalePreferences.KEY_LANG) {
                         val newLang = p.getString(key, DEFAULT_LANG) ?: DEFAULT_LANG
                         if (newLang != lang) {
@@ -108,7 +116,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            BYDMateTheme {
+            BYDMateTheme(fontScale = fontScale) {
                 CompositionLocalProvider(
                     LocalConfiguration provides localizedConfig,
                     LocalConsumptionThresholds provides thresholds,
@@ -117,6 +125,7 @@ class MainActivity : AppCompatActivity() {
                         settingsRepository = settingsRepository,
                         updateChecker = updateChecker,
                     )
+                    PostRestoreDialog(postRestoreViewModel)
                 }
             }
         }
@@ -212,6 +221,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startTrackingService() {
-        TrackingService.start(this)
+        TrackingService.start(this, com.bydmate.app.service.AutostartTrace.TRIGGER_ACTIVITY)
     }
 }

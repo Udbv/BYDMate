@@ -8,37 +8,66 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
+import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
+import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
 import com.bydmate.app.R
+import com.bydmate.app.cluster.ClusterMode
 import com.bydmate.app.cluster.ClusterVoiceControl
+import com.bydmate.app.data.autoservice.SentinelDecoder
 import com.bydmate.app.data.local.entity.ActionDef
+import com.bydmate.app.data.nativestack.FidAddresses
 import com.bydmate.app.data.remote.DiParsData
+import com.bydmate.app.data.telegram.TELEGRAM_REPORT_KIND
+import com.bydmate.app.data.telegram.TelegramReporter
+import com.bydmate.app.data.telegram.runReportAction
+import com.bydmate.app.data.vehicle.BatchReadItem
+import com.bydmate.app.data.vehicle.CommandTranslator
+import com.bydmate.app.data.vehicle.DriveMode
 import com.bydmate.app.data.vehicle.HelperClient
+import com.bydmate.app.data.vehicle.ScreenBacklightReply
 import com.bydmate.app.data.vehicle.VehicleApi
+import com.bydmate.app.data.vehicle.VehicleWriteError
+import com.bydmate.app.data.vehicle.WindowPane
+import com.bydmate.app.data.vehicle.WriteAllowlist
+import com.bydmate.app.diagnostics.Trace
+import com.bydmate.app.diagnostics.TraceArea
+import com.bydmate.app.helper.HelperBinderProtocol
+import com.bydmate.app.media.KnobPlayPause
 import com.bydmate.app.media.MediaSessionListenerService
+import com.bydmate.app.navdata.NavPackages
+import com.bydmate.app.service.TrackingService
+import com.bydmate.app.split.MEDIACENTER_PKG
 import com.bydmate.app.split.SplitPair
 import com.bydmate.app.split.SplitSessionManager
 import com.bydmate.app.split.SplitSessionState
 import com.bydmate.app.split.SplitSide
 import com.bydmate.app.split.SplitStartResult
+import com.bydmate.app.util.AppStrings
 import com.bydmate.app.util.appLocalizedContext
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.ceil
 
-data class DispatchResult(val success: Boolean, val reason: String? = null)
+/** [daemonRestarting]: the cluster projection failed because its daemon is restarting (retriable, not broken). */
+data class DispatchResult(val success: Boolean, val reason: String? = null, val daemonRestarting: Boolean = false)
 
 @Singleton
-class ActionDispatcher @Inject constructor(
+@Suppress("LargeClass") // the one entry point for every automation action kind
+class ActionDispatcher @Inject @Suppress("LongParameterList") constructor( // Hilt-injected dependencies
     private val vehicleApi: VehicleApi,
     private val helper: HelperClient,
     @ApplicationContext private val context: Context,
@@ -46,6 +75,8 @@ class ActionDispatcher @Inject constructor(
     private val clusterVoiceControl: ClusterVoiceControl,
     private val audioCapture: com.bydmate.app.voice.AudioCapture,
     private val splitSessionManager: SplitSessionManager,
+    private val appStrings: AppStrings,
+    private val telegramReporter: dagger.Lazy<TelegramReporter>,
 ) {
     companion object {
         private const val TAG = "ActionDispatcher"
@@ -63,6 +94,14 @@ class ActionDispatcher @Inject constructor(
         // Hard cap on user-set delay action; protects against typos like "60000000".
         private const val MAX_DELAY_MS = 60_000L
         private val BLOCKED_PATTERNS = listOf("发送CAN", "执行SHELL", "下电")
+
+        /**
+         * Did the driver ask to START moving («поехали туда»), not just to build the route?
+         * Show-only ("где находится X") drops a pin and has nothing to start, so it ignores
+         * the flag. Pure -- unit-testable without Android.
+         */
+        internal fun autoGoRequested(payload: JSONObject): Boolean =
+            payload.optBoolean("go", false) && !payload.optBoolean("show", false)
 
         /**
          * True if [command] would OPEN a side window (车窗/主驾/副驾/后左/后右) --
@@ -83,11 +122,18 @@ class ActionDispatcher @Inject constructor(
             if (subjects.none { command.contains(it) }) return false
             if (command.contains("关")) return false
             val opensViaPosition = POSITION_OPEN.find(command)
-                ?.let { it.groupValues[1].toInt() > 0 }
+                ?.let { (positionPercent(it.groupValues[1]) ?: 0) > 0 }
                 ?: command.contains("打开")        // bare "打开" (no %) -- treat as open
             val opensViaWord = listOf("全开", "半开", "通风").any { command.contains(it) }
             return opensViaPosition || opensViaWord
         }
+
+        /**
+         * The N of "打开N" when it is a percentage (0..100), else null: a number out of range or
+         * too long for an Int names no known position, so the command is not an open (the write
+         * path has no such command either). Never throws.
+         */
+        private fun positionPercent(digits: String): Int? = digits.toIntOrNull()?.takeIf { it in 0..100 }
 
         /**
          * True if [command] would OPEN the sunroof (天窗) -- gated above 80 km/h.
@@ -98,7 +144,7 @@ class ActionDispatcher @Inject constructor(
             if (!command.contains("天窗")) return false
             if (command.contains("关")) return false
             val opensViaPosition = POSITION_OPEN.find(command)
-                ?.let { it.groupValues[1].toInt() > 0 }
+                ?.let { (positionPercent(it.groupValues[1]) ?: 0) > 0 }
                 ?: command.contains("打开")        // bare "打开" (no %) -- treat as open
             val opensViaWord = listOf("全开", "半开", "通风").any { command.contains(it) }
             return opensViaPosition || opensViaWord
@@ -114,7 +160,7 @@ class ActionDispatcher @Inject constructor(
             if (!command.contains("遮阳帘")) return false
             if (command.contains("关")) return false
             val opensViaPosition = POSITION_OPEN.find(command)
-                ?.let { it.groupValues[1].toInt() > 0 }
+                ?.let { (positionPercent(it.groupValues[1]) ?: 0) > 0 }
                 ?: command.contains("打开")        // bare "打开" (no %) -- treat as open
             val opensViaWord = listOf("全开", "半开", "通风").any { command.contains(it) }
             return opensViaPosition || opensViaWord
@@ -159,6 +205,23 @@ class ActionDispatcher @Inject constructor(
             return null
         }
 
+        /** The drive mode [command] selects, or null when it is not a drive mode command. */
+        internal fun driveModeOf(command: String): DriveMode? =
+            CommandTranslator.resolve(command).singleOrNull()?.let { DriveMode.ofAction(it.actionName) }
+
+        /**
+         * Returns a block reason if [command] selects a terrain drive mode (snow, sand, mud,
+         * mountain, rock, smart) above [DriveMode.TERRAIN_MAX_SPEED_KMH] or at unknown speed
+         * (fail-closed). ECO, normal and sport switch at any speed, like BYD's own voice
+         * assistant. Pure function.
+         */
+        internal fun driveModeGateBlockReason(command: String, speed: Int?): BlockReason? {
+            if (driveModeOf(command)?.terrain != true) return null
+            val s = speed ?: return BlockReason.DriveModeSpeedUnknown
+            if (s > DriveMode.TERRAIN_MAX_SPEED_KMH) return BlockReason.DriveModeSpeed(s)
+            return null
+        }
+
         /**
          * True if [command] would OPEN the front trunk — a powered external panel
          * gated to standstill (speed 0). Close is not gated. Pure predicate, kept in
@@ -187,15 +250,282 @@ class ActionDispatcher @Inject constructor(
             "param" -> isDoorUnlockCommand(action.command) || isRearTrunkOpenCommand(action.command)
             "sentry" -> action.payload == "0"
             "call" -> true
+            // A toggle resolves to its command only at dispatch time, against the live
+            // state. Locks and the rear trunk can resolve to an unlock / a trunk open,
+            // so they are treated as dangerous whichever way they would flip.
+            // Sentry rides here too: a flip may be a disable, same tier as the explicit "0".
+            "toggle" -> action.payload in setOf(TOGGLE_LOCKS, TOGGLE_TRUNK, TOGGLE_SENTRY)
             else -> false
+        }
+
+        /** Settings.Global master switch of the BYD sentry mode (Centuri). */
+        internal const val SENTRY_SETTING_KEY = "sentrymode_enabled_switch"
+
+        // --- toggle targets ("toggle" action payload) ---
+
+        internal const val TOGGLE_TRUNK = "trunk"
+        internal const val TOGGLE_FRONT_TRUNK = "front_trunk"
+        internal const val TOGGLE_SUNROOF = "sunroof"
+        internal const val TOGGLE_LOCKS = "locks"
+        internal const val TOGGLE_CLUSTER = "cluster"
+        internal const val TOGGLE_SENTRY = "sentry"
+        internal const val TOGGLE_HAZARD = "hazard"
+        internal const val TOGGLE_CLIMATE = "climate"
+        internal const val TOGGLE_SEAT_HEAT_DRIVER = "seat_heat_driver"
+        internal const val TOGGLE_SEAT_HEAT_PASSENGER = "seat_heat_passenger"
+        internal const val TOGGLE_SEAT_VENT_DRIVER = "seat_vent_driver"
+        internal const val TOGGLE_SEAT_VENT_PASSENGER = "seat_vent_passenger"
+        internal const val TOGGLE_STEERING_HEAT = "steering_heat"
+
+        /** Targets a "toggle" action can flip, in picker order. */
+        internal val TOGGLE_TARGETS = listOf(
+            TOGGLE_TRUNK, TOGGLE_FRONT_TRUNK, TOGGLE_SUNROOF, TOGGLE_LOCKS, TOGGLE_CLUSTER,
+            TOGGLE_SENTRY, TOGGLE_HAZARD, TOGGLE_CLIMATE,
+            TOGGLE_SEAT_HEAT_DRIVER, TOGGLE_SEAT_HEAT_PASSENGER,
+            TOGGLE_SEAT_VENT_DRIVER, TOGGLE_SEAT_VENT_PASSENGER,
+            TOGGLE_STEERING_HEAT,
+        )
+
+        private val TOGGLE_TARGET_NAMES: Map<String, Int> = mapOf(
+            TOGGLE_TRUNK to R.string.toggle_target_trunk,
+            TOGGLE_FRONT_TRUNK to R.string.toggle_target_front_trunk,
+            TOGGLE_SUNROOF to R.string.toggle_target_sunroof,
+            TOGGLE_LOCKS to R.string.toggle_target_locks,
+            TOGGLE_CLUSTER to R.string.toggle_target_cluster,
+            TOGGLE_SENTRY to R.string.toggle_target_sentry,
+            TOGGLE_HAZARD to R.string.toggle_target_hazard,
+            TOGGLE_CLIMATE to R.string.toggle_target_climate,
+            TOGGLE_SEAT_HEAT_DRIVER to R.string.toggle_target_seat_heat_driver,
+            TOGGLE_SEAT_HEAT_PASSENGER to R.string.toggle_target_seat_heat_passenger,
+            TOGGLE_SEAT_VENT_DRIVER to R.string.toggle_target_seat_vent_driver,
+            TOGGLE_SEAT_VENT_PASSENGER to R.string.toggle_target_seat_vent_passenger,
+            TOGGLE_STEERING_HEAT to R.string.toggle_target_steering_heat,
+        )
+
+        /** Localized name of a toggle target; null when the id is not a known target. */
+        internal fun toggleTargetNameRes(target: String): Int? = TOGGLE_TARGET_NAMES[target]
+
+        /** «Медиа: играть / пауза»: the explicit key, never PLAY_PAUSE, so a step cannot flip the wrong way. */
+        internal fun mediaKeyCode(payload: String?): Int? = when (payload) {
+            "play" -> KeyEvent.KEYCODE_MEDIA_PLAY
+            "pause" -> KeyEvent.KEYCODE_MEDIA_PAUSE
+            else -> null
+        }
+
+        /** «Экран: выключить / включить» (#275): payload "0" / "1". */
+        internal fun screenNameRes(payload: String?): Int? = when (payload) {
+            "0" -> R.string.automation_action_screen_off
+            "1" -> R.string.automation_action_screen_on
+            else -> null
+        }
+
+        /** One word per answer of the daemon for the log and the trace; no answer is told apart by [daemonAlive]. */
+        internal fun screenVerdict(reply: ScreenBacklightReply?, daemonAlive: Boolean): String = when (reply?.outcome) {
+            null -> if (daemonAlive) "daemon_outdated" else "daemon_unreachable"
+            HelperBinderProtocol.SCREEN_BACKLIGHT_CONFIRMED -> "confirmed"
+            HelperBinderProtocol.SCREEN_BACKLIGHT_NOT_FOLLOWED -> "not_followed"
+            HelperBinderProtocol.SCREEN_BACKLIGHT_ABSENT -> "absent"
+            HelperBinderProtocol.SCREEN_BACKLIGHT_THREW -> "threw"
+            else -> "unknown_${reply.outcome}"
+        }
+
+        internal fun mediaKeyNameRes(payload: String?): Int? = when (payload) {
+            "play" -> R.string.automation_action_media_play
+            "pause" -> R.string.automation_action_media_pause
+            else -> null
+        }
+
+        /**
+         * Outcome of resolving a "toggle" against the live state: either the concrete
+         * command that flips it, or why it cannot be flipped right now.
+         */
+        internal sealed interface ToggleResolution {
+            data class Command(val command: String) : ToggleResolution
+            data object StateUnknown : ToggleResolution
+            data object TrunkMoving : ToggleResolution
+            data object UnknownTarget : ToggleResolution
+        }
+
+        /**
+         * Pick the command that flips [target] from its current [state]. Pure — every
+         * state semantic lives here so it is unit-testable without Android:
+         *   trunk       2=closed, 1=open; anything else = tailgate in motion
+         *   frontTrunk  2=closed, 1=open, 3=moving (measured on-car 2026-09-15)
+         *   sunroof     aperture percent, 0=closed
+         *   lockFL      1=unlocked, 2=locked
+         *   turnSignal  6=hazard on (the mask holds while it blinks), anything else = off
+         *   acStatus    0=off, 1=on
+         *   seat steps  0=off, 1..5=level
+         *   steering heat  2=on, 1=off (0 = no heater, 65535 = no CAN link: not a state)
+         * The cluster target has no snapshot field and is resolved by the caller.
+         * [lastSeatLevel] is the step a seat is turned back on with; it only matters for the
+         * seat targets, where the snapshot says «off» but not «off from which step».
+         */
+        internal fun resolveToggleCommand(
+            target: String,
+            state: Int?,
+            lastSeatLevel: Int = SeatLevelMemory.DEFAULT_LEVEL,
+        ): ToggleResolution {
+            if (target !in TOGGLE_TARGETS || target == TOGGLE_CLUSTER || target == TOGGLE_SENTRY) {
+                return ToggleResolution.UnknownTarget
+            }
+            val value = state ?: return ToggleResolution.StateUnknown
+            SeatLevelMemory.SEAT_COMMAND_PREFIX[target]?.let { prefix ->
+                return resolveSeatToggle(value, prefix, lastSeatLevel)
+            }
+            return resolveStateToggle(target, value)
+        }
+
+        /** The non-seat targets of [resolveToggleCommand], against a known [value]. */
+        private fun resolveStateToggle(target: String, value: Int): ToggleResolution = when (target) {
+            TOGGLE_TRUNK -> resolveHatchToggle(value, "开后备箱", "关后备箱")
+            TOGGLE_FRONT_TRUNK -> resolveHatchToggle(value, "前备箱打开", "前备箱关闭")
+            TOGGLE_SUNROOF -> ToggleResolution.Command(
+                if (value == 0) "天窗打开100" else "天窗打开0"
+            )
+            TOGGLE_HAZARD -> ToggleResolution.Command(
+                if (value == TURN_SIGNAL_HAZARD) "双闪关闭" else "双闪打开"
+            )
+            TOGGLE_CLIMATE -> resolveClimateToggle(value)
+            TOGGLE_STEERING_HEAT -> resolveSteeringHeatToggle(value)
+            else -> resolveLocksToggle(value)   // TOGGLE_LOCKS -- the only target left
+        }
+
+        /** Why a param dispatch failed, as the step reason, always in the app language. Besides
+         *  drive mode and the battery warm-up, the steering heat and HUD channels report
+         *  NotEquipped. The raw error (`value=-10011 sentinel returned` and the like) stays in
+         *  the log only. */
+        internal fun paramFailureReason(err: Throwable?, strings: AppStrings): String = when {
+            err is VehicleWriteError && DriveMode.ofAction(err.action) != null -> driveModeFailureReason(err, strings)
+            err is VehicleWriteError && err.action.startsWith("battery_preheat_") -> batteryPreheatFailureReason(err, strings)
+            err is VehicleWriteError.NotEquipped && err.action.startsWith("hud_") -> strings.get(R.string.hud_not_equipped)
+            err is VehicleWriteError.NotEquipped -> strings.get(R.string.steering_heat_not_equipped)
+            err is VehicleWriteError.ReadbackMismatch && err.stuckPanes.isNotEmpty() ->
+                stuckWindowsReason(err.stuckPanes, strings)
+            else -> strings.get(writeErrorText(err))
+        }
+
+        private fun writeErrorText(err: Throwable?): Int = when (err) {
+            is VehicleWriteError.Sentinel -> R.string.auto_err_not_confirmed
+            is VehicleWriteError.AllowlistMiss -> R.string.auto_err_not_supported
+            is VehicleWriteError.OutOfRange -> R.string.auto_err_out_of_range
+            is VehicleWriteError.HelperUnreachable -> R.string.auto_err_unreachable
+            is VehicleWriteError.ReadbackMismatch -> R.string.auto_err_not_done
+            is VehicleWriteError.Unsupported -> R.string.auto_err_unverified
+            else -> R.string.auto_err_failed
+        }
+
+        /** True when [command] is allowed or refused by speed: frunk open, unlock, terrain
+         *  drive modes, window and sunroof opens. */
+        internal fun isSpeedGated(command: String): Boolean =
+            isFrontTrunkOpenCommand(command) || isDoorUnlockCommand(command) ||
+                driveModeOf(command)?.terrain == true ||
+                isSunroofOpenCommand(command) || isWindowOpenCommand(command)
+
+        /** The gate of a speed-gated [command] decided on [speed] alone; every gated command,
+         *  windows and sunroof included, fails closed when [speed] is null. Pure function. */
+        internal fun speedOnlyBlockReason(command: String, speed: Int?): BlockReason? {
+            if (BLOCKED_PATTERNS.any { command.contains(it) }) return BlockReason.Forbidden
+            if (isFrontTrunkOpenCommand(command)) {
+                val s = speed ?: return BlockReason.FrunkSpeedUnknown
+                if (s > 0) return BlockReason.FrunkMoving(s)
+            }
+            unlockGateBlockReason(command, speed)?.let { return it }
+            driveModeGateBlockReason(command, speed)?.let { return it }
+            return speedGateBlockReason(command, speed)
+        }
+
+        /** How long the direct speed read before a gated step may take. */
+        private const val GATE_SPEED_READ_TIMEOUT_MS = 1_000L
+
+        /** A failed drive mode switch: too fast, not on this car, flotation, no change, or no answer. */
+        private fun driveModeFailureReason(err: VehicleWriteError, strings: AppStrings): String = when (err) {
+            is VehicleWriteError.SpeedBlocked -> err.speed
+                ?.let { strings.get(R.string.gate_drive_mode_speed, it) }
+                ?: strings.get(R.string.gate_drive_mode_speed_unknown)
+            is VehicleWriteError.NotEquipped -> strings.get(R.string.drive_mode_not_supported)
+            is VehicleWriteError.StateBlocked -> strings.get(R.string.drive_mode_flotation)
+            is VehicleWriteError.ReadbackMismatch -> strings.get(R.string.drive_mode_not_changed)
+            else -> strings.get(R.string.drive_mode_failed)
+        }
+
+        /** A refused battery warm-up (#311): not on this car, a charge gun connected, or a warm battery. */
+        private fun batteryPreheatFailureReason(err: VehicleWriteError, strings: AppStrings): String = when (err) {
+            is VehicleWriteError.NotEquipped -> strings.get(R.string.battery_preheat_not_equipped)
+            is VehicleWriteError.StateBlocked -> strings.get(R.string.battery_preheat_gun_connected)
+            is VehicleWriteError.NotNeeded -> strings.get(R.string.battery_preheat_not_needed)
+            else -> strings.get(writeErrorText(err))
+        }
+
+        /** «окно водителя не сдвинулось…» for one pane, «не сдвинулись с места: …» for several. */
+        private fun stuckWindowsReason(panes: List<WindowPane>, strings: AppStrings): String {
+            val names = panes.map { strings.get(windowPaneName(it)) }
+            return if (names.size == 1) strings.get(R.string.window_stuck_one, names[0])
+            else strings.get(R.string.window_stuck_many, names.joinToString(", "))
+        }
+
+        private fun windowPaneName(pane: WindowPane): Int = when (pane) {
+            WindowPane.DRIVER -> R.string.window_pane_driver
+            WindowPane.PASSENGER -> R.string.window_pane_passenger
+            WindowPane.REAR_LEFT -> R.string.window_pane_rear_left
+            WindowPane.REAR_RIGHT -> R.string.window_pane_rear_right
+            WindowPane.OTHER -> R.string.window_pane_other
+        }
+
+        /** Hazard blinkers: the turn-signal mask reads 6 while they run. */
+        private const val TURN_SIGNAL_HAZARD = 6
+
+        /** Climate: 1=on, 0=off; a firmware answering anything else is not reporting a state. */
+        private fun resolveClimateToggle(value: Int): ToggleResolution = when (value) {
+            1 -> ToggleResolution.Command("关闭空调")
+            0 -> ToggleResolution.Command("自动空调")
+            else -> ToggleResolution.StateUnknown
+        }
+
+        /** Steering wheel heat: 2=on, 1=off; anything else is not a heater state. */
+        private fun resolveSteeringHeatToggle(value: Int): ToggleResolution = when (value) {
+            2 -> ToggleResolution.Command("关闭方向盘加热")
+            1 -> ToggleResolution.Command("方向盘加热")
+            else -> ToggleResolution.StateUnknown
+        }
+
+        /**
+         * A seat running at any step goes off; a seat that is off comes back at [lastLevel] —
+         * the step the driver last asked for through the app, or the middle one.
+         */
+        private fun resolveSeatToggle(value: Int, prefix: String, lastLevel: Int): ToggleResolution =
+            when {
+                value > 0 -> ToggleResolution.Command("${prefix}关闭")
+                value == 0 -> ToggleResolution.Command("$prefix${lastLevel}档")
+                else -> ToggleResolution.StateUnknown
+            }
+
+        /**
+         * Hatch position (front and rear share the enum): 2=closed, 1=open; any other
+         * step (3 = travelling on the frunk) means it is still moving. Measured on the
+         * frunk on-car 2026-09-15 (2→3→1 opening, 1→3→2 closing); the rear tailgate is
+         * manual on that car, so only its closed value (2) was seen — same family assumed.
+         */
+        private fun resolveHatchToggle(value: Int, open: String, close: String): ToggleResolution =
+            when (value) {
+                2 -> ToggleResolution.Command(open)
+                1 -> ToggleResolution.Command(close)
+                else -> ToggleResolution.TrunkMoving
+            }
+
+        /** Driver door lock: 1=unlocked, 2=locked; anything else is not a lock state. */
+        private fun resolveLocksToggle(value: Int): ToggleResolution = when (value) {
+            1 -> ToggleResolution.Command("车门上锁")
+            2 -> ToggleResolution.Command("车门解锁")
+            else -> ToggleResolution.StateUnknown
         }
 
         private val POSITION_OPEN = Regex("打开(\\d+)")
 
         /**
          * Full safety gate for a raw vehicle command: blocked patterns, frunk
-         * parked-only, door unlock above 30 km/h, window/sunroof speed limits.
-         * Frunk and unlock fail closed on missing telemetry; window/sunroof
+         * parked-only, door unlock above 30 km/h, terrain drive modes above 15 km/h,
+         * window/sunroof speed limits. Frunk, unlock and terrain modes fail closed on missing telemetry; window/sunroof
          * checks are skipped when [data] is null (existing semantics -- callers
          * that need fail-closed window behavior check the snapshot themselves).
          * Pure function -- unit-testable and reusable by manual dispatch paths.
@@ -212,6 +542,8 @@ class ActionDispatcher @Inject constructor(
             // Door unlock is a safety gate like the frunk: checked BEFORE the
             // data==null guard so unknown speed blocks the unlock.
             unlockGateBlockReason(command, data?.speed)?.let { return it }
+            // Terrain drive modes fail closed on unknown speed too.
+            driveModeGateBlockReason(command, data?.speed)?.let { return it }
             if (data == null) return null
             return speedGateBlockReason(command, data.speed)
         }
@@ -247,6 +579,8 @@ class ActionDispatcher @Inject constructor(
         data object Forbidden : BlockReason()
         data object FrunkSpeedUnknown : BlockReason()
         data class FrunkMoving(val speed: Int) : BlockReason()
+        data object DriveModeSpeedUnknown : BlockReason()
+        data class DriveModeSpeed(val speed: Int) : BlockReason()
 
         fun toText(context: Context): String {
             val lc = context.appLocalizedContext()
@@ -259,6 +593,8 @@ class ActionDispatcher @Inject constructor(
                 is Forbidden -> lc.getString(R.string.gate_forbidden_command)
                 is FrunkSpeedUnknown -> lc.getString(R.string.gate_frunk_speed_unknown)
                 is FrunkMoving -> lc.getString(R.string.gate_frunk_moving, speed)
+                is DriveModeSpeedUnknown -> lc.getString(R.string.gate_drive_mode_speed_unknown)
+                is DriveModeSpeed -> lc.getString(R.string.gate_drive_mode_speed, speed)
             }
         }
     }
@@ -273,12 +609,59 @@ class ActionDispatcher @Inject constructor(
     private val notifCounter = AtomicInteger(USER_NOTIF_BASE_ID)
 
     // Test seam: real impl asks MediaSessionManager for active sessions via our listener component.
+    /** Test seam -- the freshest poll a "toggle" resolves its state against. */
+    internal var liveSnapshot: () -> DiParsData? = { TrackingService.lastData.value }
+
+    /** Test seam -- the direct speed read a speed-gated step is decided on, rounded UP like
+     *  the drive mode guard (15.1 km/h is 16, not 15). Null when the read fails or times out. */
+    internal var readSpeedNow: suspend () -> Int? = {
+        withTimeoutOrNull(GATE_SPEED_READ_TIMEOUT_MS) { readSpeedViaDaemon() }?.let { ceil(it).toInt() }
+    }
+
+    /**
+     * The speed through the helper daemon, not ADB: an ADB read waits on a JVM monitor a timeout
+     * cannot interrupt, the daemon's transport lock is a coroutine mutex it can (review
+     * 2026-09-27). Every step this gates writes through the daemon anyway. A single-item tx=7
+     * batch read, decoded like NativeParsReader decodes one: sentinel bits -> null.
+     */
+    private suspend fun readSpeedViaDaemon(): Float? {
+        val address = FidAddresses.of("speed")
+        val (status, word) = helper.readBatch(listOf(BatchReadItem(tx = 7, dev = address.device, fid = address.fid)))
+            ?.singleOrNull() ?: return null
+        return if (status != 0) null else SentinelDecoder.parseFloatFromShellInt(word)
+    }
+
+    /** Last seat step asked for per seat, so a «toggle» can bring the seat back to it. */
+    internal var seatLevelMemory = SeatLevelMemory(context)
+
+    /**
+     * Test seam -- how long to wait for the cluster projection to actually come up. 15 s in
+     * total: direct projection on a Sea Lion 07 takes 5-6 s (issue #263).
+     */
+    internal var clusterPollIntervalMs = 500L
+    internal var clusterPollAttempts = 30
+
     internal var activeMediaControllers: () -> List<MediaController> = {
         runCatching {
             val msm = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
             msm.getActiveSessions(ComponentName(context, MediaSessionListenerService::class.java))
         }.getOrDefault(emptyList())
     }
+
+    /**
+     * Test seam -- PLAY or PAUSE to a session through its transport controls, which reach the
+     * player's onPlay/onPause even when it handles only PLAY_PAUSE as a media button; false when
+     * the session token died.
+     */
+    internal var sendMediaKey: (MediaController, Int) -> Boolean = { controller, keyCode ->
+        runCatching {
+            if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY) controller.transportControls.play()
+            else controller.transportControls.pause()
+        }.isSuccess
+    }
+
+    /** Package of the last session a «pause» step paused while it was playing; never persisted (#275). */
+    @Volatile private var lastPausedPkg: String? = null
 
     init {
         createUserChannels()
@@ -289,6 +672,7 @@ class ActionDispatcher @Inject constructor(
             "param" -> dispatchParam(action, data)
             "notification", "notification_silent", "notification_sound" -> showNotification(action)
             "app_launch" -> launchApp(action)
+            "app_close" -> closeApp(action)
             "call" -> dial(action)
             "navigate" -> navigate(action)
             "url" -> openUrl(action)
@@ -298,22 +682,85 @@ class ActionDispatcher @Inject constructor(
             "delay" -> dispatchDelay(action)
             "media_volume" -> setMediaVolume(action)
             "media_play" -> dispatchMediaPlay()
+            "media_key" -> dispatchMediaKey(action)
             "sentry" -> dispatchSentry(action)
             "hotspot" -> dispatchHotspot(action)
+            "screen" -> dispatchScreen(action)
             "cluster_projection" -> dispatchClusterProjection(action)
+            "toggle" -> dispatchToggle(action, data)
             "speak" -> dispatchSpeak(action)
             "agent_query" -> dispatchAgentQuery(action)
             "split_screen" -> dispatchSplitScreen(action)
             "split_screen_close" -> dispatchSplitScreenClose()
             "split_screen_toggle" -> dispatchSplitScreenToggle()
+            TELEGRAM_REPORT_KIND -> telegramReporter.get().runReportAction(action, appStrings)
             else -> DispatchResult(false, "Unknown action kind: ${action.kind}")
         }
     } catch (e: Exception) {
         // CancellationException must propagate so the voice routing job can be
         // cancelled by the orb hard-stop without swallowing the signal as a failure.
         if (e is CancellationException) throw e
-        Log.e(TAG, "dispatch failed for kind=${action.kind}: ${e.message}")
-        DispatchResult(false, e.message ?: "Unknown error")
+        // Class name only: an exception message can carry the intent URI (tokens, coordinates).
+        Log.e(TAG, "dispatch failed for kind=${action.kind}: ${e.javaClass.simpleName}")
+        DispatchResult(false, e.javaClass.simpleName)
+    }
+
+    // --- media key (#212, #275) ---
+
+    /**
+     * Sends PLAY or PAUSE to the session the volume-knob press would pick. Only a running player
+     * is reached: no session is a failed step, with no AudioManager fallback, because on V1.6 a
+     * global media key lets com.byd.mediacenter switch the audio source.
+     * The stock mediacenter keeps a session in NONE/STOPPED (or with no state) while nothing plays,
+     * and play/pause to it starts Kuwo (#275), so that session is not a candidate; STOPPED sessions of other players
+     * stay, some of them resume from STOPPED.
+     * A mediacenter session left PAUSED after a pause we sent to another, playing player is not
+     * resumed by the next play (#275); a PLAYING session still wins, and a pause we send to the
+     * playing stock player itself resets that. The memory lives as long as the process.
+     */
+    private fun dispatchMediaKey(action: ActionDef): DispatchResult {
+        val keyCode = mediaKeyCode(action.payload)
+            ?: return DispatchResult(false, appStrings.get(R.string.dispatch_media_key_invalid))
+        val all = runCatching { activeMediaControllers() }.getOrDefault(emptyList())
+        val sessions = all.joinToString(" ") { mediaSessionTag(it) }
+        val kept = all.filterNot { isIdleStockSession(it) }
+        val controllers = if (skipsPausedStock(keyCode)) kept.filterNot { isPausedStockSession(it) } else kept
+        val index = KnobPlayPause.pickTarget(
+            controllers.map { KnobPlayPause.SessionSnapshot(it.packageName, it.playbackState?.state) })
+        if (index == null) {
+            Log.w(TAG, if (controllers.size < kept.size) {
+                "media key ${action.payload}: stock player paused, last paused $lastPausedPkg gone: skipped"
+            } else {
+                "media key ${action.payload}: no media session sessions=[$sessions]"
+            })
+            return DispatchResult(false, appStrings.get(R.string.dispatch_media_no_session))
+        }
+        val target = controllers[index]
+        val wasPlaying = target.playbackState?.state == PlaybackState.STATE_PLAYING
+        val ok = sendMediaKey(target, keyCode)
+        if (ok && keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE && wasPlaying) lastPausedPkg = target.packageName
+        Log.i(TAG, "media key ${action.payload} -> ${target.packageName} ok=$ok sessions=[$sessions]")
+        return if (ok) DispatchResult(true)
+        else DispatchResult(false, appStrings.get(R.string.dispatch_media_key_failed, target.packageName))
+    }
+
+    private fun isIdleStockSession(c: MediaController): Boolean {
+        val state = c.playbackState?.state
+        return c.packageName == MEDIACENTER_PKG &&
+            (state == null || state == PlaybackState.STATE_NONE || state == PlaybackState.STATE_STOPPED)
+    }
+
+    private fun isPausedStockSession(c: MediaController): Boolean =
+        c.packageName == MEDIACENTER_PKG && c.playbackState?.state == PlaybackState.STATE_PAUSED
+
+    private fun skipsPausedStock(keyCode: Int): Boolean =
+        keyCode == KeyEvent.KEYCODE_MEDIA_PLAY && lastPausedPkg != null && lastPausedPkg != MEDIACENTER_PKG
+
+    /** pkg:state:t1 when the session's metadata carries a title, else pkg:state:t0. */
+    private fun mediaSessionTag(c: MediaController): String {
+        val titled = runCatching { !c.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).isNullOrBlank() }
+            .getOrDefault(false)
+        return "${c.packageName}:${c.playbackState?.state}:t${if (titled) 1 else 0}"
     }
 
     // --- sentry mode (Settings.Global via helper daemon) ---
@@ -322,11 +769,11 @@ class ActionDispatcher @Inject constructor(
         val value = when (action.payload) {
             "1" -> 1
             "0" -> 0
-            else -> return DispatchResult(false, "Некорректное состояние охранного режима")
+            else -> return DispatchResult(false, appStrings.get(R.string.dispatch_sentry_invalid_state))
         }
-        val ok = helper.putGlobalSetting("sentrymode_enabled_switch", value)
+        val ok = helper.putGlobalSetting(SENTRY_SETTING_KEY, value)
         return if (ok) DispatchResult(true)
-        else DispatchResult(false, "Не удалось переключить охранный режим")
+        else DispatchResult(false, appStrings.get(R.string.dispatch_sentry_failed))
     }
 
     // --- hotspot (Wi-Fi tethering via helper daemon, shell uid holds TETHER_PRIVILEGED) ---
@@ -335,39 +782,191 @@ class ActionDispatcher @Inject constructor(
         val enable = when (action.payload) {
             "1" -> true
             "0" -> false
-            else -> return DispatchResult(false, "Некорректное состояние точки доступа Wi-Fi")
+            else -> return DispatchResult(false, appStrings.get(R.string.dispatch_hotspot_invalid_state))
         }
         val ok = helper.setHotspot(enable)
         return if (ok) DispatchResult(true)
-        else DispatchResult(false, "Не удалось переключить точку доступа Wi-Fi")
+        else DispatchResult(false, appStrings.get(R.string.dispatch_hotspot_failed))
+    }
+
+    // --- screen backlight (#275, the stock screen-off call inside the helper daemon; no speed gate, as the stock button) ---
+
+    /**
+     * Only a status the daemon read back makes the step a success. No answer is the same text
+     * for the driver whether the daemon is gone or is an old one still running after an update
+     * (it does not know the transaction); the log and the trace tell the two apart.
+     */
+    private suspend fun dispatchScreen(action: ActionDef): DispatchResult {
+        val on = when (action.payload) {
+            "1" -> true
+            "0" -> false
+            else -> return DispatchResult(false, appStrings.get(R.string.dispatch_screen_invalid_state))
+        }
+        val reply = helper.setScreenBacklight(on)
+        val verdict = screenVerdict(reply, daemonAlive = reply != null || helper.isAlive())
+        val want = if (on) "on" else "off"
+        Log.i(TAG, "screen want=$want verdict=$verdict status=${reply?.status} detail=${reply?.detail}")
+        Trace.event(
+            TraceArea.CAR, "screen", "want" to want, "verdict" to verdict, "status" to reply?.status,
+            "detail" to reply?.detail, by = Trace.cause(),
+        )
+        return when (reply?.outcome) {
+            HelperBinderProtocol.SCREEN_BACKLIGHT_CONFIRMED -> DispatchResult(true)
+            null -> DispatchResult(false, appStrings.get(R.string.auto_err_unreachable))
+            HelperBinderProtocol.SCREEN_BACKLIGHT_NOT_FOLLOWED ->
+                DispatchResult(false, appStrings.get(R.string.auto_err_not_confirmed))
+            HelperBinderProtocol.SCREEN_BACKLIGHT_ABSENT ->
+                DispatchResult(false, appStrings.get(R.string.dispatch_screen_not_available))
+            else -> DispatchResult(false, appStrings.get(R.string.auto_err_failed))
+        }
     }
 
     // --- cluster projection (steering-wheel star key path, via ClusterVoiceControl) ---
 
-    /** ClusterVoiceControl.apply() is fire-and-forget (async setMode under the manager's mutex,
-     *  like the star key) and never throws, so there is no synchronous success/failure to report
-     *  here beyond payload validation -- this stays fail-soft the same way dispatchSentry does. */
-    private fun dispatchClusterProjection(action: ActionDef): DispatchResult {
+    /**
+     * ClusterVoiceControl.apply() is fire-and-forget (async setMode under the manager's mutex,
+     * like the star key), so the only honest verdict comes from reading the mode back. We wait
+     * for it up to [clusterPollAttempts] x [clusterPollIntervalMs] and report a failure when the
+     * projection never reached the requested state.
+     *
+     * This applies to automation-origin dispatches too, by design: a rule whose "projection on"
+     * step silently did nothing must show up as a failed step, exactly like a rejected vehicle
+     * write. The gate semantics above (speed limits, CAN/SHELL blocking) are untouched -- this
+     * only changes what a dispatched-but-ineffective projection reports.
+     */
+    private suspend fun dispatchClusterProjection(action: ActionDef): DispatchResult {
         val on = when (action.payload) {
             "1" -> true
             "0" -> false
-            else -> return DispatchResult(false, "Некорректное состояние проекции на приборку")
+            else -> return DispatchResult(false, appStrings.get(R.string.dispatch_cluster_invalid_state))
         }
+        val want = if (on) ClusterMode.FULLSCREEN else ClusterMode.OFF
         clusterVoiceControl.apply(on)
-        return DispatchResult(true)
+        repeat(clusterPollAttempts) {
+            if (clusterVoiceControl.projectionMode() == want) return DispatchResult(true)
+            delay(clusterPollIntervalMs)
+        }
+        if (clusterVoiceControl.projectionMode() == want) return DispatchResult(true)
+        val daemonRestarting = clusterVoiceControl.lastFailure() == "daemon"
+        val reason = if (daemonRestarting) {
+            appStrings.get(R.string.dispatch_cluster_daemon_restarting)
+        } else if (on) {
+            appStrings.get(R.string.dispatch_cluster_not_on)
+        } else {
+            appStrings.get(R.string.dispatch_cluster_not_off)
+        }
+        Log.w(TAG, "cluster projection did not reach $want: $reason")
+        return DispatchResult(false, reason, daemonRestarting)
+    }
+
+    // --- toggle (flip a panel / the locks / the projection from its current state) ---
+
+    /**
+     * "toggle": read the target's current state, then dispatch the opposite command through
+     * [dispatch] itself — so the resolved command passes the very same speed gates and
+     * confirmation rules as a hand-picked action. A state the car does not report is never
+     * guessed: the step fails with a reason the user can read.
+     *
+     * The state comes from the CURRENT poll, not from [data]: a rule hands every step the one
+     * snapshot taken before the rule started, so "toggle → delay → toggle" would resolve the
+     * second step against the state from before the first one and flip the panel the same way
+     * twice. [data] stays as the fallback for callers that dispatch without a running poll.
+     */
+    private suspend fun dispatchToggle(action: ActionDef, data: DiParsData?): DispatchResult {
+        val lc = context.appLocalizedContext()
+        val target = action.payload.orEmpty()
+        val targetName = toggleTargetNameRes(target)?.let { lc.getString(it) }
+            ?: return DispatchResult(false, lc.getString(R.string.toggle_unknown_target, target))
+
+        val polled = liveSnapshot()
+        val live = polled ?: data
+        val src = if (polled != null) "live" else "step"
+
+        if (target == TOGGLE_CLUSTER) return dispatchClusterToggle(action, live, src)
+        if (target == TOGGLE_SENTRY) return dispatchSentryToggle(action, live)
+
+        val state = toggleState(target, live)
+        val lastLevel = seatLevelMemory.lastLevel(target)
+        return when (val resolution = resolveToggleCommand(target, state, lastLevel)) {
+            is ToggleResolution.Command -> {
+                Log.i(TAG, "toggle $target: src=$src state=$state -> ${resolution.command}")
+                dispatch(action.copy(command = resolution.command, kind = "param", payload = null), live)
+            }
+            ToggleResolution.TrunkMoving -> {
+                Log.w(TAG, "toggle $target: src=$src state=$state -> refused (moving)")
+                DispatchResult(false, lc.getString(R.string.toggle_trunk_moving))
+            }
+            ToggleResolution.StateUnknown, ToggleResolution.UnknownTarget -> {
+                Log.w(TAG, "toggle $target: src=$src state=$state -> refused (unknown state)")
+                DispatchResult(false, lc.getString(R.string.toggle_state_unknown, targetName))
+            }
+        }
+    }
+
+    /** Snapshot field each toggle target reads its current state from. The steering heat state
+     *  is not in the snapshot: it is read through the daemon, like sentry. */
+    private suspend fun toggleState(target: String, live: DiParsData?): Int? = when (target) {
+        TOGGLE_TRUNK -> live?.trunk
+        TOGGLE_FRONT_TRUNK -> live?.frontTrunk
+        TOGGLE_SUNROOF -> live?.sunroof
+        TOGGLE_LOCKS -> live?.lockFL
+        TOGGLE_HAZARD -> live?.turnSignal
+        TOGGLE_CLIMATE -> live?.acStatus
+        TOGGLE_SEAT_HEAT_DRIVER -> live?.seatHeatDriver
+        TOGGLE_SEAT_HEAT_PASSENGER -> live?.seatHeatPassenger
+        TOGGLE_SEAT_VENT_DRIVER -> live?.seatVentDriver
+        TOGGLE_SEAT_VENT_PASSENGER -> live?.seatVentPassenger
+        TOGGLE_STEERING_HEAT -> helper.read(WriteAllowlist.STEERING_HEAT_STATE_DEV, WriteAllowlist.STEERING_HEAT_STATE_FID)?.toInt()
+        else -> null
+    }
+
+    /**
+     * Cluster target: the projection state is its own live reading (the manager's current mode),
+     * so the snapshot only rides along for the gates of the resolved action.
+     */
+    private suspend fun dispatchClusterToggle(
+        action: ActionDef,
+        live: DiParsData?,
+        src: String,
+    ): DispatchResult {
+        val mode = clusterVoiceControl.projectionMode()
+        val payload = if (mode == ClusterMode.FULLSCREEN) "0" else "1"
+        Log.i(TAG, "toggle $TOGGLE_CLUSTER: src=$src state=$mode -> cluster_projection $payload")
+        return dispatch(
+            action.copy(command = "cluster_projection", kind = "cluster_projection", payload = payload),
+            live,
+        )
+    }
+
+    /**
+     * Sentry target: the state lives in Settings.Global, not in the vehicle snapshot, so it is
+     * read back through the same daemon channel the write goes through. 1 = armed -> turn it
+     * off, anything else -> turn it on. An unreadable state is never guessed.
+     */
+    private suspend fun dispatchSentryToggle(action: ActionDef, live: DiParsData?): DispatchResult {
+        val lc = context.appLocalizedContext()
+        val state = helper.getGlobalSetting(SENTRY_SETTING_KEY)
+        if (state == null) {
+            Log.w(TAG, "toggle $TOGGLE_SENTRY live=null -> refused (unknown state)")
+            val name = lc.getString(R.string.toggle_target_sentry)
+            return DispatchResult(false, lc.getString(R.string.toggle_state_unknown, name))
+        }
+        val payload = if (state == 1) "0" else "1"
+        Log.i(TAG, "toggle $TOGGLE_SENTRY live=$state -> $payload")
+        return dispatch(action.copy(command = "sentry", kind = "sentry", payload = payload), live)
     }
 
     /** "speak": say the payload text verbatim via the voice coordinator (orb + duck + TTS). */
     private suspend fun dispatchSpeak(action: ActionDef): DispatchResult {
         val text = parsePayload(action.payload)?.optString("text")?.trim().orEmpty()
-        if (text.isEmpty()) return DispatchResult(false, "не задан текст")
+        if (text.isEmpty()) return DispatchResult(false, appStrings.get(R.string.dispatch_speak_text_missing))
         return voiceActions.get().speak(text)
     }
 
     /** "agent_query": run the payload prompt through an isolated agent turn, speak the answer. */
     private suspend fun dispatchAgentQuery(action: ActionDef): DispatchResult {
         val prompt = parsePayload(action.payload)?.optString("prompt")?.trim().orEmpty()
-        if (prompt.isEmpty()) return DispatchResult(false, "не задан запрос")
+        if (prompt.isEmpty()) return DispatchResult(false, appStrings.get(R.string.dispatch_agent_query_prompt_missing))
         return voiceActions.get().agentQuery(prompt)
     }
 
@@ -378,24 +977,24 @@ class ActionDispatcher @Inject constructor(
      */
     private suspend fun dispatchSplitScreen(action: ActionDef): DispatchResult {
         val json = parsePayload(action.payload)
-            ?: return DispatchResult(false, "payload не задан")
+            ?: return DispatchResult(false, appStrings.get(R.string.dispatch_payload_missing))
         val narrow = json.optString("narrow").takeIf(String::isNotBlank)
-            ?: return DispatchResult(false, "narrow не задан")
+            ?: return DispatchResult(false, appStrings.get(R.string.dispatch_split_narrow_missing))
         val wide = json.optString("wide").takeIf(String::isNotBlank)
-            ?: return DispatchResult(false, "wide не задан")
+            ?: return DispatchResult(false, appStrings.get(R.string.dispatch_split_wide_missing))
         val side = when (json.optString("side")) {
             "left" -> SplitSide.LEFT
             "right" -> SplitSide.RIGHT
-            else -> return DispatchResult(false, "неверная сторона")
+            else -> return DispatchResult(false, appStrings.get(R.string.dispatch_split_invalid_side))
         }
         return when (splitSessionManager.start(SplitPair(narrow, wide, side))) {
             SplitStartResult.OK -> DispatchResult(true)
             SplitStartResult.FREEFORM_UNAVAILABLE ->
                 DispatchResult(false, freeformUnavailableHint())
             SplitStartResult.LAUNCH_FAILED ->
-                DispatchResult(false, context.getString(R.string.split_launch_failed))
+                DispatchResult(false, appStrings.get(R.string.split_launch_failed))
             SplitStartResult.DISABLED ->
-                DispatchResult(false, context.getString(R.string.split_feature_disabled))
+                DispatchResult(false, appStrings.get(R.string.split_feature_disabled))
         }
     }
 
@@ -421,14 +1020,14 @@ class ActionDispatcher @Inject constructor(
             return DispatchResult(true)
         }
         return when (splitSessionManager.startLastPair()) {
-            null -> DispatchResult(false, "пара для разделения экрана не сохранена")
+            null -> DispatchResult(false, appStrings.get(R.string.dispatch_split_pair_not_saved))
             SplitStartResult.OK -> DispatchResult(true)
             SplitStartResult.FREEFORM_UNAVAILABLE ->
                 DispatchResult(false, freeformUnavailableHint())
             SplitStartResult.LAUNCH_FAILED ->
-                DispatchResult(false, context.getString(R.string.split_launch_failed))
+                DispatchResult(false, appStrings.get(R.string.split_launch_failed))
             SplitStartResult.DISABLED ->
-                DispatchResult(false, context.getString(R.string.split_feature_disabled))
+                DispatchResult(false, appStrings.get(R.string.split_feature_disabled))
         }
     }
 
@@ -436,7 +1035,7 @@ class ActionDispatcher @Inject constructor(
      * Hint for FREEFORM_UNAVAILABLE: on firmwares proven to ignore the freeform flag (#139)
      * a reboot never helps, so promising one would be a lie.
      */
-    private fun freeformUnavailableHint(): String = context.getString(
+    private fun freeformUnavailableHint(): String = appStrings.get(
         if (splitSessionManager.freeformUnsupported()) R.string.split_freeform_unsupported_hint
         else R.string.split_freeform_reboot_hint
     )
@@ -449,9 +1048,9 @@ class ActionDispatcher @Inject constructor(
         else DispatchResult(false, "Нет активного медиасеанса")
     private suspend fun dispatchDelay(action: ActionDef): DispatchResult {
         val ms = action.payload?.toLongOrNull()
-            ?: return DispatchResult(false, "Длительность паузы не задана")
+            ?: return DispatchResult(false, appStrings.get(R.string.dispatch_delay_missing))
         if (ms < 0 || ms > MAX_DELAY_MS) {
-            return DispatchResult(false, "Длительность паузы вне диапазона (0..${MAX_DELAY_MS} мс)")
+            return DispatchResult(false, appStrings.get(R.string.dispatch_delay_out_of_range, MAX_DELAY_MS))
         }
         kotlinx.coroutines.delay(ms)
         return DispatchResult(true)
@@ -460,9 +1059,9 @@ class ActionDispatcher @Inject constructor(
     // --- media volume (standard AudioManager, no autoservice) ---
 
     private fun setMediaVolume(action: ActionDef): DispatchResult {
-        val payload = action.payload ?: return DispatchResult(false, "Уровень громкости не задан")
+        val payload = action.payload ?: return DispatchResult(false, appStrings.get(R.string.dispatch_volume_missing))
         val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            ?: return DispatchResult(false, "AudioManager недоступен")
+            ?: return DispatchResult(false, appStrings.get(R.string.dispatch_audio_unavailable))
         val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         // During a voice-session duck the stream sits at the near-zero duck level: "+N"/"-N"
         // must step from the volume the user actually perceives (the pending restore value),
@@ -484,25 +1083,48 @@ class ActionDispatcher @Inject constructor(
                 am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
                 DispatchResult(true)
             }
-            VolumeOp.Invalid -> DispatchResult(false, "Некорректный уровень громкости: $payload")
+            VolumeOp.Invalid -> DispatchResult(false, appStrings.get(R.string.dispatch_volume_invalid, payload))
         }
     }
 
     // --- param (native autoservice via VehicleApi) ---
 
     private suspend fun dispatchParam(action: ActionDef, data: DiParsData?): DispatchResult {
-        val blockReason = getBlockReason(action.command, data)
+        val blockReason = if (isSpeedGated(action.command)) {
+            speedOnlyBlockReason(action.command, gateSpeed(action.command))
+        } else {
+            getBlockReason(action.command, data)
+        }
         if (blockReason != null) {
             Log.w(TAG, "Blocked '${action.command}': $blockReason")
             return DispatchResult(false, blockReason.toText(context))
         }
         val result = vehicleApi.dispatch(action.command)
         val success = result.isSuccess
-        val reason = if (!success) {
-            result.exceptionOrNull()?.message ?: "dispatch failed"
-        } else null
+        // A seat step the driver asked for is the one a later «toggle» brings back.
+        if (success) seatLevelMemory.remember(action.command)
+        val reason = if (!success) paramFailureReason(result.exceptionOrNull(), appStrings) else null
+        if (!success) Log.w(TAG, "param '${action.command}' failed: ${result.exceptionOrNull()?.message}")
         return DispatchResult(success, reason)
     }
+
+    /**
+     * The speed a speed-gated step is decided on: a direct read, else unknown (the gate then
+     * refuses). No poll fallback: the poll truncates the speed (0.8 km/h reads 0) and a zero a
+     * few seconds old does not prove the car is standing now (review 2026-09-27). Never the
+     * snapshot the caller passed in: a rule hands every step the one taken when it fired, which
+     * after a delay or a confirm window can say 0 km/h while the car is already moving.
+     */
+    private suspend fun gateSpeed(command: String): Int? {
+        val direct = runCatching { readSpeedNow() }
+            .onFailure { if (it is CancellationException) throw it }
+            .getOrNull()
+        Log.i(TAG, "gate speed '$command': source=daemon direct=$direct -> ${direct ?: "unknown"}")
+        return direct
+    }
+
+    /** A failed [VehicleApi] write in the app language, the same text a rule step reports. */
+    fun vehicleFailureReason(err: Throwable): String = paramFailureReason(err, appStrings)
 
     // Delegate to the companion pure function so all callers (dispatch + manual test button)
     // share identical gate logic.
@@ -539,19 +1161,19 @@ class ActionDispatcher @Inject constructor(
     private fun createUserChannels() {
         val silent = NotificationChannel(
             CHANNEL_SILENT_ID,
-            "Automation Silent",
+            appStrings.get(R.string.notif_channel_auto_silent_name),
             NotificationManager.IMPORTANCE_LOW
         ).apply {
             setSound(null, null)
             enableVibration(false)
-            description = "Silent automation notifications"
+            description = appStrings.get(R.string.notif_channel_auto_silent_desc)
         }
         val sound = NotificationChannel(
             CHANNEL_SOUND_ID,
-            "Automation Alerts",
+            appStrings.get(R.string.notif_channel_auto_sound_name),
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Audible automation notifications"
+            description = appStrings.get(R.string.notif_channel_auto_sound_desc)
         }
         val manager = nm()
         manager.createNotificationChannel(silent)
@@ -563,9 +1185,9 @@ class ActionDispatcher @Inject constructor(
     private suspend fun launchApp(action: ActionDef): DispatchResult {
         val payload = parsePayload(action.payload)
         val pkg = payload?.optString("packageName")?.takeIf(String::isNotBlank)
-            ?: return DispatchResult(false, "packageName не задан")
+            ?: return DispatchResult(false, appStrings.get(R.string.dispatch_package_missing))
         if (context.packageManager.getLaunchIntentForPackage(pkg) == null) {
-            return DispatchResult(false, "Приложение не установлено: $pkg")
+            return DispatchResult(false, appStrings.get(R.string.dispatch_app_not_installed, pkg))
         }
         // Authoritative launch via the shell-uid daemon (am start): a startActivity from
         // this @ApplicationContext can lose the foreground race when BYDMate is on top
@@ -583,10 +1205,35 @@ class ActionDispatcher @Inject constructor(
         return result
     }
 
+    /**
+     * Force-stop through the shell-uid daemon (#280). Only an app with a launcher entry is
+     * closed, never BYDMate itself, and the package is checked again here because a shared
+     * rule or the agent can carry any string.
+     */
+    private suspend fun closeApp(action: ActionDef): DispatchResult {
+        val pkg = parsePayload(action.payload)?.optString("packageName")?.takeIf(String::isNotBlank)
+            ?: return DispatchResult(false, appStrings.get(R.string.dispatch_package_missing))
+        val refusal = when {
+            pkg == context.packageName -> appStrings.get(R.string.dispatch_app_close_self)
+            context.packageManager.getLaunchIntentForPackage(pkg) == null ->
+                appStrings.get(R.string.dispatch_app_not_installed, pkg)
+            !helper.isAlive() -> appStrings.get(R.string.dispatch_cluster_daemon_restarting)
+            else -> null
+        }
+        if (refusal != null) {
+            Log.w(TAG, "app close refused: $pkg ($refusal)")
+            return DispatchResult(false, refusal)
+        }
+        val ok = helper.forceStop(pkg)
+        Log.i(TAG, "app close: $pkg ok=$ok")
+        return if (ok) DispatchResult(true)
+        else DispatchResult(false, appStrings.get(R.string.dispatch_app_close_failed, pkg))
+    }
+
     private suspend fun dial(action: ActionDef): DispatchResult {
         val payload = parsePayload(action.payload)
         val phone = payload?.optString("phone")?.takeIf(String::isNotBlank)
-            ?: return DispatchResult(false, "phone не задан")
+            ?: return DispatchResult(false, appStrings.get(R.string.dispatch_phone_missing))
         val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val result = tryStartActivity(intent, "dial:$phone")
@@ -599,63 +1246,290 @@ class ActionDispatcher @Inject constructor(
             try {
                 context.sendBroadcast(press)
             } catch (e: Exception) {
-                Log.w(TAG, "autoDial broadcast failed: ${e.message}")
+                Log.w(TAG, "autoDial broadcast failed: ${e.javaClass.simpleName}")
             }
         }
         return result
     }
 
-    private fun navigate(action: ActionDef): DispatchResult {
-        val payload = parsePayload(action.payload) ?: return DispatchResult(false, "payload не задан")
+    /**
+     * Route dispatch. Two things happen around the intent itself (wave 2026-09-16):
+     *
+     * - with a split session standing, the firmware would answer the launch with startFullWindow
+     *   and the Navigator would lose the route — so the split is ended, the route is built, and
+     *   the pair is restarted. See [NavigateSplitFlow].
+     * - `go` = the driver said «поехали», not «построй маршрут»: then «Поехали» on the route
+     *   preview is pressed for him.
+     */
+    private suspend fun navigate(action: ActionDef): DispatchResult {
+        val payload = parsePayload(action.payload)
+            ?: return DispatchResult(false, appStrings.get(R.string.dispatch_payload_missing))
+        val shortcut = payload.optString("shortcut").takeIf(String::isNotBlank)
+        val flow = NavigateSplitFlow(object : NavigateSplitFlow.Env {
+            override fun activeSplitPair(): SplitPair? =
+                (splitSessionManager.state.value as? SplitSessionState.Active)?.pair
+
+            override suspend fun exitSplit(): Boolean {
+                splitSessionManager.exit()
+                return splitSessionManager.state.value !is SplitSessionState.Active
+            }
+
+            override suspend fun restoreSplit(pair: SplitPair): String? =
+                when (splitSessionManager.start(pair)) {
+                    SplitStartResult.OK -> null
+                    SplitStartResult.FREEFORM_UNAVAILABLE -> freeformUnavailableHint()
+                    SplitStartResult.LAUNCH_FAILED -> appStrings.get(R.string.split_launch_failed)
+                    SplitStartResult.DISABLED -> appStrings.get(R.string.split_feature_disabled)
+                }
+
+            override suspend fun sendIntent(): DispatchResult = sendNavigateIntent(payload, shortcut)
+
+            override fun a11yConnected(): Boolean =
+                com.bydmate.app.cluster.SteeringWheelKeyService.isConnected
+
+            override fun goButtonVisible(): Boolean =
+                withNavigatorRoot { com.bydmate.app.media.NaviGoButton.visible(it) }
+
+            override fun clickGo(): Boolean =
+                withNavigatorRoot { com.bydmate.app.media.NaviGoButton.click(it) }
+
+            override suspend fun wait(ms: Long) = delay(ms)
+
+            // The split session's own transitions are journalled by SplitSessionManager; this
+            // is the navigate side of the story and lives in the log with the other dispatches.
+            override fun log(line: String) {
+                Log.i(TAG, line)
+            }
+
+            override fun text(id: Int, vararg args: Any): String = appStrings.get(id, *args)
+        })
+        return flow.run(go = autoGoRequested(payload), autoGoSupported = autoGoSupported(payload))
+    }
+
+    /**
+     * Whether [navigate] can find and press «Поехали» for [payload] on this head unit.
+     * Only a Yandex ROUTE ends on a «Поехали» screen: show-only drops a pin, search opens a
+     * result list, and 2GIS has no such node at all. Maps is excluded too, whether by
+     * app="maps" or as the settings default (#200, willOpenMaps): the a11y read that finds
+     * and presses «Поехали» looks at the Navigator's window, not Maps' - including for the
+     * Home/Work shortcut, which now can land on Maps as well.
+     */
+    fun autoGoSupported(payload: JSONObject): Boolean =
+        !payload.optBoolean("show", false) && payload.optString("query").isBlank() && !willOpenMaps(payload) &&
+            (payload.optString("shortcut").isNotBlank() || resolveNavigator().first == RouteNavigatorUris.YANDEX)
+
+    /** Whether [navigate] will press «Поехали» itself for [payload]: asked for, and possible here. */
+    fun autoGoWillRun(payload: JSONObject): Boolean = autoGoRequested(payload) && autoGoSupported(payload)
+
+    /**
+     * Runs [block] on the Navigator's a11y window — the same read the HUD uses, including the
+     * minimized and cluster-projected cases — and recycles the node afterwards.
+     */
+    private fun withNavigatorRoot(
+        block: (android.view.accessibility.AccessibilityNodeInfo?) -> Boolean,
+    ): Boolean {
+        val root = com.bydmate.app.cluster.SteeringWheelKeyService.instance?.findNavigatorRoot()
+            ?: return false
+        return try {
+            block(root)
+        } finally {
+            @Suppress("DEPRECATION") runCatching { root.recycle() }
+        }
+    }
+
+    /**
+     * Which map app routes go to, plus the reason text when 2GIS, Maps or Waze was replaced by
+     * Yandex Navigator because it is not installed (#190, #200, #305).
+     */
+    private fun resolveNavigator(): Pair<String, String?> {
+        val chosen = RouteNavigatorUris.normalize(
+            context.getSharedPreferences(RouteNavigatorUris.PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(RouteNavigatorUris.KEY_ROUTE_NAVIGATOR, null))
+        Log.i(TAG, "navigate: navigator=$chosen")
+        val dgisFellBack = chosen == RouteNavigatorUris.DGIS &&
+            !isPackageInstalled(RouteNavigatorUris.DGIS_PACKAGE)
+        if (dgisFellBack) {
+            Log.i(TAG, "navigate: 2gis not installed, falling back to yandex")
+            return RouteNavigatorUris.YANDEX to appStrings.get(R.string.dispatch_dgis_fallback)
+        }
+        val mapsFellBack = chosen == RouteNavigatorUris.MAPS &&
+            NavPackages.YANDEX_MAPS.none { isPackageInstalled(it) }
+        if (mapsFellBack) {
+            Log.i(TAG, "navigate: yandex maps not installed, falling back to yandex")
+            return RouteNavigatorUris.YANDEX to appStrings.get(R.string.dispatch_maps_fallback)
+        }
+        val wazeFellBack = chosen == RouteNavigatorUris.WAZE &&
+            !isPackageInstalled(RouteNavigatorUris.WAZE_PACKAGE)
+        if (wazeFellBack) {
+            Log.i(TAG, "navigate: waze not installed, falling back to yandex")
+            return RouteNavigatorUris.YANDEX to appStrings.get(R.string.dispatch_waze_fallback)
+        }
+        return chosen to null
+    }
+
+    private fun sendNavigateIntent(payload: JSONObject, shortcut: String?): DispatchResult {
+        // #190/#200: which map app the user picked for routes and map search. 2GIS or Maps that
+        // is not installed falls back to Yandex Navigator for this action, and says so in the
+        // result reason.
+        val (navigator, fallbackReason) = resolveNavigator()
+        // app="maps" (voice: «…в Яндекс Картах») or Maps as the settings default mirror the
+        // whole command set, Home/Work shortcut included, into Yandex Maps.
+        if (isMapsRequest(payload) || navigator == RouteNavigatorUris.MAPS) {
+            return navigateMaps(payload, shortcut)
+        }
         // Navigator's own saved Home/Work: exported shortcut actions on its MapActivity
         // resolve the address internally, so no coordinates are needed. Undocumented
         // (launcher-shortcut contract); tryStartActivity degrades to a clear error if
         // a Navigator update drops them.
-        val shortcut = payload.optString("shortcut").takeIf(String::isNotBlank)
         if (shortcut != null) {
             val intentAction = when (shortcut) {
                 "home" -> "ru.yandex.yandexmaps.action.ROUTE_TO_HOME_SHORTCUT"
                 "work" -> "ru.yandex.yandexmaps.action.ROUTE_TO_WORK_SHORTCUT"
-                else -> return DispatchResult(false, "неизвестный shortcut: $shortcut")
+                else -> return DispatchResult(false, appStrings.get(R.string.dispatch_shortcut_unknown, shortcut))
             }
             val intent = Intent(intentAction)
                 .setPackage(NAVI_PACKAGE)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             return tryStartActivity(intent, "navigate_shortcut:$shortcut")
         }
-        // Free-text destination: open Navigator's map search (route needs coordinates,
+        // Free-text destination: open the map search (route needs coordinates,
         // which the agent does not have for arbitrary addresses).
         val query = payload.optString("query").takeIf(String::isNotBlank)
         if (query != null) {
-            val intent = Intent(Intent.ACTION_VIEW,
-                Uri.parse("yandexnavi://map_search?text=${Uri.encode(query)}"))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            return tryStartActivity(intent, "navigate_search:$query")
+            return startNavigate(
+                navigator, RouteNavigatorUris.MODE_SEARCH,
+                RouteNavigatorUris.search(navigator, query),
+                "navigate_search:$query", fallbackReason,
+            )
         }
         val lat = payload.optDouble("lat", Double.NaN)
         val lon = payload.optDouble("lon", Double.NaN)
-        if (lat.isNaN() || lon.isNaN()) return DispatchResult(false, "lat/lon не заданы")
+        if (lat.isNaN() || lon.isNaN()) return DispatchResult(false, appStrings.get(R.string.dispatch_coords_missing))
         // Show-only mode: drop a pin instead of building a route ("где находится X").
         if (payload.optBoolean("show", false)) {
             val desc = payload.optString("label").takeIf(String::isNotBlank)
-            val showUri = buildString {
-                append("yandexnavi://show_point_on_map?lat=$lat&lon=$lon&zoom=14")
-                if (desc != null) append("&desc=${Uri.encode(desc)}")
-            }
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(showUri))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            return tryStartActivity(intent, "navigate_show:$lat,$lon")
+            return startNavigate(
+                navigator, RouteNavigatorUris.MODE_SHOW,
+                RouteNavigatorUris.showPoint(navigator, lat, lon, desc),
+                "navigate_show:$lat,$lon", fallbackReason,
+            )
         }
-        val uri = "yandexnavi://build_route_on_map?lat_to=$lat&lon_to=$lon"
+        return startNavigate(
+            navigator, RouteNavigatorUris.MODE_ROUTE,
+            RouteNavigatorUris.route(navigator, lat, lon),
+            "navigate:$lat,$lon", fallbackReason,
+        )
+    }
+
+    /** Per-command target of a navigate payload: Maps only when the driver named it. */
+    private fun isMapsRequest(payload: JSONObject): Boolean =
+        payload.optString("app").trim().equals(RouteNavigatorUris.MAPS, ignoreCase = true)
+
+    /**
+     * Whether [navigate]/[sendNavigateIntent] will land on Yandex Maps for this payload, either
+     * because it named `app="maps"` or because that is the settings default (#200), Home/Work
+     * shortcut included — used by [com.bydmate.app.agent.AgentTools] to pick the right
+     * foreground-verification app. Mirrors [sendNavigateIntent]'s own routing exactly.
+     */
+    fun willOpenMaps(payload: JSONObject): Boolean =
+        isMapsRequest(payload) || resolveNavigator().first == RouteNavigatorUris.MAPS
+
+    /**
+     * The package [startNavigate] will pin the intent to for this payload (#305): 2GIS or Waze
+     * chosen and installed. Null when the route goes to Maps, to Yandex Navigator (chosen or as
+     * the fallback), or to the Home/Work shortcut, which always opens Yandex Navigator's own
+     * action. Mirrors [sendNavigateIntent]'s routing exactly, like [willOpenMaps].
+     */
+    fun willOpenPinned(payload: JSONObject): String? {
+        if (isMapsRequest(payload) || payload.optString("shortcut").isNotBlank()) return null
+        val navigator = resolveNavigator().first
+        return if (navigator == RouteNavigatorUris.DGIS || navigator == RouteNavigatorUris.WAZE) {
+            RouteNavigatorUris.packageOf(navigator)
+        } else null
+    }
+
+    /**
+     * The app="maps" mirror of [sendNavigateIntent] on Yandex Maps' own yandexmaps:// dialect
+     * (#200, from a user patch). URI intents are not package-pinned — the scheme resolves to
+     * whichever store variant of Maps is installed.
+     */
+    private fun navigateMaps(payload: JSONObject, shortcut: String?): DispatchResult {
+        // Home/Work: the shortcut actions carry the yandexmaps prefix even in the Navigator
+        // (shared engine), so Maps plausibly exports them too — try each store variant, then
+        // fall through to the honest "save a BYDMate Place" advice.
+        if (shortcut != null) {
+            val intentAction = when (shortcut) {
+                "home" -> "ru.yandex.yandexmaps.action.ROUTE_TO_HOME_SHORTCUT"
+                "work" -> "ru.yandex.yandexmaps.action.ROUTE_TO_WORK_SHORTCUT"
+                else -> return DispatchResult(false, appStrings.get(R.string.dispatch_shortcut_unknown, shortcut))
+            }
+            var failure: DispatchResult? = null
+            for (pkg in NavPackages.YANDEX_MAPS) {
+                Log.i(TAG, "navigate app=maps kind=shortcut target=$shortcut pkg=$pkg")
+                val intent = Intent(intentAction).setPackage(pkg)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                val result = tryStartActivity(intent, "navigate_maps_shortcut:$shortcut")
+                if (result.success) return result
+                failure = result
+            }
+            Log.w(TAG, "navigate app=maps kind=shortcut target=$shortcut -> no package accepted it")
+            return DispatchResult(false, appStrings.get(R.string.navigate_maps_shortcut_failed))
+        }
+        // Free-text destination: Maps opens its own search, since the agent has no coordinates
+        // for an arbitrary street-level address.
+        val query = payload.optString("query").takeIf(String::isNotBlank)
+        if (query != null) return startMapsIntent(
+            RouteNavigatorUris.MODE_SEARCH, RouteNavigatorUris.mapsSearch(query), "navigate_maps_search:$query")
+        val lat = payload.optDouble("lat", Double.NaN)
+        val lon = payload.optDouble("lon", Double.NaN)
+        if (lat.isNaN() || lon.isNaN()) return DispatchResult(false, appStrings.get(R.string.dispatch_coords_missing))
+        if (payload.optBoolean("show", false)) {
+            val desc = payload.optString("label").takeIf(String::isNotBlank)
+            return startMapsIntent(
+                RouteNavigatorUris.MODE_SHOW, RouteNavigatorUris.mapsShowPoint(lat, lon),
+                "navigate_maps_show:$lat,$lon" + (desc?.let { " ($it)" } ?: ""))
+        }
+        return startMapsIntent(
+            RouteNavigatorUris.MODE_ROUTE, RouteNavigatorUris.mapsRoute(lat, lon), "navigate_maps:$lat,$lon")
+    }
+
+    /** [startNavigate] for the Maps dialect: no package pin, no 2GIS fallback reason. */
+    private fun startMapsIntent(mode: String, uri: String, label: String): DispatchResult {
+        Log.i(TAG, "navigate app=maps kind=$mode uri=${LinkRedaction.forLog(uri)}")
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return tryStartActivity(intent, "navigate:$lat,$lon")
+        val result = tryStartActivity(intent, label)
+        Log.i(TAG, "navigate app=maps intent sent label=${LinkRedaction.forLog(label)} ok=${result.success}" +
+            (result.reason?.let { " reason=$it" } ?: ""))
+        return result
+    }
+
+    /**
+     * Fires one navigation deep link and journals which app it went to (#190).
+     *
+     * The package is pinned for 2GIS and Waze only: the Yandex links have always resolved by
+     * scheme, and pinning them now would break any head unit whose navigator ships under another
+     * package.
+     */
+    private fun startNavigate(
+        navigator: String, mode: String, uri: String, label: String, fallbackReason: String?,
+    ): DispatchResult {
+        Log.i(TAG, "navigate: app=$navigator mode=$mode uri=${LinkRedaction.forLog(uri)}")
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (navigator == RouteNavigatorUris.DGIS || navigator == RouteNavigatorUris.WAZE) {
+            intent.setPackage(RouteNavigatorUris.packageOf(navigator))
+        }
+        val result = tryStartActivity(intent, label)
+        Log.i(TAG, "navigate: intent sent label=${LinkRedaction.forLog(label)} ok=${result.success}")
+        return if (result.success && fallbackReason != null) result.copy(reason = fallbackReason)
+        else result
     }
 
     private suspend fun openUrl(action: ActionDef): DispatchResult {
         val payload = parsePayload(action.payload)
         val url = payload?.optString("url")?.takeIf(String::isNotBlank)
-            ?: return DispatchResult(false, "url не задан")
+            ?: return DispatchResult(false, appStrings.get(R.string.dispatch_url_missing))
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val result = tryStartActivity(intent, "url:$url")
@@ -667,9 +1541,9 @@ class ActionDispatcher @Inject constructor(
         val payload = parsePayload(action.payload)
         val mode = payload?.optString("mode")?.takeIf(String::isNotBlank) ?: "mybeat"
         if (mode == "play") {
-            val playPayload = payload ?: return DispatchResult(false, "query не задан")
+            val playPayload = payload ?: return DispatchResult(false, appStrings.get(R.string.dispatch_query_missing))
             val query = playPayload.optString("query").takeIf(String::isNotBlank)
-                ?: return DispatchResult(false, "query не задан")
+                ?: return DispatchResult(false, appStrings.get(R.string.dispatch_query_missing))
             // Real playback path: playFromSearch on Yandex Music's live MediaSession actually
             // starts the top hit; the MEDIA_PLAY_FROM_SEARCH intent below only opens the search
             // screen (field defect APK 337). Needs notification-listener access (self-granted).
@@ -689,7 +1563,7 @@ class ActionDispatcher @Inject constructor(
         }
         if (mode == "search") {
             val query = payload?.optString("query")?.takeIf(String::isNotBlank)
-                ?: return DispatchResult(false, "query не задан")
+                ?: return DispatchResult(false, appStrings.get(R.string.dispatch_query_missing))
             val intent = Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH)
                 .setPackage(YANDEX_MUSIC_PACKAGE)
                 .putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*")
@@ -701,7 +1575,7 @@ class ActionDispatcher @Inject constructor(
         }
         val deeplink = when (mode) {
             "mybeat" -> "yandexmusic://radio/user/onyourwave?play=true"
-            else -> return DispatchResult(false, "Неизвестный режим Я.Музыки: $mode")
+            else -> return DispatchResult(false, appStrings.get(R.string.dispatch_yandex_music_mode_unknown, mode))
         }
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(deeplink))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -715,9 +1589,9 @@ class ActionDispatcher @Inject constructor(
     private suspend fun launchYoutube(action: ActionDef): DispatchResult {
         val payload = parsePayload(action.payload)
         val query = payload?.optString("query")?.takeIf(String::isNotBlank)
-            ?: return DispatchResult(false, "query не задан")
+            ?: return DispatchResult(false, appStrings.get(R.string.dispatch_query_missing))
         val pkg = YOUTUBE_PACKAGES.firstOrNull { isPackageInstalled(it) }
-            ?: return DispatchResult(false, "Приложение YouTube не установлено")
+            ?: return DispatchResult(false, appStrings.get(R.string.dispatch_youtube_not_installed))
         val mode = payload.optString("mode").takeIf(String::isNotBlank) ?: "play"
         val intent = when (mode) {
             // Assistant-style voice search: stock YouTube auto-plays the top hit for this intent.
@@ -732,7 +1606,7 @@ class ActionDispatcher @Inject constructor(
                 Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(query)))
                 .setPackage(pkg)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            else -> return DispatchResult(false, "Неизвестный режим YouTube: $mode")
+            else -> return DispatchResult(false, appStrings.get(R.string.dispatch_youtube_mode_unknown, mode))
         }
         val result = tryStartActivity(intent, "youtube_$mode:$query")
         if (result.success) maybeMinimize(payload)
@@ -758,7 +1632,7 @@ class ActionDispatcher @Inject constructor(
         try {
             context.startActivity(home)
         } catch (e: Exception) {
-            Log.w(TAG, "home failed: ${e.message}")
+            Log.w(TAG, "home failed: ${e.javaClass.simpleName}")
         }
     }
 
@@ -766,11 +1640,13 @@ class ActionDispatcher @Inject constructor(
         context.startActivity(intent)
         DispatchResult(true)
     } catch (e: ActivityNotFoundException) {
-        Log.w(TAG, "$label: ${e.message}")
-        DispatchResult(false, "Нет приложения для обработки: ${e.message}")
+        // Class name only: the message spells out the whole intent, URI with its token included.
+        // The label carries the link, number or coordinates too: only what LinkRedaction leaves.
+        Log.w(TAG, "${LinkRedaction.forLog(label)}: ${e.javaClass.simpleName}")
+        DispatchResult(false, appStrings.get(R.string.dispatch_no_handler_app, e.javaClass.simpleName))
     } catch (e: SecurityException) {
-        Log.w(TAG, "$label (security): ${e.message}")
-        DispatchResult(false, "Нет разрешения: ${e.message}")
+        Log.w(TAG, "${LinkRedaction.forLog(label)} (security): ${e.javaClass.simpleName}")
+        DispatchResult(false, appStrings.get(R.string.dispatch_no_permission, e.javaClass.simpleName))
     }
 
     // --- helpers ---

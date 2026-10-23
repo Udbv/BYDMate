@@ -8,9 +8,9 @@ import com.bydmate.app.data.automation.AutomationEngine
 import com.bydmate.app.data.automation.DispatchResult
 import com.bydmate.app.data.automation.VoiceFireResult
 import com.bydmate.app.R
-import com.bydmate.app.data.local.LocalePreferences
 import com.bydmate.app.data.local.entity.ActionDef
 import com.bydmate.app.data.remote.DiParsData
+import com.bydmate.app.util.appStringsOver
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -40,8 +40,7 @@ class VoiceControllerSafetyTest {
     // NluParser maps this to the DiPlus command "车窗关闭".
     private val windowClosePhrase = "закрой окна"
 
-    // #87: voice_error_model_missing resource string (the "model not ready" cause of
-    // onPttPressed's else-branch; voice_error_lang_not_ru is the other, untested in this file).
+    // #87: voice_error_model_missing resource string (the only cause of onPttPressed's else-branch).
     private val modelMissingMsg = "Голосовая модель не загружена. Скачайте её в Настройках, раздел Голос-агент."
 
     // #162: block reasons are resolved through the app-locale wrapper
@@ -118,15 +117,10 @@ class VoiceControllerSafetyTest {
         val gate = mockk<VoiceGate>()
         every { gate.isEnabled() } returns gateEnabled
         every { gate.vehicleSnapshot() } returns snapshot
-        // Fix D: gate.preferredLang() must be stubbed so existing tests continue to compile.
-        every { gate.preferredLang() } returns null
         every { gate.ttsEnabled() } returns ttsEnabled
 
         val audioCapture = mockk<AudioCapture>(relaxed = true)
-        every { audioCapture.captureSession(any()) } returns flow { /* empty — completes immediately */ }
-
-        val localePrefs = mockk<LocalePreferences>(relaxed = true)
-        every { localePrefs.getLanguage() } returns "ru"
+        every { audioCapture.captureSession(any(), any<(ShortArray) -> Any?>()) } returns flow { /* empty — completes immediately */ }
 
         val earcon = mockk<VoiceEarcon>(relaxed = true)
 
@@ -135,16 +129,17 @@ class VoiceControllerSafetyTest {
         coEvery { automationResolver.match(any()) } returns null
 
         val agentOrchestrator = mockk<AgentOrchestrator>()
-        coEvery { agentOrchestrator.ask(any(), any()) } returns AgentResult.Disabled
+        coEvery { agentOrchestrator.ask(any(), any(), any()) } returns AgentResult.Disabled
         // Default: no pending agent question (individual tests override AFTER construction).
         coEvery { agentOrchestrator.expectsFollowUp() } returns false
 
-        return VoiceController(audioCapture, dispatcher, localePrefs, earcon, gate,
+        return VoiceController(audioCapture, dispatcher, earcon, gate,
             automationEngine, automationResolver, agentOrchestrator, blockReasonContext(),
             ttsEngine, journal, continuousAsr, agentIdentity = agentIdentity,
             ttsModelManager = mockk(relaxed = true),
             ruStressMarker = RuStressMarker { null },
-            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") })
+            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") },
+            appStrings = appStringsOver(blockReasonContext()))
     }
 
     private fun makeControllerWithAutomation(
@@ -156,14 +151,10 @@ class VoiceControllerSafetyTest {
         val gate = mockk<VoiceGate>()
         every { gate.isEnabled() } returns true
         every { gate.vehicleSnapshot() } returns null
-        every { gate.preferredLang() } returns null
         every { gate.ttsEnabled() } returns false
 
         val audioCapture = mockk<AudioCapture>(relaxed = true)
-        every { audioCapture.captureSession(any()) } returns flow { /* empty — completes immediately */ }
-
-        val localePrefs = mockk<LocalePreferences>(relaxed = true)
-        every { localePrefs.getLanguage() } returns "ru"
+        every { audioCapture.captureSession(any(), any<(ShortArray) -> Any?>()) } returns flow { /* empty — completes immediately */ }
 
         val earcon = mockk<VoiceEarcon>(relaxed = true)
 
@@ -171,20 +162,21 @@ class VoiceControllerSafetyTest {
         coEvery { automationEngine.fireVoiceRule(any(), any()) } returns VoiceFireResult.Fired(true)
 
         val automationResolver = mockk<VoiceAutomationResolver>()
-        coEvery { automationResolver.match(any()) } returns matchedRuleId
+        coEvery { automationResolver.match(any()) } returns VoiceAutomationMatch(matchedRuleId, "rule$matchedRuleId")
 
         val agentOrchestrator = mockk<AgentOrchestrator>()
-        coEvery { agentOrchestrator.ask(any(), any()) } returns AgentResult.Disabled
+        coEvery { agentOrchestrator.ask(any(), any(), any()) } returns AgentResult.Disabled
         // Default: no pending agent question (individual tests override AFTER construction).
         coEvery { agentOrchestrator.expectsFollowUp() } returns false
 
-        return VoiceController(audioCapture, dispatcher, localePrefs, earcon, gate,
+        return VoiceController(audioCapture, dispatcher, earcon, gate,
             automationEngine, automationResolver, agentOrchestrator, blockReasonContext(),
             quietTtsEngine(), journal, continuousAsr,
             agentIdentity = { AgentIdentity("", AgentPersona.NAVIGATOR) },
             ttsModelManager = mockk(relaxed = true),
             ruStressMarker = RuStressMarker { null },
-            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") })
+            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") },
+            appStrings = appStringsOver(blockReasonContext()))
     }
 
     /**
@@ -471,12 +463,9 @@ class VoiceControllerSafetyTest {
         val gate = mockk<VoiceGate>()
         every { gate.isEnabled() } returns true
         every { gate.vehicleSnapshot() } returns null
-        every { gate.preferredLang() } returns null
         every { gate.ttsEnabled() } returns true
 
         val audioCapture = mockk<AudioCapture>(relaxed = true)
-        val localePrefs = mockk<LocalePreferences>(relaxed = true)
-        every { localePrefs.getLanguage() } returns "ru"
         val earcon = mockk<VoiceEarcon>(relaxed = true)
         val automationEngine = mockk<AutomationEngine>(relaxed = true)
         val automationResolver = mockk<VoiceAutomationResolver>()
@@ -488,13 +477,14 @@ class VoiceControllerSafetyTest {
         // done-pool — this is what "non-canonical" means here (see the two pool-based tests above).
         val context = mockk<Context>(relaxed = true)
         every { context.getString(R.string.voice_error_model_missing) } returns modelMissingMsg
-        val controller = VoiceController(audioCapture, dispatcher, localePrefs, earcon, gate,
+        val controller = VoiceController(audioCapture, dispatcher, earcon, gate,
             automationEngine, automationResolver, agentOrchestrator, context,
             ttsEngine, VoiceJournal(), FakeContinuousAsr(ready = false),
             agentIdentity = { AgentIdentity("", AgentPersona.ENGINEER) },
             ttsModelManager = mockk(relaxed = true),
             ruStressMarker = RuStressMarker { null },
-            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") })
+            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") },
+            appStrings = appStringsOver(context))
 
         controller.onPttPressed()
         Thread.sleep(300)
@@ -570,34 +560,32 @@ class VoiceControllerSafetyTest {
         val gate = mockk<VoiceGate>()
         every { gate.isEnabled() } returns true
         every { gate.vehicleSnapshot() } returns null
-        every { gate.preferredLang() } returns null
         every { gate.ttsEnabled() } returns false
 
         val audioCapture = mockk<AudioCapture>(relaxed = true)
-        every { audioCapture.captureSession(any()) } returns flow { /* empty — completes immediately */ }
+        every { audioCapture.captureSession(any(), any<(ShortArray) -> Any?>()) } returns flow { /* empty — completes immediately */ }
 
-        val localePrefs = mockk<LocalePreferences>(relaxed = true)
-        every { localePrefs.getLanguage() } returns "ru"
         val earcon = mockk<VoiceEarcon>(relaxed = true)
         val automationEngine = mockk<AutomationEngine>(relaxed = true)
         val automationResolver = mockk<VoiceAutomationResolver>()
         coEvery { automationResolver.match(any()) } returns null
 
         val agentOrchestrator = mockk<AgentOrchestrator>()
-        coEvery { agentOrchestrator.ask(any(), any()) } returns AgentResult.Disabled
+        coEvery { agentOrchestrator.ask(any(), any(), any()) } returns AgentResult.Disabled
         coEvery { agentOrchestrator.expectsFollowUp() } returns false
         // Simulates a busy AgentOrchestrator mutex (e.g. a concurrent ask() holding the lock) —
         // if VoiceController awaited this call, the whole voice session would stall behind it.
         coEvery { agentOrchestrator.noteAction(any()) } coAnswers { kotlinx.coroutines.delay(60_000) }
 
         val fakeAsr = FakeContinuousAsr(ready = true)
-        val controller = VoiceController(audioCapture, dispatcher, localePrefs, earcon, gate,
+        val controller = VoiceController(audioCapture, dispatcher, earcon, gate,
             automationEngine, automationResolver, agentOrchestrator, blockReasonContext(),
             quietTtsEngine(), VoiceJournal(), fakeAsr,
             agentIdentity = { AgentIdentity("", AgentPersona.NAVIGATOR) },
             ttsModelManager = mockk(relaxed = true),
             ruStressMarker = RuStressMarker { null },
-            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") })
+            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") },
+            appStrings = appStringsOver(blockReasonContext()))
         val presented = AtomicReference<String?>(null)
         controller.showAnswerHook = { text -> presented.set(text) }
 
@@ -631,32 +619,30 @@ class VoiceControllerSafetyTest {
         val gate = mockk<VoiceGate>()
         every { gate.isEnabled() } returns true
         every { gate.vehicleSnapshot() } returns null
-        every { gate.preferredLang() } returns null
         every { gate.ttsEnabled() } returns false
 
         val audioCapture = mockk<AudioCapture>(relaxed = true)
-        every { audioCapture.captureSession(any()) } returns flow { /* empty */ }
+        every { audioCapture.captureSession(any(), any<(ShortArray) -> Any?>()) } returns flow { /* empty */ }
 
-        val localePrefs = mockk<LocalePreferences>(relaxed = true)
-        every { localePrefs.getLanguage() } returns "ru"
         val earcon = mockk<VoiceEarcon>(relaxed = true)
 
         val automationResolver = mockk<VoiceAutomationResolver>()
-        coEvery { automationResolver.match(any()) } returns 42L
+        coEvery { automationResolver.match(any()) } returns VoiceAutomationMatch(42L, "rule42")
 
         val agentOrchestrator = mockk<AgentOrchestrator>()
-        coEvery { agentOrchestrator.ask(any(), any()) } returns AgentResult.Disabled
+        coEvery { agentOrchestrator.ask(any(), any(), any()) } returns AgentResult.Disabled
         coEvery { agentOrchestrator.expectsFollowUp() } returns false
         coEvery { agentOrchestrator.noteAction(any()) } returns Unit
 
         val fakeAsr = FakeContinuousAsr(ready = true)
-        val controller = VoiceController(audioCapture, dispatcher, localePrefs, earcon, gate,
+        val controller = VoiceController(audioCapture, dispatcher, earcon, gate,
             automationEngine, automationResolver, agentOrchestrator, blockReasonContext(),
             quietTtsEngine(), VoiceJournal(), fakeAsr,
             agentIdentity = { AgentIdentity("", AgentPersona.NAVIGATOR) },
             ttsModelManager = mockk(relaxed = true),
             ruStressMarker = RuStressMarker { null },
-            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") })
+            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") },
+            appStrings = appStringsOver(blockReasonContext()))
 
         controller.onPttPressed()
         awaitTrue { controller.listening.value }
@@ -695,7 +681,7 @@ class VoiceControllerSafetyTest {
         )
     }
 
-    @Test fun `automation rule not found records a NONE-NOT_UNDERSTOOD journal entry`() {
+    @Test fun `automation rule not found records an AUTOMATION-NOT_UNDERSTOOD journal entry`() {
         val dispatcher = mockk<ActionDispatcher>(relaxed = true)
         val automationEngine = mockk<AutomationEngine>(relaxed = true)
         coEvery { automationEngine.fireVoiceRule(any(), any()) } returns VoiceFireResult.NotFound
@@ -704,31 +690,29 @@ class VoiceControllerSafetyTest {
         val gate = mockk<VoiceGate>()
         every { gate.isEnabled() } returns true
         every { gate.vehicleSnapshot() } returns null
-        every { gate.preferredLang() } returns null
         every { gate.ttsEnabled() } returns false
 
         val audioCapture = mockk<AudioCapture>(relaxed = true)
-        every { audioCapture.captureSession(any()) } returns flow { /* empty */ }
+        every { audioCapture.captureSession(any(), any<(ShortArray) -> Any?>()) } returns flow { /* empty */ }
 
-        val localePrefs = mockk<LocalePreferences>(relaxed = true)
-        every { localePrefs.getLanguage() } returns "ru"
         val earcon = mockk<VoiceEarcon>(relaxed = true)
 
         val automationResolver = mockk<VoiceAutomationResolver>()
-        coEvery { automationResolver.match(any()) } returns 7L
+        coEvery { automationResolver.match(any()) } returns VoiceAutomationMatch(7L, "rule7")
 
         val agentOrchestrator = mockk<AgentOrchestrator>()
-        coEvery { agentOrchestrator.ask(any(), any()) } returns AgentResult.Disabled
+        coEvery { agentOrchestrator.ask(any(), any(), any()) } returns AgentResult.Disabled
         coEvery { agentOrchestrator.expectsFollowUp() } returns false
 
         val fakeAsr = FakeContinuousAsr(ready = true)
-        val controller = VoiceController(audioCapture, dispatcher, localePrefs, earcon, gate,
+        val controller = VoiceController(audioCapture, dispatcher, earcon, gate,
             automationEngine, automationResolver, agentOrchestrator, blockReasonContext(),
             quietTtsEngine(), journal, fakeAsr,
             agentIdentity = { AgentIdentity("", AgentPersona.NAVIGATOR) },
             ttsModelManager = mockk(relaxed = true),
             ruStressMarker = RuStressMarker { null },
-            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") })
+            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") },
+            appStrings = appStringsOver(blockReasonContext()))
 
         controller.onPttPressed()
         awaitTrue { controller.listening.value }
@@ -737,7 +721,8 @@ class VoiceControllerSafetyTest {
         Thread.sleep(500)
 
         val entry = journal.entries.value.first()
-        assertEquals(VoiceJournalEntry.Route.NONE, entry.route)
+        assertEquals(VoiceJournalEntry.Route.AUTOMATION, entry.route)
+        assertEquals(VoiceRefusal.RULE_NOT_FOUND, entry.refusal)
         assertEquals(VoiceJournalEntry.Outcome.NOT_UNDERSTOOD, entry.outcome)
         assertEquals(VoiceUiState.NotUnderstood("навигатор"), controller.state.value)
     }
@@ -764,12 +749,9 @@ class VoiceControllerSafetyTest {
         val gate = mockk<VoiceGate>()
         every { gate.isEnabled() } returns true
         every { gate.vehicleSnapshot() } returns null
-        every { gate.preferredLang() } returns null
         every { gate.ttsEnabled() } returns false
 
         val audioCapture = mockk<AudioCapture>(relaxed = true)
-        val localePrefs = mockk<LocalePreferences>(relaxed = true)
-        every { localePrefs.getLanguage() } returns "ru"
         val earcon = mockk<VoiceEarcon>(relaxed = true)
         val automationEngine = mockk<AutomationEngine>(relaxed = true)
         val automationResolver = mockk<VoiceAutomationResolver>()
@@ -778,13 +760,14 @@ class VoiceControllerSafetyTest {
 
         val context = mockk<Context>(relaxed = true)
         every { context.getString(R.string.voice_error_model_missing) } returns modelMissingMsg
-        val controller = VoiceController(audioCapture, dispatcher, localePrefs, earcon, gate,
+        val controller = VoiceController(audioCapture, dispatcher, earcon, gate,
             automationEngine, automationResolver, agentOrchestrator, context,
             quietTtsEngine(), VoiceJournal(), FakeContinuousAsr(ready = false),
             agentIdentity = { AgentIdentity("", AgentPersona.NAVIGATOR) },
             ttsModelManager = mockk(relaxed = true),
             ruStressMarker = RuStressMarker { null },
-            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") })
+            selectedTtsVoice = { TtsVoiceCatalog.byId("dmitri") },
+            appStrings = appStringsOver(context))
         val feedbackCount = AtomicInteger(0)
         val presented = AtomicReference<String?>(null)
         controller.showAnswerHook = { text -> feedbackCount.incrementAndGet(); presented.set(text) }

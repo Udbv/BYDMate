@@ -33,7 +33,7 @@ class HudStreetNameTest {
         helper: HelperClient,
         scope: TestScope,
         sanitize: Boolean = false,
-        sanitizer: HudTextSanitizer = HudTextSanitizer(null),
+        sanitizer: HudPanelTextSanitizer = HudPanelTextSanitizer(null),
     ) = HudInstrumentFids(helper, scope, { sanitize }, sanitizer)
 
     private fun helper(): HelperClient = mockk<HelperClient>(relaxed = true).also {
@@ -137,7 +137,7 @@ class HudStreetNameTest {
     @Test fun `with the pref on the name is latinised before it is sent`() = runTest {
         val scope = TestScope(StandardTestDispatcher(testScheduler))
         val helper = helper()
-        val sanitizer = HudTextSanitizer { s -> if (s == "é") "e" else s }
+        val sanitizer = HudPanelTextSanitizer { s -> if (s == "é") "e" else s }
 
         fids(helper, scope, sanitize = true, sanitizer = sanitizer).update(snapshot("  Café  "))
         scope.advanceUntilIdle()

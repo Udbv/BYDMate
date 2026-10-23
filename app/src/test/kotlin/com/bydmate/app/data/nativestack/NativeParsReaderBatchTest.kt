@@ -12,6 +12,7 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -26,6 +27,8 @@ import org.junit.Test
 class NativeParsReaderBatchTest {
 
     private fun fid(field: String) = FidMap.entries.first { it.field == field }
+
+    private fun floatRaw(value: Float) = java.lang.Float.floatToRawIntBits(value)
 
     /** All FidMap entries decode successfully: tx=5 -> plain int 50 (satisfies every
      *  range-checked decoder), tx=7 -> IEEE-754 bits of 50.0f. */
@@ -84,7 +87,7 @@ class NativeParsReaderBatchTest {
         coEvery { helper.readBatch(any()) } returns allOkPairs()
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
         val data = reader.fetch()
 
         assertNotNull("fetch() returned null", data)
@@ -104,7 +107,7 @@ class NativeParsReaderBatchTest {
         coEvery { helper.readBatch(any()) } returns null
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
         val data = reader.fetch()
 
         assertNotNull("fetch() returned null", data)
@@ -120,7 +123,7 @@ class NativeParsReaderBatchTest {
         coEvery { helper.readBatch(any()) } returns allFailedPairs()
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
         val data = reader.fetch()
 
         assertNotNull("fetch() returned null", data)
@@ -138,11 +141,11 @@ class NativeParsReaderBatchTest {
 
         // Reference: what fetchViaAdb alone (via OFF dispatch) would have produced, from the
         // exact same autoservice + settings mocks.
-        val referenceReader = NativeParsReader(auto, settings, helper, gateFixedAt(BatchMode.OFF))
+        val referenceReader = NativeParsReader(auto, settings, helper, gateFixedAt(BatchMode.OFF), kindMonitor())
         val expectedAdb = referenceReader.fetch()
         assertNotNull(expectedAdb)
 
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
         val data = reader.fetch()
 
         assertEquals("VALIDATING must still return the proven ADB snapshot", expectedAdb, data)
@@ -171,7 +174,7 @@ class NativeParsReaderBatchTest {
         )
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
         val data = reader.fetch()
 
         assertNotNull("fetch() returned null", data)
@@ -196,7 +199,7 @@ class NativeParsReaderBatchTest {
         )
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
         val data = reader.fetch()
 
         assertNotNull("fetch() returned null", data)
@@ -222,7 +225,7 @@ class NativeParsReaderBatchTest {
         )
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
         val data = reader.fetch()
 
         assertNotNull("fetch() returned null", data)
@@ -247,7 +250,7 @@ class NativeParsReaderBatchTest {
         )
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
         val data = reader.fetch()
 
         assertNotNull("fetch() returned null", data)
@@ -272,7 +275,7 @@ class NativeParsReaderBatchTest {
         )
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val data = NativeParsReader(auto, settings, helper, gate).fetch()
+        val data = NativeParsReader(auto, settings, helper, gate, kindMonitor()).fetch()
 
         assertNotNull("fetch() returned null", data)
         assertNull("a transient sentinel must not borrow the other generation's fid", data!!.windowRR)
@@ -295,7 +298,7 @@ class NativeParsReaderBatchTest {
         coEvery { helper.readBatch(any()) } returns pairs
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val data = NativeParsReader(auto, settings, helper, gate).fetch()
+        val data = NativeParsReader(auto, settings, helper, gate, kindMonitor()).fetch()
 
         assertNotNull("fetch() returned null", data)
         assertNull(data!!.windowRR)
@@ -316,7 +319,7 @@ class NativeParsReaderBatchTest {
         )
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
         val data = reader.fetch()
 
         assertNotNull("fetch() returned null", data)
@@ -340,7 +343,7 @@ class NativeParsReaderBatchTest {
         )
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
         val data = reader.fetch()
 
         assertNotNull("fetch() returned null", data)
@@ -362,7 +365,7 @@ class NativeParsReaderBatchTest {
         )
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
         val data = reader.fetch()
 
         assertNotNull("fetch() returned null", data)
@@ -384,7 +387,7 @@ class NativeParsReaderBatchTest {
                 fid("driveMode").field to driveMode,
             ),
         )
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
 
         coEvery { helper.readBatch(any()) } returns pairs(3)
         assertEquals(3, reader.fetch()!!.driveMode)
@@ -406,7 +409,7 @@ class NativeParsReaderBatchTest {
         val settings = settingsWithCapacity()
         val helper = mockk<HelperClient>()
         val gate = gateFixedAt(BatchMode.ACTIVE)
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
 
         coEvery { helper.readBatch(any()) } returns mostlySentinelPairs(
             mapOf(
@@ -430,7 +433,7 @@ class NativeParsReaderBatchTest {
         val helper = mockk<HelperClient>()
         val gate = gateFixedAt(BatchMode.OFF)
 
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
         val data = reader.fetch()
 
         assertNotNull(data)
@@ -452,7 +455,7 @@ class NativeParsReaderBatchTest {
         val helper = mockk<HelperClient>()
         val gate = gateFixedAt(BatchMode.OFF)
 
-        val data = NativeParsReader(auto, settings, helper, gate).fetch()
+        val data = NativeParsReader(auto, settings, helper, gate, kindMonitor()).fetch()
 
         assertNotNull("fetch() returned null", data)
         assertEquals("the fallback must come from that same sample", 80, data!!.windowRR)
@@ -474,7 +477,7 @@ class NativeParsReaderBatchTest {
                 fid("driveMode").field to driveMode,
             ),
         )
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
 
         coEvery { helper.readBatch(any()) } returns pairs(3)
         assertNull("VALIDATING returns the ADB snapshot, which has no driveMode", reader.fetch()!!.driveMode)
@@ -499,7 +502,7 @@ class NativeParsReaderBatchTest {
         coEvery { helper.readBatch(any()) } returns null
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val reader = NativeParsReader(auto, settings, helper, gate)
+        val reader = NativeParsReader(auto, settings, helper, gate, kindMonitor())
         assertNull(reader.fetch())
     }
 
@@ -521,6 +524,7 @@ class NativeParsReaderBatchTest {
                 fid("hvVoltage").field to 499,
                 fid("hvCurrent").field to java.lang.Float.floatToRawIntBits(2.4f),
                 fid("bmsMaxChargeKw").field to 1732,
+                fid("bmsMaxDischargeAllowKw").field to 3315,
                 fid("bmsMaxDischargeKw").field to 148,
                 fid("motorRpmRear").field to -370,
                 fid("compressorW").field to 576,
@@ -530,7 +534,7 @@ class NativeParsReaderBatchTest {
         )
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val data = NativeParsReader(auto, settings, helper, gate).fetch()
+        val data = NativeParsReader(auto, settings, helper, gate, kindMonitor()).fetch()
 
         assertNotNull("fetch() returned null", data)
         checkNotNull(data)
@@ -540,6 +544,7 @@ class NativeParsReaderBatchTest {
         assertEquals(499, data.hvVoltage)
         assertEquals(2.4, data.hvCurrent!!, 0.0001)
         assertEquals(173.2, data.bmsMaxChargeKw!!, 0.0001)
+        assertEquals(331.5, data.bmsMaxDischargeAllowKw!!, 0.0001)
         assertEquals(148, data.bmsMaxDischargeKw)
         assertEquals(-370, data.motorRpmRear)
         assertEquals(576, data.compressorW)
@@ -551,6 +556,54 @@ class NativeParsReaderBatchTest {
         assertNull(data.pedalAccel)
         assertNull(data.tyreTempRR)
         coVerify(exactly = 0) { auto.isAvailable() }
+    }
+
+    /** #186: a FWD car reports exactly -40 (scale floor) for the rear motor/inverter it does
+     *  not have; that is "no sensor", not a temperature. -39 is still a reading. */
+    @Test
+    fun `tech panel treats -40 motor and inverter temperature as absent`() = runTest {
+        val auto = mockk<AutoserviceClient>()
+        val settings = settingsWithCapacity()
+        val helper = mockk<HelperClient>()
+        coEvery {
+            helper.readBatch(any())
+        } returns mostlySentinelPairs(
+            mapOf(
+                fid("soc").field to java.lang.Float.floatToRawIntBits(43.0f),
+                fid("motorTempFront").field to -39,
+                fid("motorTempRear").field to -40,
+                fid("inverterTempFront").field to 12,
+                fid("inverterTempRear").field to -40,
+            ),
+        )
+        val gate = gateFixedAt(BatchMode.ACTIVE)
+
+        val data = checkNotNull(NativeParsReader(auto, settings, helper, gate, kindMonitor()).fetch())
+
+        assertEquals(-39, data.motorTempFront)
+        assertEquals(12, data.inverterTempFront)
+        assertNull(data.motorTempRear)
+        assertNull(data.inverterTempRear)
+    }
+
+    /**
+     * Hybrid dump 2026-10-04: the rear inverter fid answers 202 parked at 9 °C outside. That is
+     * outside the envelope a temperature can be in, so the snapshot holds null («—»), while the
+     * rear motor's real 12 °C passes. The remaining-energy fid's flat 0.0 reaches the snapshot
+     * as read; whether it is a reading is the screen's call, it needs the SoC beside it.
+     */
+    @Test
+    fun `hybrid dump drops the 202 degree inverter and keeps the real readings`() = runTest {
+        val data = HybridTechFixture.snapshot()
+
+        assertEquals(39, data.soc)
+        assertEquals(12, data.motorTempRear)
+        assertNull(data.motorTempFront)
+        assertNull(data.inverterTempFront)
+        assertNull(data.inverterTempRear)
+        assertEquals(602, data.hvVoltage)
+        assertEquals(18360, data.insulationKohm)
+        assertEquals(0.0, data.batteryRemainKwh!!, 0.0)
     }
 
     /** A wrong-transact sentinel must null the field, and with no current there is no power. */
@@ -571,7 +624,7 @@ class NativeParsReaderBatchTest {
         )
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        val data = NativeParsReader(auto, settings, helper, gate).fetch()
+        val data = NativeParsReader(auto, settings, helper, gate, kindMonitor()).fetch()
 
         assertNotNull("fetch() returned null", data)
         checkNotNull(data)
@@ -581,7 +634,7 @@ class NativeParsReaderBatchTest {
         assertEquals(499, data.hvVoltage)
     }
 
-    /** One transaction for the whole map, tech fids included. */
+    /** One transaction for the whole map, tech fids included — and nothing beyond it. */
     @Test
     fun `batch carries every FidMap entry in a single readBatch call`() = runTest {
         val auto = mockk<AutoserviceClient>()
@@ -591,9 +644,120 @@ class NativeParsReaderBatchTest {
         coEvery { helper.readBatch(capture(items)) } returns allOkPairs()
         val gate = gateFixedAt(BatchMode.ACTIVE)
 
-        NativeParsReader(auto, settings, helper, gate).fetch()
+        NativeParsReader(auto, settings, helper, gate, kindMonitor()).fetch()
 
         coVerify(exactly = 1) { helper.readBatch(any()) }
+        // Every decoder indexes the reply by FidMap position, so the request is the map itself.
         assertEquals(FidMap.entries.size, items.captured.size)
+        assertEquals(
+            FidMap.entries.map { it.transact to it.fid },
+            items.captured.map { it.tx to it.fid },
+        )
+    }
+
+    /** The two backup plug signals are read like any other entry (#charging detector unchanged). */
+    @Test
+    fun `the charge connect candidates reach the snapshot`() = runTest {
+        val helper = mockk<HelperClient>()
+        coEvery { helper.readBatch(any()) } returns mostlySentinelPairs(
+            mapOf(
+                "soc" to java.lang.Float.floatToRawIntBits(43.0f),
+                "chargerConnectState" to 2,
+                "chargeConnectIndicator" to 1,
+            )
+        )
+
+        val data = NativeParsReader(
+            mockk<AutoserviceClient>(), settingsWithCapacity(), helper, gateFixedAt(BatchMode.ACTIVE), kindMonitor()
+        ).fetch()
+
+        assertEquals(2, data?.chargerConnectState)
+        assertEquals(1, data?.chargeConnectIndicator)
+    }
+
+    /**
+     * A pushed value and a polled value of the same fid must land on the same number: the push
+     * applier borrows FidMap's decoder and the shared guards, and this pins that they agree for
+     * every decoder family in the map.
+     */
+    @Test
+    fun `a pushed value decodes exactly as the polled one`() = runTest {
+        val cases = listOf(
+            Triple("gear", 4, { d: DiParsData -> d.gear as Any? }),                       // INT_ENUM
+            Triple("windowFL", 60, { d: DiParsData -> d.windowFL as Any? }),              // INT_PERCENT
+            Triple("acTemp", 22, { d: DiParsData -> d.acTemp as Any? }),                  // INT_TEMP_C
+            Triple("tirePressFL", 250, { d: DiParsData -> d.tirePressFL as Any? }),       // INT_KPA
+            Triple("power", 31, { d: DiParsData -> d.power as Any? }),                    // INT_RAW
+            Triple("mileage", 12345, { d: DiParsData -> d.mileage as Any? }),             // INT_SCALED
+            Triple("maxCellVoltage", 3900, { d: DiParsData -> d.maxCellVoltage as Any? }),
+            Triple("motorRpmFront", 4200, { d: DiParsData -> d.motorRpmFront as Any? }),  // ranged INT_RAW
+            Triple("soc", floatRaw(43.0f), { d: DiParsData -> d.soc as Any? }),           // FLOAT_PERCENT
+            Triple("speed", floatRaw(61.0f), { d: DiParsData -> d.speed as Any? }),       // FLOAT_KW
+            Triple("totalElecConsumption", floatRaw(5432.5f), { d: DiParsData -> d.totalElecConsumption as Any? }),
+            Triple("voltage12v", floatRaw(13.7f), { d: DiParsData -> d.voltage12v as Any? }),  // FLOAT_VOLT
+            Triple("hvCurrent", floatRaw(-12.5f), { d: DiParsData -> d.hvCurrent as Any? }),   // FLOAT_AMP
+        )
+        val helper = mockk<HelperClient>()
+        coEvery { helper.readBatch(any()) } returns mostlySentinelPairs(
+            cases.associate { (field, raw, _) -> field to raw }
+        )
+        val polled = checkNotNull(
+            NativeParsReader(
+                mockk<AutoserviceClient>(), settingsWithCapacity(), helper, gateFixedAt(BatchMode.ACTIVE), kindMonitor()
+            ).fetch()
+        )
+
+        for ((field, raw, read) in cases) {
+            val entry = fid(field)
+            val pushed = checkNotNull(
+                com.bydmate.app.data.push.FidPushApplier.apply(
+                    com.bydmate.app.data.remote.diParsData(),
+                    field,
+                    intValue = raw,
+                    doubleValue = if (entry.transact == 7) {
+                        java.lang.Float.intBitsToFloat(raw).toDouble()
+                    } else {
+                        0.0
+                    },
+                )
+            ) { "$field was not patched from push" }
+            assertEquals("$field disagrees between push and poll", read(polled), read(pushed))
+        }
+    }
+
+    /**
+     * The odometer's unit follows the address the resolver picked: on a firmware whose
+     * catalog moves that fid the raw word is whole km, not tenths (Song Plus).
+     */
+    @Test
+    fun `a catalog-resolved odometer is decoded with the catalog scale`() = runTest {
+        val catalog = FidCatalog.parse(
+            checkNotNull(javaClass.classLoader?.getResourceAsStream("fid-catalog-songplus.txt"))
+                .bufferedReader().readText()
+        )
+        val plausible = FidProbe { requests ->
+            requests.map { if (it.transact == 7) java.lang.Float.floatToRawIntBits(5.0f) else 5 }
+        }
+        val resolved = FidResolver.resolve(FidMap.all, catalog, plausible, "test").table
+        assertEquals(FidResolution.CATALOG, resolved.notes.first { it.field == "mileage" }.outcome)
+        FidAddresses.install(resolved)
+
+        val helper = mockk<HelperClient>()
+        coEvery { helper.readBatch(any()) } returns mostlySentinelPairs(
+            mapOf(
+                "mileage" to 86472,
+                fid("soc").field to java.lang.Float.floatToRawIntBits(41.0f),
+            )
+        )
+        val reader = NativeParsReader(
+            mockk<AutoserviceClient>(), settingsWithCapacity(), helper, gateFixedAt(BatchMode.ACTIVE), kindMonitor()
+        )
+
+        val data = reader.fetch()
+        assertEquals(86472.0, data!!.mileage!!, 0.001)
+    }
+
+    @After fun restoreConstants() {
+        FidAddresses.resetToConstants()
     }
 }

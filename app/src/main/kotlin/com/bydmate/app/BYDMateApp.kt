@@ -20,9 +20,14 @@ import com.bydmate.app.data.local.HistoryImporter
 import com.bydmate.app.data.local.LocalePreferences
 import com.bydmate.app.data.local.decideLanguage
 import com.bydmate.app.data.automation.DriveModeRuleMigration
+import com.bydmate.app.data.automation.PowerStateRuleMigration
+import com.bydmate.app.data.automation.TrunkRuleMigration
 import com.bydmate.app.data.local.dao.ChargeDao
 import com.bydmate.app.data.remote.InsightsManager
 import com.bydmate.app.data.repository.SettingsRepository
+import com.bydmate.app.diagnostics.Trace
+import com.bydmate.app.diagnostics.TraceArea
+import com.bydmate.app.diagnostics.TraceJournal
 import com.bydmate.app.ui.widget.WidgetController
 import com.bydmate.app.ui.widget.WidgetPreferences
 import com.bydmate.app.util.CrashLog
@@ -53,6 +58,9 @@ class BYDMateApp : Application(), Configuration.Provider {
     @Inject lateinit var splitOverlayController: com.bydmate.app.split.SplitOverlayController
     @Inject lateinit var driveModeRuleMigration: DriveModeRuleMigration
     @Inject lateinit var defaultRulesSeeder: com.bydmate.app.data.automation.DefaultRulesSeeder
+    @Inject lateinit var trunkRuleMigration: TrunkRuleMigration
+    @Inject lateinit var powerStateRuleMigration: PowerStateRuleMigration
+    @Inject lateinit var traceJournal: TraceJournal
 
     /**
      * Nothing launched here may take the process down. A SupervisorJob alone does not do that:
@@ -74,6 +82,10 @@ class BYDMateApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        Trace.install(traceJournal)
+        Trace.event(TraceArea.APP, "start", "version" to BuildConfig.VERSION_CODE, "name" to BuildConfig.VERSION_NAME)
+        // Rarely runs on Android (a killed process gets no hooks), but costs nothing when it does.
+        Runtime.getRuntime().addShutdownHook(Thread { traceJournal.flushBlocking(TRACE_FLUSH_MS) })
         // Navigator phrase tables (assets/navi/phrases): language packs for the HUD maneuver parser.
         com.bydmate.app.navdata.NavPhraseTables.ensureLoaded(this)
         // Allow in-process ServiceManager.getService() on Android 9+ to reach the helper
@@ -103,6 +115,10 @@ class BYDMateApp : Application(), Configuration.Provider {
                 // builds. One-shot, gated by its own flag.
                 settingsRepository.migrateDataSourceIfNeeded()
             }
+            startupStep("tg report odometer") {
+                // 3.19.1: the odometer joins a power-off report choice saved before it existed. One-shot.
+                settingsRepository.addTgReportOdometerOnce()
+            }
             startupStep("insight cache v2") {
                 if (!settingsRepository.isInsightCacheV2MigrationDone()) {
                     insightsManager.migrateLegacyCache()
@@ -120,6 +136,10 @@ class BYDMateApp : Application(), Configuration.Provider {
             }
             // One-shot: revive DriveMode rules saved against the old "0" = NORMAL code.
             startupStep("drive mode rules") { driveModeRuleMigration.runOnce() }
+            // One-shot: revive Trunk rules saved against the old "0" = closed code.
+            startupStep("trunk rules") { trunkRuleMigration.runOnce() }
+            // One-shot: move rules off the removed PowerState condition.
+            startupStep("power state rules") { powerStateRuleMigration.runOnce() }
             // One-shot: the two start-up rules almost every car wants, so an update never
             // means adding them again by hand. Edits and deletions afterwards are respected.
             startupStep("default rules") { defaultRulesSeeder.runOnce() }
@@ -133,6 +153,12 @@ class BYDMateApp : Application(), Configuration.Provider {
             }
         }
         scheduleDataThinning()
+        appScope.launch {
+            com.bydmate.app.service.UpdateApkCleanup.run(
+                android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
+                BuildConfig.VERSION_NAME,
+            )
+        }
         registerActivityLifecycleCallbacks(WidgetLifecycleCallbacks(this, splitOverlayController))
         // Start split-screen overlay observers (mirrors WidgetController init pattern).
         splitOverlayController.start(appScope)
@@ -174,6 +200,9 @@ class BYDMateApp : Application(), Configuration.Provider {
             // so the platform kills/restarts the process the normal way.
             try {
                 CrashLog.record(this, throwable)
+                // The events right before the crash are the ones that explain it: save them now.
+                Trace.event(TraceArea.APP, "crash", "error" to throwable.javaClass.simpleName)
+                traceJournal.flushBlocking(TRACE_FLUSH_MS)
             } finally {
                 previousHandler?.uncaughtException(thread, throwable)
             }
@@ -225,6 +254,7 @@ class BYDMateApp : Application(), Configuration.Provider {
 
         override fun onActivityResumed(activity: Activity) {
             if (!counter.onResumed(activity.javaClass)) return
+            Trace.event(TraceArea.USER, "app-open")
             // User opened BYDMate → widget hides; also clear the
             // "hidden until app launch" long-press flag so it reappears
             // next time the app goes to background.
@@ -236,11 +266,14 @@ class BYDMateApp : Application(), Configuration.Provider {
 
         override fun onActivityPaused(activity: Activity) {
             if (!counter.onPaused(activity.javaClass)) return
+            Trace.event(TraceArea.USER, "app-background")
+            // A backgrounded process is the one the system kills first.
+            Trace.flush()
             WidgetController.setAppForegrounded(false)
             splitOverlay.setOwnAppForegrounded(false)
             val prefs = WidgetPreferences(app)
             if (prefs.isEnabled() && Settings.canDrawOverlays(app)) {
-                WidgetController.attach(app)
+                WidgetController.attach(app, "app_backgrounded")
             }
         }
 
@@ -250,6 +283,9 @@ class BYDMateApp : Application(), Configuration.Provider {
     }
 
     companion object {
+        // How long a dying process may wait for the trace to reach the disk.
+        private const val TRACE_FLUSH_MS = 500L
+
         /** 高德地图道路瓦片 — 中国大陆可用，免 API Key。
          *  查询参数风格 (?x=&y=&z=) 需要重写 getTileURLString。 */
         val AmapTileSource = object : OnlineTileSourceBase(

@@ -8,6 +8,9 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
+import androidx.work.workDataOf
+import com.bydmate.app.diagnostics.Trace
+import com.bydmate.app.diagnostics.TraceArea
 
 /**
  * Auto-start on boot — uses WorkManager (like BydConnect).
@@ -36,6 +39,9 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val validActions = setOf(
             Intent.ACTION_BOOT_COMPLETED,
+            // An APK update kills the app and sends only this: without it the service stayed down
+            // until the next boot or unlock.
+            Intent.ACTION_MY_PACKAGE_REPLACED,
             "android.intent.action.QUICKBOOT_POWERON",
             "android.intent.action.LOCKED_BOOT_COMPLETED",
             Intent.ACTION_USER_PRESENT,
@@ -45,6 +51,8 @@ class BootReceiver : BroadcastReceiver() {
 
         Log.i(TAG, "Boot/user event: ${intent.action}")
         ChainLog.append(context, "BootReceiver: ${intent.action}")
+        val action = AutostartTrace.actionName(intent.action)
+        Trace.event(TraceArea.APP, "boot-receiver", "action" to action, "service_running" to TrackingService.isRunning.value)
 
         // Skip USER_PRESENT if service is already running
         if (intent.action == Intent.ACTION_USER_PRESENT && TrackingService.isRunning.value) {
@@ -65,6 +73,7 @@ class BootReceiver : BroadcastReceiver() {
         try {
             val request = OneTimeWorkRequestBuilder<ServiceStartWorker>()
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .setInputData(workDataOf(AutostartTrace.KEY_WORKER_SOURCE to action))
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 ServiceStartWorker.WORK_NAME,
@@ -81,7 +90,7 @@ class BootReceiver : BroadcastReceiver() {
 
             // Last resort fallback: direct start
             try {
-                TrackingService.start(context)
+                TrackingService.start(context, AutostartTrace.directFallbackTrigger(intent.action))
                 updateBootMethod(context, "DirectFallback")
                 ChainLog.append(context, "DirectFallback OK")
                 Log.i(TAG, "Direct startForegroundService fallback OK")

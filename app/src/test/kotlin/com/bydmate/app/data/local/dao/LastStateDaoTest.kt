@@ -51,7 +51,7 @@ class LastStateDaoTest {
                 id = 1, ts = 2000L, soc = 75,
                 openTripId = 42L, tripStartTs = 1000L,
                 tripStartSoc = 80, tripStartMileage = 12345.6,
-                tripStartTotalElec = 499.5
+                tripStartTotalElec = 499.5, tripStartExteriorTemp = 10
             )
         )
         dao.clearOpenTrip()
@@ -61,12 +61,98 @@ class LastStateDaoTest {
         assertNull(row.tripStartSoc)
         assertNull(row.tripStartMileage)
         assertNull(row.tripStartTotalElec)
+        assertNull(row.tripStartExteriorTemp)
         assertEquals(75, row.soc) // unrelated fields untouched
     }
 
     @Test fun `openTrip stores trip_start_total_elec`() = runBlocking {
         dao.upsert(LastStateEntity(id = 1, ts = 1000L, soc = 80))
-        dao.openTrip(startTs = 1000L, startSoc = 80, startMileage = 100.0, startTotalElec = 499.5, now = 1000L)
+        dao.openTrip(
+            startTs = 1000L, startSoc = 80, startMileage = 100.0, startTotalElec = 499.5,
+            startExteriorTemp = null, now = 1000L,
+        )
         assertEquals(499.5, dao.getCurrent()!!.tripStartTotalElec!!, 0.001)
+    }
+
+    @Test fun `openTrip stores trip_start_exterior_temp`() = runBlocking {
+        dao.upsert(LastStateEntity(id = 1, ts = 1000L, soc = 80))
+        dao.openTrip(
+            startTs = 1000L, startSoc = 80, startMileage = 100.0, startTotalElec = null,
+            startExteriorTemp = -7, now = 1000L,
+        )
+        assertEquals(-7, dao.getCurrent()!!.tripStartExteriorTemp)
+    }
+
+    @Test fun `writeSnapshot after openTrip leaves the trip columns untouched`() = runBlocking {
+        dao.upsert(LastStateEntity(id = 1, ts = 1000L, soc = 80, mileage = 100.0))
+        dao.openTrip(
+            startTs = 1500L, startSoc = 80, startMileage = 100.0, startTotalElec = 500.0,
+            startExteriorTemp = 10, now = 1500L,
+        )
+        dao.writeSnapshot(
+            ts = 2000L, soc = 78, mileage = 102.0, totalElec = 501.0, ignition = 2, energydataAvailable = 1,
+        )
+        val row = dao.getCurrent()!!
+        assertEquals(1500L, row.openTripId)
+        assertEquals(1500L, row.tripStartTs)
+        assertEquals(80, row.tripStartSoc)
+        assertEquals(100.0, row.tripStartMileage)
+        assertEquals(500.0, row.tripStartTotalElec)
+        assertEquals(10, row.tripStartExteriorTemp)
+        // the snapshot columns still got the new tick's values
+        assertEquals(78, row.soc)
+        assertEquals(102.0, row.mileage)
+        assertEquals(501.0, row.totalElec)
+        assertEquals(2, row.ignition)
+    }
+
+    @Test fun `writeSnapshot creates the row when it is missing`() = runBlocking {
+        assertNull(dao.getCurrent())
+        dao.writeSnapshot(
+            ts = 1000L, soc = 80, mileage = 100.0, totalElec = 500.0, ignition = 2, energydataAvailable = 1,
+        )
+        val row = dao.getCurrent()!!
+        assertEquals(80, row.soc)
+        assertEquals(100.0, row.mileage)
+        assertEquals(500.0, row.totalElec)
+        assertEquals(2, row.ignition)
+        assertNull(row.openTripId)
+    }
+
+    @Test fun `clearOpenTrip is not undone by a later snapshot write`() = runBlocking {
+        dao.upsert(LastStateEntity(id = 1, ts = 1000L, soc = 80, mileage = 100.0))
+        dao.openTrip(
+            startTs = 1500L, startSoc = 80, startMileage = 100.0, startTotalElec = 500.0,
+            startExteriorTemp = 10, now = 1500L,
+        )
+        dao.clearOpenTrip()
+        dao.writeSnapshot(
+            ts = 2000L, soc = 78, mileage = 102.0, totalElec = 501.0, ignition = 0, energydataAvailable = 1,
+        )
+        val row = dao.getCurrent()!!
+        assertNull(row.openTripId)
+        assertNull(row.tripStartTs)
+        assertNull(row.tripStartExteriorTemp)
+        assertEquals(78, row.soc) // the snapshot write still applied
+    }
+
+    @Test fun `setLastOn keeps the last ON tick through snapshot writes and a trip close`() = runBlocking {
+        dao.upsert(LastStateEntity(id = 1, ts = 1000L, soc = 60, openTripId = 900L, tripStartTs = 900L))
+        dao.setLastOn(1500L, 305.2, 3850.0, 1040.0)
+        dao.writeSnapshot(
+            ts = 2000L, soc = 60, mileage = 1040.0, totalElec = null, ignition = 0, energydataAvailable = 0,
+        )
+        dao.clearOpenTrip()
+
+        val row = dao.getCurrent()!!
+        assertEquals(2000L, row.ts)
+        assertEquals(1500L, row.onTs)
+        assertEquals(305.2, row.onFuelTotal!!, 1e-9)
+        assertEquals(3850.0, row.onMileageHev!!, 1e-9)
+        assertEquals(1040.0, row.onMileage!!, 1e-9)
+
+        dao.setLastOn(2500L, null, 3851.0, 1041.0)
+        assertEquals(2500L, dao.getCurrent()!!.onTs)
+        assertNull("a counter the ON tick missed is stored as missing", dao.getCurrent()!!.onFuelTotal)
     }
 }

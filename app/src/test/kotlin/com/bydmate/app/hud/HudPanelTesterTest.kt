@@ -53,7 +53,7 @@ class HudPanelTesterTest {
         routeActive: () -> Boolean = { false },
     ) = HudPanelTester(helper, transliteratePref = { false }, routeActive = routeActive).also {
         it.scope = scope
-        it.sanitizer = HudTextSanitizer(null)
+        it.sanitizer = HudPanelTextSanitizer(null)
     }
 
     // ---------------------------------------------------------------- raw FID rows
@@ -361,7 +361,7 @@ class HudPanelTesterTest {
     }
 
     @Test fun `the card shows what the panel was handed, raw or Latinised`() {
-        val plain = HudTextSanitizer(null)
+        val plain = HudPanelTextSanitizer(null)
         assertEquals("[RAW] Broadway", HudPanelTester.displayStreet("Broadway", false, plain))
         assertEquals("Broadway", HudPanelTester.displayStreet("Broadway", true, plain))
         assertEquals(

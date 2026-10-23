@@ -20,8 +20,11 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.bydmate.app.MainActivity
 import com.bydmate.app.cluster.ClusterEntryPoint
+import com.bydmate.app.data.camera.CameraStateMonitor
 import com.bydmate.app.data.local.LocalePreferences
 import com.bydmate.app.data.vehicle.HelperBootstrap
+import com.bydmate.app.diagnostics.Trace
+import com.bydmate.app.diagnostics.TraceArea
 import com.bydmate.app.service.TrackingService
 import com.bydmate.app.split.SplitOverlayController
 import com.bydmate.app.split.SplitSessionManager
@@ -31,9 +34,12 @@ import com.bydmate.app.ui.overlay.OverlayLifecycleOwner
 import com.bydmate.app.ui.overlay.OverlayNotificationManager
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
+import com.bydmate.app.data.nativestack.VehicleKind
+import com.bydmate.app.data.nativestack.VehicleKindMonitor
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -45,6 +51,7 @@ import com.bydmate.app.domain.calculator.PowerHistory
 import com.bydmate.app.domain.calculator.PowerSample
 import com.bydmate.app.domain.calculator.Trend
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
@@ -58,6 +65,39 @@ interface SplitWidgetEntryPoint {
     fun splitSessionManager(): SplitSessionManager
     fun splitOverlayController(): SplitOverlayController
     fun helperBootstrap(): HelperBootstrap
+    fun vehicleKindMonitor(): VehicleKindMonitor
+}
+
+/**
+ * DM-i hybrid (#184) inputs of the widget: the car type, the two fuel slots and the car's own
+ * range on battery, which replaces our SOC-based range on a hybrid.
+ */
+private data class WidgetHybrid(
+    val kind: VehicleKind = VehicleKind.UNKNOWN,
+    val fuelPercent: Int? = null,
+    val fuelRangeKm: Int? = null,
+    val evRangeKm: Int? = null,
+) {
+    fun rangeKm(estimatedRangeKm: Double?): Double? =
+        if (kind == VehicleKind.HYBRID) evRangeKm?.toDouble() else estimatedRangeKm
+
+    fun withData(data: com.bydmate.app.data.remote.DiParsData?): WidgetHybrid =
+        copy(fuelPercent = data?.fuelPercent, fuelRangeKm = data?.fuelRangeKm, evRangeKm = data?.evRangeKm)
+}
+
+/** Car type through the split entry point; on failure the widget simply stays EV. */
+@Suppress("TooGenericExceptionCaught") // runs on the widget scope, which has no exception handler
+private suspend fun collectVehicleKind(appCtx: Context, onKind: (VehicleKind) -> Unit) {
+    try {
+        EntryPointAccessors.fromApplication(appCtx, SplitWidgetEntryPoint::class.java)
+            .vehicleKindMonitor()
+            .kind
+            .collect { onKind(it) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w("WidgetController", "vehicle kind subscription failed: ${e.message}")
+    }
 }
 
 /**
@@ -82,9 +122,14 @@ object WidgetController {
     private const val DOUBLE_TAP_MS = 250L
     private const val BUTTON_DP = WidgetButtonLayout.BUTTON_DP
     private const val GAP_DP = WidgetButtonLayout.GAP_DP
+    private const val SUPPRESSED_PREFIX = "suppressed:"
 
     @Volatile private var appForegrounded: Boolean = false
     @Volatile private var previewMode: Boolean = false
+
+    /** Overlays of our own that currently cover the widget (the blind-spot camera PiP today).
+     *  Non-empty = the widget is hidden for the duration, without touching its preference. */
+    internal val suppressReasons = MutableStateFlow<Set<String>>(emptySet())
 
     private var wm: WindowManager? = null
     private var widgetView: ComposeView? = null
@@ -106,6 +151,9 @@ object WidgetController {
     private lateinit var prefsHideOnYoutubeFlow: kotlinx.coroutines.flow.Flow<Boolean>
     private lateinit var prefsHideInAppsFlow: kotlinx.coroutines.flow.Flow<Set<String>>
     private lateinit var prefsPowerGraphFlow: kotlinx.coroutines.flow.Flow<Boolean>
+    private lateinit var prefsHomeOnlyFlow: kotlinx.coroutines.flow.Flow<Boolean>
+    // Launcher packages for the "only on the home screen" rule; null until resolved non-empty.
+    @Volatile private var resolvedHomePackages: Set<String>? = null
 
     // Compose state for the widget data
     private var socState = mutableStateOf<Int?>(null)
@@ -117,6 +165,7 @@ object WidgetController {
     private var insideTempState = mutableStateOf<Int?>(null)
     private var batTempState = mutableStateOf<Int?>(null)
     private var voltsState = mutableStateOf<Double?>(null)
+    private var hybridState = mutableStateOf(WidgetHybrid())
     private var alphaState = mutableStateOf(1.0f)
     private var scaleState = mutableStateOf(1.0f)
     private var trashActive = mutableStateOf(false)
@@ -137,7 +186,7 @@ object WidgetController {
     private var rootContainer: android.widget.FrameLayout? = null
 
     @Synchronized
-    fun attach(context: Context) {
+    fun attach(context: Context, reason: String = "unspecified") {
         if (appForegrounded && !previewMode) return  // race-guard, but preview wins
         if (widgetView != null) return               // already attached
 
@@ -161,6 +210,7 @@ object WidgetController {
         prefsHideOnYoutubeFlow = prefs.hideOnYoutubeFlow()
         prefsHideInAppsFlow = prefs.hideInAppsFlow()
         prefsPowerGraphFlow = prefs.powerGraphFlow()
+        prefsHomeOnlyFlow = prefs.homeOnlyFlow()
         val metrics = viewCtx.resources.displayMetrics
 
         val initialScale = prefs.getScale()
@@ -203,9 +253,10 @@ object WidgetController {
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             setContent {
+                val hybrid = hybridState.value
                 FloatingWidgetView(
                     soc = socState.value,
-                    rangeKm = rangeState.value,
+                    rangeKm = hybrid.rangeKm(rangeState.value),
                     consumption = consumptionState.value,
                     trend = trendState.value,
                     sessionStartedAt = sessionStartedAtState.value,
@@ -218,6 +269,9 @@ object WidgetController {
                     listening = listeningState.value,
                     powerGraph = powerGraphState.value,
                     powerSamples = powerSamplesState.value,
+                    kind = hybrid.kind,
+                    fuelPercent = hybrid.fuelPercent,
+                    fuelRangeKm = hybrid.fuelRangeKm,
                 )
             }
             setOnTouchListener(WidgetTouchListener(viewCtx, prefs, metrics))
@@ -272,17 +326,33 @@ object WidgetController {
             windowManager.addView(root, params)
         } catch (e: Exception) {
             Log.e(TAG, "addView failed: ${e.message}")
-            detach()
+            detach("addview_failed")
             return
         }
 
+        Log.i(TAG, "widget: attached ($reason)")
+        Trace.event(TraceArea.WIDGET, "attach", "reason" to reason)
         startDataSubscription(appCtx)
     }
 
     @Synchronized
     fun setAppForegrounded(foreground: Boolean) {
         appForegrounded = foreground
-        if (foreground && !previewMode) detach()
+        if (foreground && !previewMode) detach("app_foreground")
+    }
+
+    /**
+     * Hides the widget while [reason] is on screen and restores it on release. Nothing is
+     * persisted and no preference is touched, so the widget comes back only if the user's own
+     * enabled/visibility rules still ask for it.
+     */
+    fun setSuppressed(reason: String, on: Boolean) {
+        val before = suppressReasons.value
+        val after = if (on) before + reason else before - reason
+        if (after == before) return
+        suppressReasons.value = after
+        if (on) Log.i(TAG, "widget: suppressed ($reason)")
+        else Log.i(TAG, "widget: restored ($reason closed)")
     }
 
     /**
@@ -303,14 +373,15 @@ object WidgetController {
             if (prefs.isEnabled() &&
                 widgetView == null &&
                 android.provider.Settings.canDrawOverlays(appCtx)
-            ) attach(appCtx)
+            ) attach(appCtx, "preview")
         } else if (appForegrounded) {
-            detach()
+            detach("preview_end")
         }
     }
 
     @Synchronized
-    fun detach() {
+    fun detach(reason: String = "unspecified") {
+        val wasAttached = widgetView != null
         dataJob?.cancel()
         dataJob = null
         dataScope?.cancel()
@@ -337,20 +408,34 @@ object WidgetController {
         expandedState.value = false
         listeningState.value = false
         wm = null
+        if (wasAttached) {
+            Log.i(TAG, "widget: detached ($reason)")
+            Trace.event(TraceArea.WIDGET, "detach", "reason" to reason)
+        }
     }
 
     private fun startDataSubscription(appCtx: Context) {
         val scope = CoroutineScope(Dispatchers.Main)
         dataScope = scope
-        // Camera surface always hides the widget; YouTube hides it only when the user
-        // opted in through the Settings toggle, and so does any app in the user-picked list.
+        // Camera, car settings and (opt-in) YouTube/hide-list hide the widget with their own
+        // named reason; our own overlays (blind-spot camera PiP) are ORed on top under a
+        // "suppressed:<reasons>" label. combine(...) is typed only up to 5 flows, so the
+        // suppression is folded in around the five inputs above.
         val hideFlow = combine(
-            TrackingService.cameraActive,
-            TrackingService.youtubeForeground,
-            prefsHideOnYoutubeFlow,
-            TrackingService.foregroundPackage,
-            prefsHideInAppsFlow,
-        ) { cam, yt, hideYt, fgPkg, hideApps -> shouldHideOverlay(cam, yt, hideYt, fgPkg, hideApps) }
+            combine(
+                TrackingService.cameraActive,
+                TrackingService.youtubeForeground,
+                prefsHideOnYoutubeFlow,
+                TrackingService.foregroundPackage,
+                combine(prefsHideInAppsFlow, prefsHomeOnlyFlow, ::Pair),
+            ) { cam, yt, hideYt, fgPkg, (hideApps, homeOnly) ->
+                val home = if (homeOnly) homePackagesForWidget(appCtx) else emptySet()
+                hideReason(cam, yt, hideYt, fgPkg, hideApps, homeOnly, home)
+            },
+            suppressReasons,
+        ) { reason, reasons ->
+            reason ?: reasons.takeIf { it.isNotEmpty() }?.let { SUPPRESSED_PREFIX + it.joinToString(",") }
+        }
         // Stock combine(...) is typed only up to 5 flows — bundle consumption +
         // alpha + scale + hideOverlay into one UiBundle so we stay under the limit.
         val uiFlow = combine(
@@ -359,6 +444,7 @@ object WidgetController {
             prefsScaleFlow,
             hideFlow,
         ) { c, a, s, hide -> UiBundle(c, a, s, hide) }
+        var lastHideReason: String? = null
         dataJob = scope.launch {
             combine(
                 TrackingService.lastData,
@@ -383,6 +469,7 @@ object WidgetController {
                 insideTempState.value = snap.data?.insideTemp
                 batTempState.value = snap.data?.avgBatTemp
                 voltsState.value = snap.data?.voltage12v
+                hybridState.value = hybridState.value.withData(snap.data)
                 sessionStartedAtState.value = snap.sessionStartedAt
                 tripDistanceKmState.value = snap.tripDistanceKm
                 consumptionState.value = snap.consumption.displayValue
@@ -394,14 +481,20 @@ object WidgetController {
                     applyScaleChange(snap.scale)
                 }
 
-                // Hide widget while the BYD camera surface is up (com.byd.avc) or, when the
-                // toggle is on, while a YouTube client is foreground.
-                val hide = snap.hideOverlay
+                // Hide the widget while the BYD camera or car-settings surface is up, or, when
+                // opted in, over YouTube/a listed app, or one of our own overlays covers it.
+                val reason = snap.hideOverlay
+                if (reason != lastHideReason) {
+                    if (reason != null) Log.i(TAG, "widget: hidden ($reason)")
+                    else Log.i(TAG, "widget: shown (was $lastHideReason)")
+                    traceVisibility(reason, lastHideReason)
+                    lastHideReason = reason
+                }
                 // Hide the entire root (panel + button layer) so the buttons
                 // don't stay drawn over the camera view when the panel is expanded.
                 // Re-show is symmetric: same view, VISIBLE.
-                rootContainer?.visibility = if (hide) View.GONE else View.VISIBLE
-                if (hide) hideTrashZone()
+                rootContainer?.visibility = if (reason != null) View.GONE else View.VISIBLE
+                if (reason != null) hideTrashZone()
             }
         }
 
@@ -420,6 +513,7 @@ object WidgetController {
                 }
             }
         }
+        scope.launch { collectVehicleKind(appCtx) { hybridState.value = hybridState.value.copy(kind = it) } }
 
         // Voice-session listening indicator (Wave B): reuses the existing ClusterEntryPoint Hilt
         // bridge (already used by SteeringWheelKeyService) to reach the @Singleton VoiceController
@@ -430,6 +524,9 @@ object WidgetController {
                     .fromApplication(appCtx, ClusterEntryPoint::class.java)
                     .voiceController()
                 voiceController.listening.collect { listeningState.value = it }
+            } catch (e: CancellationException) {
+                // The widget was taken down: the collector is cancelled by design, not broken.
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "listening subscription failed: ${e.message}")
             }
@@ -483,14 +580,14 @@ object WidgetController {
         val consumption: ConsumptionState,
         val alpha: Float,
         val scale: Float,
-        val hideOverlay: Boolean,
+        val hideOverlay: String?,
     )
 
     private data class UiBundle(
         val consumption: ConsumptionState,
         val alpha: Float,
         val scale: Float,
-        val hideOverlay: Boolean,
+        val hideOverlay: String?,
     )
 
     // --- Button panel expand/collapse ---
@@ -687,7 +784,7 @@ object WidgetController {
 
     @Synchronized
     fun relocale(appCtx: Context) {
-        if (widgetView != null) detach()
+        if (widgetView != null) detach("relocale")
         // C-5: always invoke via caller-supplied appCtx, not widgetView?.context.
         splitOverlayRelocaleAction(appCtx)
     }
@@ -706,20 +803,87 @@ object WidgetController {
     private fun dpFromMetrics(metrics: DisplayMetrics, dp: Int): Int =
         (dp * metrics.density).toInt()
 
+    // Official BYD car-settings app: some of its screens sit under the widget, so it
+    // always hides it while foreground, no preference involved (like the camera).
+    // Package not yet confirmed on every car; extend if another variant surfaces.
+    private val CAR_SETTINGS_PACKAGES = setOf("com.byd.carsettings")
+
     /**
-     * Pure visibility decision, unit-tested: camera always hides, YouTube only by opt-in,
-     * plus any package the user put on the "hide in these apps" list.
+     * Packages that answer the HOME intent (the car's launcher differs per model, so it is never
+     * hardcoded), plus our own package: the widget never shows over BYDMate except in the settings
+     * preview, and the home-only rule must not take that preview away. Empty when nothing
+     * resolved, which keeps the widget visible; an empty result is retried on the next call.
      */
+    internal fun homePackagesForWidget(context: Context): Set<String> {
+        resolvedHomePackages?.let { return it }
+        val found = queryHomePackages(context)
+        if (found.isEmpty()) {
+            Log.w(TAG, "home packages: none resolved, home-only rule keeps the widget visible")
+            return emptySet()
+        }
+        Log.i(TAG, "home packages: $found")
+        Trace.event(TraceArea.WIDGET, "home-packages", "pkgs" to found.joinToString(","))
+        return (found + context.packageName).also { resolvedHomePackages = it }
+    }
+
+    /** Raw HOME-intent query, no caching or tracing; also read by the diagnostics dump. */
+    fun queryHomePackages(context: Context): Set<String> = try {
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val all = context.packageManager.queryIntentActivities(intent, 0)
+        // AOSP Settings registers FallbackHome (priority -1000) as a HOME activity; it is not a
+        // launcher, so skip negative-priority entries unless nothing else is left.
+        (all.filter { it.priority >= 0 }.ifEmpty { all })
+            .mapNotNull { it.activityInfo?.packageName }
+            .toSet()
+    } catch (e: Exception) {
+        Log.w(TAG, "home packages: query failed: ${e.message}")
+        emptySet()
+    }
+
+    /**
+     * Pure visibility decision, unit-tested: camera and car settings always hide, YouTube
+     * only by opt-in, plus any package the user put on the "hide in these apps" list.
+     * With [homeOnly] on, any foreground app outside [homePackages] hides it too; an unknown
+     * foreground or an empty (unresolved) launcher set keeps it visible.
+     * Returns the reason that fired, or null when the widget should stay visible.
+     */
+    @Suppress("LongParameterList") // one flat input per visibility rule, so tests pin each one
+    fun hideReason(
+        cameraActive: Boolean,
+        youtubeForeground: Boolean,
+        hideOnYoutube: Boolean,
+        foregroundPkg: String?,
+        hideInApps: Set<String>,
+        homeOnly: Boolean = false,
+        homePackages: Set<String> = emptySet(),
+    ): String? = when {
+        cameraActive -> "camera"
+        foregroundPkg != null && foregroundPkg in CAR_SETTINGS_PACKAGES -> "car_settings"
+        youtubeForeground && hideOnYoutube -> "youtube"
+        foregroundPkg != null && foregroundPkg in hideInApps -> "app:$foregroundPkg"
+        homeOnly && foregroundPkg != null && homePackages.isNotEmpty() &&
+            foregroundPkg !in homePackages -> "not_home:$foregroundPkg"
+        else -> null
+    }
+
+    /** Trace event of a hide ([reason]) or show (was [previous]). Every reason but our own
+     *  overlays ("suppressed:...") follows from what took the screen, so the last screen change
+     *  is its cause. */
+    internal fun traceVisibility(reason: String?, previous: String?): Long {
+        val fromScreen = (reason ?: previous)?.startsWith(SUPPRESSED_PREFIX) == false
+        val cause = CameraStateMonitor.lastForegroundTraceId.takeIf { fromScreen }
+        return if (reason != null) Trace.event(TraceArea.WIDGET, "hide", "reason" to reason, by = cause)
+        else Trace.event(TraceArea.WIDGET, "show", "was" to previous, by = cause)
+    }
+
+    /** Boolean wrapper over [hideReason] for callers that only need the yes/no answer. */
     fun shouldHideOverlay(
         cameraActive: Boolean,
         youtubeForeground: Boolean,
         hideOnYoutube: Boolean,
         foregroundPkg: String?,
         hideInApps: Set<String>,
-    ): Boolean =
-        cameraActive ||
-            (youtubeForeground && hideOnYoutube) ||
-            (foregroundPkg != null && foregroundPkg in hideInApps)
+    ): Boolean = hideReason(cameraActive, youtubeForeground, hideOnYoutube, foregroundPkg, hideInApps) != null
 
     /**
      * Split-mode left tap, as an inverse toggle: no session → restore the last pair
@@ -813,7 +977,7 @@ object WidgetController {
                     val runnable = Runnable {
                         if (dragging) return@Runnable
                         prefs.setHiddenUntilAppLaunch(true)
-                        detach()
+                        detach("long_press_hide")
                         try {
                             android.widget.Toast.makeText(
                                 context,
@@ -927,7 +1091,7 @@ object WidgetController {
                         // End drag
                         if (trashActive.value) {
                             prefs.setEnabled(false)
-                            detach()
+                            detach("disabled")
                             return true
                         } else {
                             collapsedX = params.x

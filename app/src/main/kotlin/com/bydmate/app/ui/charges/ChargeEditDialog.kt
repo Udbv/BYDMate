@@ -47,6 +47,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.bydmate.app.R
 import com.bydmate.app.data.local.entity.ChargeEntity
+import com.bydmate.app.domain.cost.TariffSchedule
 import com.bydmate.app.ui.theme.AccentGreen
 import com.bydmate.app.ui.theme.CardBorder
 import com.bydmate.app.ui.theme.CardSurface
@@ -59,23 +60,25 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import com.bydmate.app.ui.theme.ScaledDialogContent
 
 /**
  * Edit dialog for a charge row (long-press → bottom sheet → "Изменить").
  *
- * Inputs: type (AC/DC), socStart, socEnd, tariff per kWh.
+ * Inputs: type (AC/DC), socStart, socEnd, meter reading, tariff per kWh.
  * kWh is derived: when both SOC values are present and socEnd > socStart, it is
  * computed as (socEnd - socStart) / 100 × batteryCapacityKwh and rendered read-only.
  * If SOC is incomplete (e.g. DC station with only a kWh readout), kWh becomes
  * an editable manual input as a fallback.
- * Cost = finalKwh × tariff, displayed as a computed preview.
+ * Cost = paid energy × tariff, where paid energy is the meter reading when one is typed
+ * in, otherwise the pack intake grossed up by the period's losses. Touching the tariff or
+ * the meter marks the row as priced by hand, and a recalculation then skips it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChargeEditDialog(
     charge: ChargeEntity,
-    homeTariff: Double,
-    dcTariff: Double,
+    schedule: TariffSchedule,
     batteryCapacityKwh: Double,
     currencySymbol: String,
     onDismiss: () -> Unit,
@@ -87,245 +90,304 @@ fun ChargeEditDialog(
     var kwhText by remember(charge.id) {
         mutableStateOf(charge.kwhCharged?.let { "%.2f".format(it) } ?: "")
     }
-    // tariff_per_kwh = cost / kwh (existing record), or settings default by type
-    var tariffText by remember(charge.id) {
-        val existing = if (charge.cost != null && (charge.kwhCharged ?: 0.0) > 0.01)
-            charge.cost / charge.kwhCharged!! else null
-        val initial = existing ?: if (type == "DC") dcTariff else homeTariff
-        mutableStateOf("%.3f".format(initial))
+    var meterText by remember(charge.id) {
+        mutableStateOf(charge.meterKwh?.let { "%.2f".format(it) } ?: "")
     }
-
-    // Auto-fill tariff on AC↔DC switch — only when user hasn't manually edited the field
-    var tariffEditedByUser by remember(charge.id) { mutableStateOf(false) }
-    LaunchedEffect(type) {
-        if (!tariffEditedByUser) {
-            val auto = if (type == "DC") dcTariff else homeTariff
-            tariffText = "%.3f".format(auto)
-        }
-    }
-
     var startTs by remember(charge.id) { mutableStateOf(charge.startTs) }
     var showDatePicker by remember(charge.id) { mutableStateOf(false) }
+
+    // Rates follow the period covering the edited date, so backdating a session re-reads
+    // the price that was in force then.
+    val period = schedule.periodAt(startTs)
+    val periodRate = period?.let { TariffSchedule.rateFor(it, type) } ?: 0.0
+    val lossPct = period?.let { TariffSchedule.lossPctFor(it, type) } ?: 0.0
+
+    // tariff_per_kwh = cost / paid energy (hand-priced record), or the period rate
+    var tariffText by remember(charge.id) {
+        val paidKwh = period?.let {
+            TariffSchedule.energyPaid(it, charge.type, charge.kwhCharged, charge.meterKwh)
+        }
+        val existing = if (charge.costManual && charge.cost != null && (paidKwh ?: 0.0) > 0.01)
+            charge.cost / paidKwh!! else null
+        mutableStateOf("%.3f".format(existing ?: periodRate))
+    }
+    var costManual by remember(charge.id) { mutableStateOf(charge.costManual) }
+
+    // Auto-fill tariff on AC↔DC switch and on a date change — only while the row still
+    // follows its period.
+    LaunchedEffect(type, startTs) {
+        if (!costManual) tariffText = "%.3f".format(periodRate)
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) { onDismiss() },
-            contentAlignment = Alignment.CenterStart
-        ) {
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = CardSurface),
-                border = BorderStroke(1.dp, CardBorder),
+        ScaledDialogContent {
+            Box(
                 modifier = Modifier
-                    .padding(start = 22.dp, end = 16.dp)
-                    .fillMaxWidth(0.5f)
+                    .fillMaxSize()
                     .clickable(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
-                    ) { /* absorb clicks so scrim dismissal doesn't fire — form has inputs */ }
+                    ) { onDismiss() },
+                contentAlignment = Alignment.CenterStart
             ) {
-                Column(
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = CardSurface),
+                    border = BorderStroke(1.dp, CardBorder),
                     modifier = Modifier
-                        .padding(20.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .padding(start = 22.dp, end = 16.dp)
+                        .fillMaxWidth(0.5f)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { /* absorb clicks so scrim dismissal doesn't fire — form has inputs */ }
                 ) {
-                    Text(
-                        stringResource(R.string.charges_edit_dialog_title),
-                        color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    // Date (start_ts) — editable so manual entries can be backdated
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(
+                        modifier = Modifier
+                            .padding(20.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                         Text(
-                            stringResource(R.string.charges_edit_date_label),
-                            color = TextSecondary,
-                            fontSize = 13.sp,
-                            modifier = Modifier.width(80.dp)
-                        )
-                        Text(
-                            remember(startTs) {
-                                SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(startTs))
-                            },
+                            stringResource(R.string.charges_edit_dialog_title),
                             color = TextPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier
-                                .clickable { showDatePicker = true }
-                                .padding(vertical = 8.dp, horizontal = 4.dp)
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
                         )
-                    }
 
-                    // Type radio
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            stringResource(R.string.charges_edit_type_label),
-                            color = TextSecondary,
-                            fontSize = 13.sp,
-                            modifier = Modifier.width(80.dp)
-                        )
-                        TypeRadio("AC", type == "AC") { type = "AC" }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        TypeRadio("DC", type == "DC") { type = "DC" }
-                    }
-
-                    // Derived values — SOC drives kWh, kWh × tariff drives cost
-                    val socStart = socStartText.toIntOrNull()
-                    val socEnd = socEndText.toIntOrNull()
-                    val computedKwh = if (socStart != null && socEnd != null && socEnd > socStart)
-                        (socEnd - socStart) / 100.0 * batteryCapacityKwh else null
-                    val kwhEditable = computedKwh == null
-                    val kwhDisplay = computedKwh?.let { "%.2f".format(it) } ?: kwhText
-                    val tariff = tariffText.replace(',', '.').toDoubleOrNull()
-                    val finalKwh = computedKwh ?: kwhText.replace(',', '.').toDoubleOrNull()
-                    val computedCost = if (finalKwh != null && tariff != null) finalKwh * tariff else null
-
-                    // SOC start / end
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "SOC %:",
-                            color = TextSecondary,
-                            fontSize = 13.sp,
-                            modifier = Modifier.width(80.dp)
-                        )
-                        OutlinedTextField(
-                            value = socStartText,
-                            onValueChange = { socStartText = it.filter { ch -> ch.isDigit() }.take(3) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.width(80.dp),
-                            colors = darkFieldColors(),
-                            singleLine = true,
-                        )
-                        Text(
-                            " → ",
-                            color = TextMuted,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp)
-                        )
-                        OutlinedTextField(
-                            value = socEndText,
-                            onValueChange = { socEndText = it.filter { ch -> ch.isDigit() }.take(3) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.width(80.dp),
-                            colors = darkFieldColors(),
-                            singleLine = true,
-                        )
-                    }
-
-                    // kWh — computed from SOC × battery capacity when both SOC are filled,
-                    // otherwise editable (DC fallback when station shows kWh but SOC is unknown).
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            stringResource(R.string.charges_edit_kwh_label),
-                            color = TextSecondary,
-                            fontSize = 13.sp,
-                            modifier = Modifier.width(80.dp)
-                        )
-                        OutlinedTextField(
-                            value = kwhDisplay,
-                            onValueChange = {
-                                if (kwhEditable) {
-                                    kwhText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                                }
-                            },
-                            enabled = kwhEditable,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.width(120.dp),
-                            colors = darkFieldColors(),
-                            singleLine = true,
-                        )
-                        if (!kwhEditable) {
+                        // Date (start_ts) — editable so manual entries can be backdated
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                stringResource(R.string.charges_edit_kwh_from_soc, batteryCapacityKwh),
+                                stringResource(R.string.charges_edit_date_label),
+                                color = TextSecondary,
+                                fontSize = 13.sp,
+                                modifier = Modifier.width(80.dp)
+                            )
+                            Text(
+                                remember(startTs) {
+                                    SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(startTs))
+                                },
+                                color = TextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .clickable { showDatePicker = true }
+                                    .padding(vertical = 8.dp, horizontal = 4.dp)
+                            )
+                        }
+
+                        // Type radio
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                stringResource(R.string.charges_edit_type_label),
+                                color = TextSecondary,
+                                fontSize = 13.sp,
+                                modifier = Modifier.width(80.dp)
+                            )
+                            TypeRadio("AC", type == "AC") { type = "AC" }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            TypeRadio("DC", type == "DC") { type = "DC" }
+                        }
+
+                        // Derived values — SOC drives kWh, kWh × tariff drives cost
+                        val socStart = socStartText.toIntOrNull()
+                        val socEnd = socEndText.toIntOrNull()
+                        val computedKwh = if (socStart != null && socEnd != null && socEnd > socStart)
+                            (socEnd - socStart) / 100.0 * batteryCapacityKwh else null
+                        val kwhEditable = computedKwh == null
+                        val kwhDisplay = computedKwh?.let { "%.2f".format(it) } ?: kwhText
+                        val tariff = tariffText.replace(',', '.').toDoubleOrNull()
+                        val finalKwh = computedKwh ?: kwhText.replace(',', '.').toDoubleOrNull()
+                        val meterKwh = meterText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0.0 }
+                        // Paid energy: the meter beats the estimate, the estimate grosses the pack
+                        // intake up by the period's losses.
+                        val paidKwh = meterKwh ?: finalKwh?.let { it / (1.0 - lossPct / 100.0) }
+                        val computedCost = if (paidKwh != null && tariff != null) paidKwh * tariff else null
+
+                        // SOC start / end
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "SOC %:",
+                                color = TextSecondary,
+                                fontSize = 13.sp,
+                                modifier = Modifier.width(80.dp)
+                            )
+                            OutlinedTextField(
+                                value = socStartText,
+                                onValueChange = { socStartText = it.filter { ch -> ch.isDigit() }.take(3) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.width(80.dp),
+                                colors = darkFieldColors(),
+                                singleLine = true,
+                            )
+                            Text(
+                                " → ",
+                                color = TextMuted,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            )
+                            OutlinedTextField(
+                                value = socEndText,
+                                onValueChange = { socEndText = it.filter { ch -> ch.isDigit() }.take(3) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.width(80.dp),
+                                colors = darkFieldColors(),
+                                singleLine = true,
+                            )
+                        }
+
+                        // kWh — computed from SOC × battery capacity when both SOC are filled,
+                        // otherwise editable (DC fallback when station shows kWh but SOC is unknown).
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                stringResource(R.string.charges_edit_kwh_label),
+                                color = TextSecondary,
+                                fontSize = 13.sp,
+                                modifier = Modifier.width(80.dp)
+                            )
+                            OutlinedTextField(
+                                value = kwhDisplay,
+                                onValueChange = {
+                                    if (kwhEditable) {
+                                        kwhText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+                                    }
+                                },
+                                enabled = kwhEditable,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.width(120.dp),
+                                colors = darkFieldColors(),
+                                singleLine = true,
+                            )
+                            if (!kwhEditable) {
+                                Text(
+                                    stringResource(R.string.charges_edit_kwh_from_soc, batteryCapacityKwh),
+                                    color = TextMuted,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
+                        }
+
+                        // Meter reading — optional; what the wall socket actually billed.
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                stringResource(R.string.charges_edit_meter_label),
+                                color = TextSecondary,
+                                fontSize = 13.sp,
+                                modifier = Modifier.width(80.dp)
+                            )
+                            OutlinedTextField(
+                                value = meterText,
+                                onValueChange = {
+                                    meterText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+                                    if (meterText.isNotBlank()) costManual = true
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.width(120.dp),
+                                colors = darkFieldColors(),
+                                singleLine = true,
+                            )
+                            Text(
+                                if (meterKwh != null) stringResource(R.string.charges_edit_meter_used)
+                                else stringResource(R.string.charges_edit_loss_estimate, lossPct),
                                 color = TextMuted,
                                 fontSize = 11.sp,
                                 modifier = Modifier.padding(start = 8.dp)
                             )
                         }
-                    }
 
-                    // Tariff per kWh
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            stringResource(R.string.charges_edit_tariff_label, currencySymbol),
-                            color = TextSecondary,
-                            fontSize = 13.sp,
-                            modifier = Modifier.width(80.dp)
-                        )
-                        OutlinedTextField(
-                            value = tariffText,
-                            onValueChange = {
-                                tariffText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
-                                tariffEditedByUser = true
-                            },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.width(120.dp),
-                            colors = darkFieldColors(),
-                            singleLine = true,
-                        )
-                    }
-
-                    // Cost — computed read-only preview
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            stringResource(R.string.charges_edit_cost_label),
-                            color = TextSecondary,
-                            fontSize = 13.sp,
-                            modifier = Modifier.width(80.dp)
-                        )
-                        Text(
-                            computedCost?.let { "%.2f $currencySymbol".format(it) } ?: "—",
-                            color = TextPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    // Action buttons
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(onClick = onDismiss) {
-                            Text(stringResource(R.string.settings_cancel_button), color = TextSecondary, fontSize = 14.sp)
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                onSave(
-                                    charge.copy(
-                                        startTs = startTs,
-                                        endTs = charge.endTs?.plus(startTs - charge.startTs),
-                                        type = type,
-                                        socStart = socStart,
-                                        socEnd = socEnd,
-                                        kwhCharged = finalKwh,
-                                        kwhChargedSoc = computedKwh,
-                                        cost = computedCost,
-                                    )
-                                )
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
-                        ) {
+                        // Tariff per kWh
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                stringResource(R.string.charges_edit_save_button),
-                                color = NavyDark,
+                                stringResource(R.string.charges_edit_tariff_label, currencySymbol),
+                                color = TextSecondary,
+                                fontSize = 13.sp,
+                                modifier = Modifier.width(80.dp)
+                            )
+                            OutlinedTextField(
+                                value = tariffText,
+                                onValueChange = {
+                                    tariffText = it.filter { ch -> ch.isDigit() || ch == '.' || ch == ',' }
+                                    costManual = true
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.width(120.dp),
+                                colors = darkFieldColors(),
+                                singleLine = true,
+                            )
+                        }
+
+                        // Cost — computed read-only preview
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                stringResource(R.string.charges_edit_cost_label),
+                                color = TextSecondary,
+                                fontSize = 13.sp,
+                                modifier = Modifier.width(80.dp)
+                            )
+                            Text(
+                                computedCost?.let { "%.2f $currencySymbol".format(it) } ?: "—",
+                                color = TextPrimary,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
+                        }
+
+                        // Action buttons
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            if (costManual) {
+                                TextButton(onClick = {
+                                    costManual = false
+                                    meterText = ""
+                                    tariffText = "%.3f".format(periodRate)
+                                }) {
+                                    Text(
+                                        stringResource(R.string.charges_edit_follow_period),
+                                        color = AccentGreen,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            TextButton(onClick = onDismiss) {
+                                Text(stringResource(R.string.settings_cancel_button), color = TextSecondary, fontSize = 14.sp)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    onSave(
+                                        charge.copy(
+                                            startTs = startTs,
+                                            endTs = charge.endTs?.plus(startTs - charge.startTs),
+                                            type = type,
+                                            socStart = socStart,
+                                            socEnd = socEnd,
+                                            kwhCharged = finalKwh,
+                                            kwhChargedSoc = computedKwh,
+                                            cost = computedCost,
+                                            meterKwh = meterKwh,
+                                            costManual = costManual,
+                                        )
+                                    )
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
+                            ) {
+                                Text(
+                                    stringResource(R.string.charges_edit_save_button),
+                                    color = NavyDark,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
                 }
@@ -338,22 +400,28 @@ fun ChargeEditDialog(
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
-                TextButton(onClick = {
-                    dpState.selectedDateMillis?.let { picked ->
-                        startTs = combineDateKeepingTime(picked, startTs)
+                ScaledDialogContent {
+                    TextButton(onClick = {
+                        dpState.selectedDateMillis?.let { picked ->
+                            startTs = combineDateKeepingTime(picked, startTs)
+                        }
+                        showDatePicker = false
+                    }) {
+                        Text(stringResource(R.string.charges_edit_save_button), color = AccentGreen, fontSize = 14.sp)
                     }
-                    showDatePicker = false
-                }) {
-                    Text(stringResource(R.string.charges_edit_save_button), color = AccentGreen, fontSize = 14.sp)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text(stringResource(R.string.settings_cancel_button), color = TextSecondary, fontSize = 14.sp)
+                ScaledDialogContent {
+                    TextButton(onClick = { showDatePicker = false }) {
+                        Text(stringResource(R.string.settings_cancel_button), color = TextSecondary, fontSize = 14.sp)
+                    }
                 }
             }
         ) {
-            DatePicker(state = dpState)
+            ScaledDialogContent {
+                DatePicker(state = dpState)
+            }
         }
     }
 }

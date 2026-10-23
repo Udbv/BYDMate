@@ -36,7 +36,8 @@ class ActionDispatcherYoutubeTest {
         dagger.Lazy { mockk<com.bydmate.app.voice.VoiceAutomationActions>(relaxed = true) },
         mockk<ClusterVoiceControl>(relaxed = true),
         mockk<com.bydmate.app.voice.AudioCapture>(relaxed = true),
-        mockk<com.bydmate.app.split.SplitSessionManager>(relaxed = true))
+        mockk<com.bydmate.app.split.SplitSessionManager>(relaxed = true),
+            com.bydmate.app.util.AppStrings(app), dagger.Lazy { io.mockk.mockk(relaxed = true) })
 
     private fun installPackage(pkg: String) {
         val info = ActivityInfo().apply {

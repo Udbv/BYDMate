@@ -8,6 +8,7 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 /**
@@ -49,6 +50,12 @@ class VehicleApiWindowRoutingTest {
         override fun setWinner(channel: WindowChannel) {}
         override fun ctrlCandidateAtMs() = 0L
         override fun setCtrlCandidateAtMs(ts: Long) {}
+    }
+
+    /** Routing is what this class checks: with the pane position unreadable the movement
+     *  verification has no evidence and leaves every outcome exactly as it was. */
+    @Before fun positionIsUnreadable() {
+        coEvery { autoservice.getIntRaw(any(), any()) } returns null
     }
 
     private fun api(helper: HelperClient, channel: WindowChannel): VehicleApi =
@@ -101,16 +108,28 @@ class VehicleApiWindowRoutingTest {
         coVerify(exactly = 0) { helper.write(DEV, REAR_RIGHT_POS_FID, any()) }
     }
 
-    @Test fun `composite command fans out on the percent fids under PERCENT`() = runTest {
+    @Test fun `composite percent command fans out on the percent fids under PERCENT`() = runTest {
+        val helper = writingHelper()
+
+        api(helper, WindowChannel.PERCENT).dispatch("车窗半开")
+
+        coVerify(exactly = 1) { helper.write(DEV, DRIVER_POS_FID, 50) }
+        coVerify(exactly = 1) { helper.write(DEV, REAR_RIGHT_POS_FID, 50) }
+    }
+
+    /** Full open is its own command, on the open/close fids — the same addresses the CTRL
+     *  channel uses, so it takes the same route on a percent-capable unit. */
+    @Test fun `composite open command uses the open fids under PERCENT`() = runTest {
         val helper = writingHelper()
 
         api(helper, WindowChannel.PERCENT).dispatch("车窗全开")
 
-        coVerify(exactly = 1) { helper.write(DEV, DRIVER_POS_FID, 100) }
-        coVerify(exactly = 1) { helper.write(DEV, REAR_RIGHT_POS_FID, 100) }
+        coVerify(exactly = 1) { helper.write(DEV, DRIVER_CTRL_FID, 1) }
+        coVerify(exactly = 1) { helper.write(DEV, REAR_RIGHT_CTRL_FID, 1) }
+        coVerify(exactly = 0) { helper.write(DEV, DRIVER_POS_FID, any()) }
     }
 
-    @Test fun `composite command fans out on the ctrl fids under CTRL`() = runTest {
+    @Test fun `composite open command uses the open fids under CTRL too`() = runTest {
         val helper = writingHelper()
 
         api(helper, WindowChannel.CTRL).dispatch("车窗全开")

@@ -4,14 +4,28 @@ import android.util.Log
 import com.bydmate.app.data.autoservice.AutoserviceClient
 import com.bydmate.app.data.autoservice.BatteryReading
 import com.bydmate.app.data.autoservice.SentinelDecoder
+import com.bydmate.app.data.nativestack.FidAddress
+import com.bydmate.app.data.nativestack.FidAddresses
 import com.bydmate.app.data.local.dao.VehicleWriteLogDao
 import com.bydmate.app.data.local.entity.VehicleWriteLogEntity
 import com.bydmate.app.data.nativestack.ParsReader
 import com.bydmate.app.data.remote.DiParsData
+import com.bydmate.app.diagnostics.Trace
+import com.bydmate.app.diagnostics.TraceArea
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -37,6 +51,41 @@ class VehicleApiImpl @Inject constructor(
 
     private val windowChannel = WindowChannelRouter(helper, windowStore)
 
+    private val steeringHeatChannel = SteeringHeatChannel(
+        SeatWriter { name, value -> doWriteOutcome(name, value, journaled = false) },
+        SteeringHeatReadback { readSteeringHeatState() },
+    )
+
+    private val hudSwitchChannel = HudSwitchChannel(
+        SeatWriter { name, value -> doWriteOutcome(name, value, journaled = false) },
+        HudReader { fid -> helper.read(WriteAllowlist.HUD_DEV, fid)?.toInt() },
+    )
+
+    private val batteryPreheatChannel = BatteryPreheatChannel(
+        SeatWriter { name, value -> doWriteOutcome(name, value, journaled = false) },
+        PreheatReader { dev, fid -> helper.read(dev, fid)?.toInt() },
+        PreheatAudit { logWrite(it.action, it.dev, it.fid, it.value, it.state, it.ok, it.verdict, validated = false) },
+    )
+
+    private val driveModeChannel = DriveModeChannel(
+        DriveModeWriter { name, value, beforeSend -> doWriteOutcome(name, value, journaled = false, beforeSend = beforeSend) },
+        DriveModeReader { fid -> helper.read(WriteAllowlist.DRIVE_MODE_DEV, fid)?.toInt() },
+        // Rounded UP, not truncated: a plain toInt() turns 15.9 km/h into 15 and lets a
+        // terrain mode through above the owner's 15 km/h limit (finding 2026-09-27).
+        speed = { FidAddresses.of("speed").let { autoservice.getFloat(it.device, it.fid) }?.let { kotlin.math.ceil(it).toInt() } },
+    )
+
+    // Owns the window position samples taken around a write. A write that fails before the
+    // verdict cancels its sample (see doWrite), so no read outlives its dispatch.
+    // internal var (not a constructor param — Hilt's @Inject constructor can't carry a
+    // default here) so tests can swap in a deterministic scope (e.g. Dispatchers.Unconfined)
+    // instead of racing the real Dispatchers.IO scheduler.
+    internal var readbackScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // One lock per window percent fid: a percent write and its 255 reset go out as one unit
+    // (see doWrite). Other fids never wait on it.
+    private val percentLocks = ConcurrentHashMap<Int, Mutex>()
+
     // Liveness + snapshots — passthroughs.
     override suspend fun isAvailable(): Boolean = autoservice.isAvailable()
     override suspend fun readBatterySnapshot(): BatteryReading? = autoservice.readBatterySnapshot()
@@ -44,7 +93,7 @@ class VehicleApiImpl @Inject constructor(
 
     // Individual readers — direct autoservice fid hits.
     override suspend fun readSoc(): Float? = autoservice.getFloat(1014, 1246777400)
-    override suspend fun readSpeed(): Float? = autoservice.getFloat(1013, -1807745016)
+    override suspend fun readSpeed(): Float? = FidAddresses.of("speed").let { autoservice.getFloat(it.device, it.fid) }
     override suspend fun readMileageKm(): Float? =
         autoservice.getInt(1014, 1246765072)?.let { it / 10f }
     override suspend fun readPowerKw(): Int? = autoservice.getInt(1012, 339738656)
@@ -88,6 +137,8 @@ class VehicleApiImpl @Inject constructor(
         }
         if (resolved.size == 1) {
             val r = resolved[0]
+            channelWrite(r.actionName)?.let { return it }
+            // doWrite protects its own window verdict from cancellation, so no wrapper here.
             return doWrite(r.actionName, r.value)
         }
         // Composite command (e.g. window aggregates, fridge presets) → fan out to several
@@ -97,14 +148,20 @@ class VehicleApiImpl @Inject constructor(
         // hard stop between sub-writes never leaves the car half-commanded (e.g. two windows
         // open, two still closed). Cancellation takes effect after the loop exits.
         var firstError: Throwable? = null
+        val windowChecks = mutableListOf<WindowVerify>()
         withContext(NonCancellable) {
             for ((i, r) in resolved.withIndex()) {
                 // Song L (#97): a burst of window writes ~5 ms apart all return status=1,
                 // but only the later panes actuate — the first write is silently dropped.
                 // Spacing the sub-writes out keeps every write effective on that platform.
                 if (i > 0) delay(COMPOSITE_WRITE_STAGGER_MS)
-                val res = doWrite(r.actionName, r.value)
+                val res = doWrite(r.actionName, r.value, verifyInto = windowChecks)
                 if (res.isFailure && firstError == null) firstError = res.exceptionOrNull()
+            }
+            // All panes were commanded, so they can be judged together: one verification
+            // window for the burst instead of one per pane (~400 ms instead of ~1.6 s).
+            verifyWindowBurst(windowChecks)?.let { stuck ->
+                if (firstError == null) firstError = windowsStuck(commandString, stuck)
             }
         }
         return firstError?.let { Result.failure(it) } ?: Result.success(Unit)
@@ -164,7 +221,13 @@ class VehicleApiImpl @Inject constructor(
      * physical actuator moved. Locks and select climate flags do have readback.
      */
     // internal for testing the Unsupported path (non-validated helper-false flow).
-    internal suspend fun doWrite(requestedAction: String, requestedValue: Int): Result<Unit> {
+    // [verifyInto] collects the window checks instead of running them inline, so a burst of
+    // pane writes shares ONE verification window (see [dispatch]); null = verify right here.
+    internal suspend fun doWrite(
+        requestedAction: String,
+        requestedValue: Int,
+        verifyInto: MutableList<WindowVerify>? = null,
+    ): Result<Unit> {
         // Percent window writes are re-targeted to the CTRL channel on firmwares without
         // the percent family (#79). Percent-capable units and an undecided probe get the
         // request back unchanged, so their write path is untouched.
@@ -186,22 +249,51 @@ class VehicleApiImpl @Inject constructor(
             return Result.failure(err)
         }
 
+        // Window writes have no readback fid and a history of "accepted but nothing moved"
+        // (#97 Song L, #64): sample the pane position now, and again after the write, to tell
+        // a real actuation from a silently dropped one. Started before helper.write on its own
+        // scope so a slow/hung read channel can never delay the write itself.
+        val windowCheck = windowCheckFor(actionName, requestedAction, requestedValue, entry, value)
+
         logAttempt(actionName, entry, value)
 
-        val wrote: Boolean = try {
-            helper.write(entry.dev, entry.writeFid, value)
-        } catch (e: Exception) {
-            // Rethrow cancellation so callers outside the NonCancellable write unit
-            // (status reads, channel resolution) can still be cancelled normally.
-            if (e is CancellationException) throw e
-            Log.w(TAG, "doWrite: action=$actionName helper.write threw: ${e.message}")
-            logWrite(actionName, entry.dev, entry.writeFid, value, null, false, "helper_exception", entry.validated)
-            val err = VehicleWriteError.HelperUnreachable(actionName, e.message ?: "io error")
-            maybeReportValidatedFailure(actionName, err, entry)
-            return Result.failure(err)
+        // A percent window write is a held request on the bus: once its transact is on the way,
+        // whatever it answers, the fid is released before anything else happens (see
+        // [releasePercentTarget]). The pair runs under the fid's own lock, so another command to
+        // the same window cannot land its percent between them and have it reset by ours.
+        val reset = WriteAllowlist.percentResetFor(entry)
+        val lock = reset?.let { percentLocks.computeIfAbsent(it.writeFid) { Mutex() } }
+        lock?.lock()
+        var sent = false
+        var wrote = false
+        try {
+            wrote = try {
+                if (windowCheck != null) {
+                    // Bounded wait so the "before" sample usually precedes the write, but a hung
+                    // read channel costs at most WINDOW_BEFORE_READ_BUDGET_MS.
+                    withTimeoutOrNull(WINDOW_BEFORE_READ_BUDGET_MS) { windowCheck.before.await() }
+                }
+                sent = true
+                helper.write(entry.dev, entry.writeFid, value)
+            } catch (e: Exception) {
+                if (sent && reset != null) releasePercentTarget(reset, value)
+                // Rethrow cancellation so callers outside the NonCancellable write unit
+                // (status reads, channel resolution) can still be cancelled normally.
+                if (e is CancellationException) throw e
+                Log.w(TAG, "doWrite: action=$actionName helper.write threw: ${e.message}")
+                windowCheck?.before?.cancel()
+                logWrite(actionName, entry.dev, entry.writeFid, value, null, false, "helper_exception", entry.validated)
+                val err = VehicleWriteError.HelperUnreachable(actionName, e.message ?: "io error")
+                maybeReportValidatedFailure(actionName, err, entry)
+                return Result.failure(err)
+            }
+            if (reset != null) releasePercentTarget(reset, value)
+        } finally {
+            lock?.unlock()
         }
 
         if (!wrote) {
+            windowCheck?.before?.cancel()
             return if (entry.validated) {
                 Log.w(TAG, "doWrite: action=$actionName helper.write returned false (validated)")
                 logWrite(actionName, entry.dev, entry.writeFid, value, null, false, "helper_fail", entry.validated)
@@ -221,6 +313,7 @@ class VehicleApiImpl @Inject constructor(
         if (readback == -10011L) {
             // For non-validated entries, sentinel is expected (crowd-validation in progress) — surface as Unsupported.
             // DAO error string stays "readback_sentinel" for diagnostic analysis.
+            windowCheck?.before?.cancel()
             val err = if (entry.validated) VehicleWriteError.Sentinel(actionName) else VehicleWriteError.Unsupported(actionName)
             logWrite(actionName, entry.dev, entry.writeFid, value, readback.toInt(), false, "readback_sentinel", entry.validated)
             maybeReportValidatedFailure(actionName, err, entry)
@@ -230,17 +323,530 @@ class VehicleApiImpl @Inject constructor(
         if (readback != null && readback.toInt() != value) {
             // For non-validated entries, mismatch is expected (crowd-validation in progress) — surface as Unsupported.
             // DAO error string stays "readback_mismatch" for diagnostic analysis.
+            windowCheck?.before?.cancel()
             val err = if (entry.validated) VehicleWriteError.ReadbackMismatch(actionName, "expected=$value got=$readback") else VehicleWriteError.Unsupported(actionName)
             logWrite(actionName, entry.dev, entry.writeFid, value, readback.toInt(), false, "readback_mismatch", entry.validated)
             maybeReportValidatedFailure(actionName, err, entry)
             return Result.failure(err)
         }
 
+        // The pane accepted the command but never moved: report the truth instead of a
+        // success the driver can see is wrong (#97 — the first write of a burst is dropped).
+        // In a burst the check is handed to the caller, which runs one window for all panes
+        // under its own NonCancellable.
+        //
+        // NonCancellable here: the physical write has already landed, so the verdict (up to
+        // ~1 s of reads) and the audit row that follows it must survive a caller cancelled in
+        // that window — a command the car obeyed must never surface as an exception, whichever
+        // entry point (dispatch, writeWindowDriver, …) started the write.
+        if (windowCheck != null && verifyInto == null) {
+            return withContext(NonCancellable) {
+                val failure = windowFailure(windowCheck)
+                if (failure != null) return@withContext Result.failure(failure)
+                logSuccess(actionName, entry, value, readback)
+                Result.success(Unit)
+            }
+        }
+        if (windowCheck != null) verifyInto?.add(windowCheck)
+
+        logSuccess(actionName, entry, value, readback)
+        if (entry.readbackFid == null && windowCheck == null) verifyLate(actionName, entry, value)
+        return Result.success(Unit)
+    }
+
+    /**
+     * One read of the written fid [LATE_VERIFY_MS] after a write that has no check of its own
+     * (#267: the hazard reported ok, the lamps stayed dark), as a trace line. Diagnostics only:
+     * fire-and-forget on [readbackScope], so it never delays the caller or a rule's next step,
+     * and its answer changes no verdict.
+     */
+    private suspend fun verifyLate(actionName: String, entry: WriteEntry, value: Int) {
+        val cause = Trace.cause()
+        readbackScope.launch {
+            delay(LATE_VERIFY_MS)
+            val got = runCatching { helper.read(entry.dev, entry.writeFid) }.getOrNull()
+            Trace.event(TraceArea.CAR, "verify", "action" to actionName, "want" to value,
+                "got" to (got?.toString() ?: "null"), "after_ms" to LATE_VERIFY_MS.toInt(), by = cause)
+        }
+    }
+
+    /**
+     * Actions that go through a verification channel instead of a bare write, or null. Write +
+     * readback (+ fallback write) run as one unit, like the seat sequence.
+     */
+    private suspend fun channelWrite(action: String): Result<Unit>? = when {
+        action in STEERING_HEAT_ACTIONS -> withContext(NonCancellable) { steeringHeat(action) }
+        action in HUD_ACTIONS -> withContext(NonCancellable) { hudSwitch(action) }
+        action in BatteryPreheatChannel.ACTIONS ->
+            withContext(NonCancellable) { batteryPreheatChannel.dispatch(action, readbackScope) }
+        else -> DriveMode.ofAction(action)?.let { mode -> withContext(NonCancellable) { driveMode(mode) } }
+    }
+
+    /**
+     * Steering wheel heat through its verification channel, as the Result dispatch returns.
+     * The per-write audit rows only say the daemon accepted a write; one more row records the
+     * channel's verdict: dev = the device of the last write (0 = none), readback = the last
+     * state read, error = "verdict=<label>" (also on success).
+     */
+    private suspend fun steeringHeat(action: String): Result<Unit> {
+        val outcome = steeringHeatChannel.actuate(on = action == "steering_heat_on")
+        val entry = allowlist.find(action)
+        logWrite(
+            action, outcome.dev, entry?.writeFid ?: -1, entry?.valueMin ?: -1, outcome.state,
+            outcome.result == SteeringHeatChannel.Result.OK, "verdict=${outcome.verdict}", validated = false,
+        )
+        return when (outcome.result) {
+            SteeringHeatChannel.Result.OK -> Result.success(Unit)
+            SteeringHeatChannel.Result.NOT_EQUIPPED -> Result.failure(VehicleWriteError.NotEquipped(action))
+            SteeringHeatChannel.Result.NO_EFFECT -> Result.failure(VehicleWriteError.Unsupported(action))
+            SteeringHeatChannel.Result.UNREACHABLE ->
+                Result.failure(VehicleWriteError.HelperUnreachable(action, "helper write not accepted"))
+            SteeringHeatChannel.Result.UNCONFIRMED ->
+                Result.failure(VehicleWriteError.HelperUnreachable(action, "result not confirmed (${outcome.verdict})"))
+        }
+    }
+
+    /**
+     * HUD on/off through its channel (#292), as the Result dispatch returns. Like the steering
+     * heat verdict row: dev = 1023 when the switch was written (0 = nothing written), readback =
+     * the last status read, error = "verdict=<label>" (also on success).
+     */
+    private suspend fun hudSwitch(action: String): Result<Unit> {
+        val outcome = hudSwitchChannel.actuate(on = action == "hud_on")
+        val entry = allowlist.find(action)
+        logWrite(
+            action, if (outcome.written) WriteAllowlist.HUD_DEV else 0, entry?.writeFid ?: -1, entry?.valueMin ?: -1,
+            outcome.state, outcome.result == HudSwitchChannel.Result.OK, "verdict=${outcome.verdict}", validated = false,
+        )
+        return when (outcome.result) {
+            HudSwitchChannel.Result.OK -> Result.success(Unit)
+            HudSwitchChannel.Result.NOT_EQUIPPED -> Result.failure(VehicleWriteError.NotEquipped(action))
+            HudSwitchChannel.Result.NO_EFFECT -> Result.failure(VehicleWriteError.Unsupported(action))
+            HudSwitchChannel.Result.UNREACHABLE ->
+                Result.failure(VehicleWriteError.HelperUnreachable(action, outcome.verdict))
+            HudSwitchChannel.Result.UNCONFIRMED ->
+                Result.failure(VehicleWriteError.HelperUnreachable(action, "result not confirmed (${outcome.verdict})"))
+        }
+    }
+
+    /**
+     * Drive mode through its verification channel, as the Result dispatch returns. Like the
+     * steering heat verdict row: dev = 1023, readback = the last target mode read, error =
+     * "verdict=<label>" (also on success).
+     */
+    private suspend fun driveMode(mode: DriveMode): Result<Unit> {
+        val outcome = driveModeChannel.actuate(mode)
+        val action = mode.actionName
+        val entry = allowlist.find(action)
+        val ok = outcome.result == DriveModeChannel.Result.OK
+        logWrite(
+            action, WriteAllowlist.DRIVE_MODE_DEV, WriteAllowlist.DRIVE_MODE_WRITE_FID, mode.value,
+            outcome.target, ok, "verdict=${outcome.verdict}", entry?.validated ?: false,
+        )
+        return when (outcome.result) {
+            DriveModeChannel.Result.OK -> Result.success(Unit)
+            DriveModeChannel.Result.SPEED ->
+                Result.failure(VehicleWriteError.SpeedBlocked(action, outcome.verdict, outcome.speed))
+            DriveModeChannel.Result.NOT_SUPPORTED -> Result.failure(VehicleWriteError.NotEquipped(action))
+            DriveModeChannel.Result.FLOTATION ->
+                Result.failure(VehicleWriteError.StateBlocked(action, "emergency flotation mode"))
+            DriveModeChannel.Result.NOT_CHANGED -> Result.failure(
+                VehicleWriteError.ReadbackMismatch(action, "mode did not change: expected=${mode.value} got=${outcome.target}"),
+            )
+            DriveModeChannel.Result.UNREADABLE, DriveModeChannel.Result.UNREACHABLE ->
+                Result.failure(VehicleWriteError.HelperUnreachable(action, outcome.verdict))
+        }
+    }
+
+    /** Logcat line plus audit row for a write that went through. */
+    private suspend fun logSuccess(actionName: String, entry: WriteEntry, value: Int, readback: Long?) {
         // INFO so a successful dispatch is visible in logcat (the DAO row is private).
         // Pair with the HelperClient "status=" line to tell a real action from a no-op.
         Log.i(TAG, "doWrite OK: action=$actionName dev=${entry.dev} fid=${entry.writeFid} value=$value readback=$readback validated=${entry.validated}")
         logWrite(actionName, entry.dev, entry.writeFid, value, readback?.toInt(), true, null, entry.validated)
-        return Result.success(Unit)
+    }
+
+    /**
+     * Releases a window target-position fid after a percent write, exactly as BYD's own apps do:
+     * the percent, [PERCENT_RESET_DELAY_MS], then 255 "no request" on the same fid (autovoice
+     * CarWindowApiImpl, BydMyCar). Left at the percent, the fid keeps requesting it: the unit
+     * ignores a repeated identical percent, and a Song L drives the glass to it again when the
+     * car wakes (user log 2026-09-29). Runs for every percent transact that was sent, whatever it
+     * answered and whether or not the glass moved, under the fid's lock in [doWrite] so the next
+     * write to the fid always comes after it; NonCancellable so a cancelled command still leaves 255 behind. A
+     * reset that is not accepted is tried once more, then logged as left undone.
+     */
+    private suspend fun releasePercentTarget(reset: WriteEntry, percent: Int) = withContext(NonCancellable) {
+        delay(PERCENT_RESET_DELAY_MS)
+        val window = WindowPane.of(reset.actionName).name.lowercase()
+        for (attempt in 1..PERCENT_RESET_ATTEMPTS) {
+            val status: Int? = try {
+                helper.writeStatus(reset.dev, reset.writeFid, reset.valueMin)
+            } catch (e: Exception) {
+                Log.w(TAG, "window target reset: ${reset.actionName} threw ${e.javaClass.simpleName}: ${e.message}")
+                null
+            }
+            val ok = status != null && HelperClientImpl.writeAccepted(status)
+            val rc = status?.toString() ?: "none"
+            Log.i(TAG, "window target reset: window=$window dev=${reset.dev} fid=${reset.writeFid} " +
+                "value=${reset.valueMin} after percent=$percent attempt=$attempt rc=$rc accepted=$ok")
+            Trace.event(TraceArea.CAR, "window-reset", "window" to window, "fid" to reset.writeFid,
+                "after" to percent, "attempt" to attempt, "rc" to rc)
+            logWrite(reset.actionName, reset.dev, reset.writeFid, reset.valueMin, null, ok,
+                if (ok) null else "reset_rc_$rc", reset.validated)
+            if (ok) return@withContext
+        }
+        Log.w(TAG, "window target reset FAILED: window=$window fid=${reset.writeFid} " +
+            "percent=$percent may stay held on the bus")
+    }
+
+    // ─── Window readback ───────────────────────────────────────────────────────
+
+    /** One pane whose movement still has to be judged: everything the verdict needs, plus the
+     *  position sample taken around the write. */
+    internal class WindowVerify(
+        val actionName: String,
+        val entry: WriteEntry,
+        val value: Int,
+        val target: Int,
+        val before: Deferred<Pair<FidAddress, Int?>>,
+    )
+
+    /** The movement check this write needs, or null when the pane or the target is unknown. */
+    private fun windowCheckFor(
+        actionName: String,
+        requestedAction: String,
+        requestedValue: Int,
+        entry: WriteEntry,
+        value: Int,
+    ): WindowVerify? {
+        val target = windowTargetPercent(requestedAction, requestedValue) ?: return null
+        val field = WINDOW_READ_FIELDS[actionName.lowercase()] ?: return null
+        return WindowVerify(actionName, entry, value, target,
+            readbackScope.async { resolveWindowReadFid(field) })
+    }
+
+    /** Verdict for a single write, as the error it should fail with (null when it is fine). */
+    private suspend fun windowFailure(check: WindowVerify): VehicleWriteError? {
+        val stuck = verifyWindowBurst(listOf(check)) ?: return null
+        val err = windowsStuck(check.actionName, stuck)
+        maybeReportValidatedFailure(check.actionName, err, check.entry)
+        return err
+    }
+
+    /**
+     * The failure for [panes] that never moved. The driver reads it in the app language, worded
+     * from [panes] by ActionDispatcher; the Russian details are what the logs show.
+     */
+    private fun windowsStuck(action: String, panes: List<WindowPane>): VehicleWriteError.ReadbackMismatch {
+        val labels = panes.map { paneLabel(it) }
+        val details = if (labels.size == 1) "${labels[0]} не сдвинулось с места, команда не сработала"
+        else "не сдвинулись с места: " + labels.joinToString(", ")
+        return VehicleWriteError.ReadbackMismatch(action, details, panes)
+    }
+
+    /**
+     * Did the panes actually start moving after their writes were accepted? ONE verification
+     * window for the whole burst: every pane is read in the same pass, the passes are
+     * [WINDOW_VERIFY_DELAY_MS] apart (the seat channel's pattern), and the loop exits as soon
+     * as nothing is left to judge. A four-window command therefore costs the same wait as one.
+     * Any movement — even a pane still travelling — proves its write landed.
+     *
+     * Returns null when every pane is accounted for, else the panes that never moved.
+     *
+     * Deliberately fail-open: a read that does not complete, a sentinel, a pane already at the
+     * requested position, or a command with no comparable target (CTRL detents) all count as
+     * "no evidence", never as a failure.
+     */
+    private suspend fun verifyWindowBurst(checks: List<WindowVerify>): List<WindowPane>? {
+        val samples = sampleWindows(checks)
+        val stuck = watchPanes(samples.pending)
+        val left = retryOnPercentChannel(stuck, samples.blind)
+        // Only the first writes get the nudge: panes the fallback re-sent are new objects.
+        val failed = nudgeSameTarget(left.filter { it in stuck }) + left.filterNot { it in stuck }
+        if (failed.isEmpty()) return null
+        failed.forEach { pane ->
+            logWindowVerdict(pane, "не сдвинулось")
+            logWrite(pane.check.actionName, pane.check.entry.dev, pane.check.entry.writeFid,
+                pane.check.value, null, false, "window_noop", pane.check.entry.validated)
+        }
+        return failed.map { WindowPane.of(it.check.actionName) }
+    }
+
+    /** Watches [pending] until each pane shows movement; returns the ones that never did. */
+    private suspend fun watchPanes(pending: List<PendingPane>): List<PendingPane> {
+        val left = pending.toMutableList()
+        repeat(WINDOW_VERIFY_ATTEMPTS) {
+            if (left.isEmpty()) return emptyList()
+            delay(WINDOW_VERIFY_DELAY_MS)
+            val settled = left.filter { paneSettled(it) }
+            settled.forEach { logWindowVerdict(it, null) }
+            left.removeAll(settled)
+        }
+        return left
+    }
+
+    /**
+     * Second chance for the dedicated open/close fids on a unit that has already been fixed
+     * on the PERCENT channel (#197, DiLink 3.0 trinket): there the open/close family answers
+     * status=1 and moves nothing, while the percent family on the same door works. Re-send the
+     * same door as a percent write (100 = open, 0 = close) and judge THAT write instead.
+     *
+     * Needs a pane that was SEEN not to move: that observation is the evidence, and without it
+     * nothing is re-sent — a percent-capable unit whose position reads happen to fail must keep
+     * producing exactly the writes it produced before (#79 invariant). Once one pane in the
+     * burst is proven stuck, the doors whose position could not be read at all (raw 255 on the
+     * passenger/rear doors of that firmware) are re-sent with it: the same firmware moved them
+     * with the same accepted-but-dead fid. Exactly one retry per command — the percent write
+     * itself is never eligible for another.
+     *
+     * Returns the panes that must still be reported as failures.
+     */
+    private suspend fun retryOnPercentChannel(
+        stuck: List<PendingPane>,
+        blind: List<WindowVerify>,
+    ): List<PendingPane> {
+        if (stuck.isEmpty() || windowChannel.decidedChannel() != WindowChannel.PERCENT) return stuck
+        val retried = mutableListOf<WindowVerify>()
+        val notRetried = mutableListOf<PendingPane>()
+        val stagger = WriteStagger()
+        for (pane in stuck) {
+            if (!resendOnPercent(pane.check, "ctrl did not move", retried, stagger)) notRetried += pane
+        }
+        blind.forEach { resendOnPercent(it, "readback blind", retried, stagger) }
+        if (retried.isEmpty()) return stuck
+        return notRetried + watchPanes(sampleWindows(retried).pending)
+    }
+
+    /**
+     * Second chance for a percent write the car ignored (Leopard 3, 2026-09-24): a percent
+     * value equal to the PREVIOUS percent write to the same window fid is accepted with
+     * status=1 and the motor never starts, wherever the pane is. Repeating the same value never
+     * helps, a different one does, so each stuck percent pane is re-sent ONCE with its value
+     * nudged by one percent (down for 100) and THAT write is judged instead. A close (0) is
+     * never nudged: 1 % open is worse than an honest failure.
+     *
+     * Needs a pane that was SEEN not to move, exactly like [retryOnPercentChannel]; the nudged
+     * write itself is never eligible for another nudge. A nudge that does not move either gets
+     * the [anchorTarget] step. Returns the panes that must still be reported as failures.
+     */
+    private suspend fun nudgeSameTarget(stuck: List<PendingPane>): List<PendingPane> {
+        val percent = stuck.filter {
+            it.check.actionName.lowercase().endsWith("_pos") && it.check.value in 1..100
+        }
+        if (percent.isEmpty()) return stuck
+        val nudged = mutableListOf<WindowVerify>()
+        val notNudged = mutableListOf<PendingPane>()
+        val requested = mutableMapOf<WindowVerify, Int>()
+        val stagger = WriteStagger()
+        for (pane in percent) {
+            val check = pane.check
+            val value = if (check.value >= 100) check.value - 1 else check.value + 1
+            val before = nudged.size
+            stagger.pace()
+            Log.i(TAG, "window nudge: ${check.actionName} ${check.value} -> $value " +
+                "reason=same target ignored (pane did not move)")
+            doWrite(check.actionName, value, verifyInto = nudged)
+            if (nudged.size == before) notNudged += pane else requested[nudged.last()] = check.value
+        }
+        val stillStuck = watchPanes(sampleWindows(nudged).pending)
+        return stuck.filterNot { it in percent } + notNudged + anchorTarget(stillStuck, requested)
+    }
+
+    /**
+     * Last chance for a percent pane whose nudge did not move either (Song L, user log
+     * 2026-09-29: "10" stuck, "11" stuck, a clearly different value later moved). Measured on a
+     * Leopard 3 the same day: writing the pane's CURRENT position is accepted without moving the
+     * glass and replaces the stored target, after which the requested value moves it. So the
+     * pane's position is read fresh, written as the target, and the ORIGINAL [requested] value
+     * is sent [COMPOSITE_WRITE_STAGGER_MS] after the anchor's own reset; only THAT write is judged.
+     *
+     * Nothing is sent when the position cannot be read or already equals the requested value.
+     * One anchor per pane per command, never followed by another nudge or anchor. Returns the
+     * panes that must still be reported as failures.
+     */
+    private suspend fun anchorTarget(
+        stuck: List<PendingPane>,
+        requested: Map<WindowVerify, Int>,
+    ): List<PendingPane> {
+        if (stuck.isEmpty()) return stuck
+        val anchored = mutableListOf<WindowVerify>()
+        val notAnchored = mutableListOf<PendingPane>()
+        val stagger = WriteStagger()
+        for (pane in stuck) {
+            val check = pane.check
+            val target = requested.getValue(check)
+            // Paced BEFORE the read: the position written must be the one read right now.
+            stagger.pace()
+            val position = windowPercent(readWindowRaw(pane.readFid))
+            // Only a glass standing still: a position other than the last "did not move"
+            // sample means it is travelling (late start, door button), and writing it would
+            // be a move command.
+            val lastSeen = pane.seen.lastOrNull()?.toIntOrNull()
+            val travelling = position != null && position != target && position != lastSeen
+            if (travelling) {
+                Log.i(TAG, "window anchor: ${check.actionName} skipped reason=position changed " +
+                    "$lastSeen -> $position")
+            }
+            if (position == null || position == target || travelling) {
+                notAnchored += pane
+                continue
+            }
+            val before = anchored.size
+            Log.i(TAG, "window anchor: ${check.actionName} position=$position -> target=$target " +
+                "reason=nudge did not move")
+            // The anchor write is expected not to move the glass: its movement check is dropped.
+            val anchor = mutableListOf<WindowVerify>()
+            val accepted = doWrite(check.actionName, position, verifyInto = anchor).isSuccess
+            anchor.forEach { it.before.cancel() }
+            if (!accepted) {
+                Log.w(TAG, "window anchor: ${check.actionName} anchor position=$position not accepted")
+            } else {
+                stagger.pace()
+                if (doWrite(check.actionName, target, verifyInto = anchored).isFailure) {
+                    Log.w(TAG, "window anchor: ${check.actionName} target=$target not accepted " +
+                        "after anchor position=$position")
+                }
+            }
+            if (anchored.size == before) notAnchored += pane
+        }
+        return notAnchored + watchPanes(sampleWindows(anchored).pending)
+    }
+
+    /** Re-sends one door on its percent fid; false when there is no percent twin or the
+     *  write produced no check to judge (allowlist miss, helper failure). */
+    private suspend fun resendOnPercent(
+        check: WindowVerify,
+        reason: String,
+        into: MutableList<WindowVerify>,
+        stagger: WriteStagger,
+    ): Boolean {
+        val posAction = percentTwin(check.actionName) ?: return false
+        val before = into.size
+        stagger.pace()
+        Log.i(TAG, "window fallback: ${check.actionName} $reason, channel=PERCENT -> " +
+            "$posAction=${check.target}")
+        doWrite(posAction, check.target, verifyInto = into)
+        return into.size > before
+    }
+
+    /**
+     * Keeps the fallback writes [COMPOSITE_WRITE_STAGGER_MS] apart, exactly as the composite
+     * dispatch spaces its own burst: on Song L a back-to-back series of window writes all answer
+     * status=1, but the first panes never move.
+     */
+    private class WriteStagger {
+        private var sent = false
+
+        suspend fun pace() {
+            if (sent) delay(COMPOSITE_WRITE_STAGGER_MS)
+            sent = true
+        }
+    }
+
+    /** Percent fid of the door a dedicated open/close write names, or null for anything else. */
+    private fun percentTwin(actionName: String): String? {
+        val a = actionName.lowercase()
+        if (!a.startsWith("window_")) return null
+        val door = when {
+            a.endsWith("_open") -> a.removeSuffix("_open")
+            a.endsWith("_close") -> a.removeSuffix("_close")
+            else -> return null
+        }
+        return "${door}_pos"
+    }
+
+    /** Raw window position decoded and range-checked: a car that has no readback for a pane
+     *  (e2, #242) answers 255, which is not a sentinel [SentinelDecoder] knows but is not a
+     *  real position either — the telemetry decoder (ParamDecoder, INT_PERCENT) rejects it the
+     *  same way. Left as a raw position it reads as "did not move" and triggers an extra write. */
+    private fun windowPercent(raw: Int?): Int? = raw?.let(SentinelDecoder::decodeInt)?.takeIf { it in 0..100 }
+
+    /** Panes worth watching (the "before" sample resolved, was readable, and is not already at
+     *  the requested position) and panes whose position could not be read at all. Everything
+     *  else is "no evidence" and stays out of both lists. */
+    private suspend fun sampleWindows(checks: List<WindowVerify>): WindowSamples {
+        val pending = mutableListOf<PendingPane>()
+        val blind = mutableListOf<WindowVerify>()
+        for (check in checks) {
+            val sample = withTimeoutOrNull(WINDOW_BEFORE_READ_BUDGET_MS) { check.before.await() }
+            val before = windowPercent(sample?.second)
+            when {
+                before == null -> blind += check
+                kotlin.math.abs(before - check.target) <= WINDOW_POSITION_TOLERANCE_PCT -> Unit
+                else -> pending += PendingPane(check, sample!!.first, before)
+            }
+        }
+        return WindowSamples(pending, blind)
+    }
+
+    /** The two kinds of pane a burst leaves behind after its "before" samples. */
+    private class WindowSamples(val pending: List<PendingPane>, val blind: List<WindowVerify>)
+
+    /** One more read of a pane: true when it moved, or when the read gives no evidence. */
+    private suspend fun paneSettled(pane: PendingPane): Boolean {
+        val after = windowPercent(readWindowRaw(pane.readFid))
+        pane.seen += after?.toString() ?: "err"
+        return after == null || kotlin.math.abs(after - pane.before) > WINDOW_POSITION_TOLERANCE_PCT
+    }
+
+    /** A pane that had somewhere to travel, with the samples taken so far. */
+    private class PendingPane(
+        val check: WindowVerify,
+        val readFid: FidAddress,
+        val before: Int,
+        val seen: MutableList<String> = mutableListOf(),
+    )
+
+    /** Single log line per pane: the samples and the verdict. */
+    private fun logWindowVerdict(pane: PendingPane, verdict: String?) {
+        Log.i(
+            TAG,
+            "window readback action=${pane.check.actionName} dev=${pane.check.entry.dev} " +
+                "fid=${pane.check.entry.writeFid} value=${pane.check.value} before=${pane.before} " +
+                "after=${pane.seen.joinToString(",")} verdict=${verdict ?: "moved"}"
+        )
+    }
+
+    /**
+     * Position the pane is expected to end up at, or null when the command carries no
+     * comparable target. Open and close are their own fids on the car but still name a
+     * position; a CTRL detent (the DiLink 3.0 re-route) names none.
+     */
+    private fun windowTargetPercent(requestedAction: String, requestedValue: Int): Int? = when {
+        requestedAction.endsWith("_pos") -> requestedValue.takeIf { it in 0..100 }
+        requestedAction.endsWith("_open") -> 100
+        requestedAction.endsWith("_close") -> 0
+        else -> null
+    }
+
+    /** Pane name for the log line of a stuck window. */
+    private fun paneLabel(pane: WindowPane): String = when (pane) {
+        WindowPane.DRIVER -> "окно водителя"
+        WindowPane.PASSENGER -> "окно пассажира"
+        WindowPane.REAR_LEFT -> "заднее левое окно"
+        WindowPane.REAR_RIGHT -> "заднее правое окно"
+        WindowPane.OTHER -> "стекло"
+    }
+
+    /** Read address actually sampled, plus the position read right now (raw, sentinels kept as-is). */
+    private suspend fun resolveWindowReadFid(primaryField: String): Pair<FidAddress, Int?> {
+        val primary = FidAddresses.of(primaryField)
+        val raw = readWindowRaw(primary)
+        if (primaryField == WINDOW_RR_FIELD && raw == SentinelDecoder.FEATURE_LINK_ERROR) {
+            val gen3 = FidAddresses.of(WINDOW_RR_GEN3_FIELD)
+            return gen3 to readWindowRaw(gen3)
+        }
+        return primary to raw
+    }
+
+    /** Raw position read; a failed read is logged as null and never fails the write. */
+    private suspend fun readWindowRaw(address: FidAddress): Int? = try {
+        autoservice.getIntRaw(address.device, address.fid)
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e
+        Log.w(TAG, "window readback read fid=${address.fid} failed: ${e.message}")
+        null
     }
 
     /**
@@ -249,8 +855,19 @@ class VehicleApiImpl @Inject constructor(
      * autoservice status instead of a Result. A config error (allowlist miss / out of
      * range) maps to TRANSIENT so the adaptive channel never switches channels because
      * of a code bug. seat entries have no readbackFid, so no read-back verification.
+     * [journaled] = false keeps non-seat writes (steering heat) out of the seat journal.
+     * [beforeSend], when given, is handed to [HelperClient.writeStatus], which runs it inside
+     * its own transport mutex, immediately before the transact — the actual last-instant guard,
+     * with no queue wait behind another helper request able to separate the check from the send.
+     * A false return skips the transact entirely and surfaces here as [WriteGuardRefused],
+     * reported as "pre_send_refused".
      */
-    internal suspend fun doWriteOutcome(actionName: String, value: Int): WriteOutcome {
+    internal suspend fun doWriteOutcome(
+        actionName: String,
+        value: Int,
+        journaled: Boolean = true,
+        beforeSend: (suspend (LockedReader) -> Boolean)? = null,
+    ): WriteOutcome {
         val entry = allowlist.find(actionName) ?: run {
             Log.w(TAG, "doWriteOutcome: action=$actionName not in allowlist")
             logWrite(actionName, -1, -1, value, null, false, "allowlist_miss", validated = false)
@@ -263,11 +880,16 @@ class VehicleApiImpl @Inject constructor(
         }
         logAttempt(actionName, entry, value)
         val status: Int? = try {
-            helper.writeStatus(entry.dev, entry.writeFid, value)
+            helper.writeStatus(entry.dev, entry.writeFid, value, beforeSend)
+        } catch (e: CancellationException) {
+            // Rethrow so callers outside the NonCancellable write unit (channel resolution,
+            // probe logic) can still be cancelled normally.
+            throw e
+        } catch (e: WriteGuardRefused) {
+            Log.w(TAG, "doWriteOutcome: action=$actionName refused by beforeSend guard: ${e.message}")
+            logWrite(actionName, entry.dev, entry.writeFid, value, null, false, "pre_send_refused", entry.validated)
+            return WriteOutcome.TRANSIENT
         } catch (e: Exception) {
-            // Rethrow cancellation so callers outside the NonCancellable write unit
-            // (channel resolution, probe logic) can still be cancelled normally.
-            if (e is CancellationException) throw e
             Log.w(TAG, "doWriteOutcome: action=$actionName helper threw: ${e.message}")
             logWrite(actionName, entry.dev, entry.writeFid, value, null, false, "helper_exception", entry.validated)
             return WriteOutcome.TRANSIENT
@@ -275,9 +897,13 @@ class VehicleApiImpl @Inject constructor(
         val outcome = WriteOutcome.fromStatus(status)
         val ok = outcome == WriteOutcome.REAL
         logWrite(actionName, entry.dev, entry.writeFid, value, status, ok, if (ok) null else "outcome_$outcome", entry.validated)
-        seatJournal?.appendWrite(actionName, entry.dev, entry.writeFid, value, status, outcome)
+        if (journaled) seatJournal?.appendWrite(actionName, entry.dev, entry.writeFid, value, status, outcome)
         return outcome
     }
+
+    /** Raw steering wheel heat state — sentinels kept, 65535 (no CAN link) is a verdict there. */
+    private suspend fun readSteeringHeatState(): Int? =
+        helper.read(WriteAllowlist.STEERING_HEAT_STATE_DEV, WriteAllowlist.STEERING_HEAT_STATE_FID)?.toInt()
 
     /**
      * dev=1000 status fid of [group] (1=on, 2=off), or null when the read carries no verdict:
@@ -369,6 +995,47 @@ class VehicleApiImpl @Inject constructor(
         private const val TAG = "VehicleApiImpl"
         private const val VALIDATED_FAILURE_TAG = "VehicleApi.ValidatedFailure"
         private const val COMPOSITE_WRITE_STAGGER_MS = 150L
+        /** Percent write → 255 reset on the same fid, the stock delay (CarWindowApiImpl delay(300)). */
+        private const val PERCENT_RESET_DELAY_MS = 300L
+        /** When a write without a readback is read back once for the trace. */
+        internal const val LATE_VERIFY_MS = 800L
+        /** The reset and one retry. */
+        private const val PERCENT_RESET_ATTEMPTS = 2
+        private val STEERING_HEAT_ACTIONS = setOf("steering_heat_on", "steering_heat_off")
+        private val HUD_ACTIONS = setOf("hud_on", "hud_off")
+
+        // ── Window readback (write verdict) ────────────────────────────────────
+        /** Per attempt; a pane that was commanded starts moving well inside two of these
+         *  (same budget as the seat channel's status verification). */
+        private const val WINDOW_VERIFY_DELAY_MS = 400L
+        private const val WINDOW_VERIFY_ATTEMPTS = 2
+        /** Percent noise between two reads of a standing pane. */
+        private const val WINDOW_POSITION_TOLERANCE_PCT = 2
+        /** Bounded wait so the "before" sample usually precedes the write, but a hung read
+         *  channel costs at most this much. */
+        private const val WINDOW_BEFORE_READ_BUDGET_MS = 300L
+        private const val WINDOW_RR_FIELD = "windowRR"
+        private const val WINDOW_RR_GEN3_FIELD = "windowRRGen3"
+        /** Write action → the FidMap READ entry of the same pane (percent). The address
+         *  itself is looked up per read, so it follows the firmware catalog. */
+        private val WINDOW_READ_FIELDS: Map<String, String> = mapOf(
+            "window_driver_pos" to "windowFL",
+            "window_driver_open" to "windowFL",
+            "window_driver_close" to "windowFL",
+            "window_driver_ctrl" to "windowFL",
+            "window_passenger_pos" to "windowFR",
+            "window_passenger_open" to "windowFR",
+            "window_passenger_close" to "windowFR",
+            "window_passenger_ctrl" to "windowFR",
+            "window_rear_left_pos" to "windowRL",
+            "window_rear_left_open" to "windowRL",
+            "window_rear_left_close" to "windowRL",
+            "window_rear_left_ctrl" to "windowRL",
+            "window_rear_right_pos" to WINDOW_RR_FIELD,
+            "window_rear_right_open" to WINDOW_RR_FIELD,
+            "window_rear_right_close" to WINDOW_RR_FIELD,
+            "window_rear_right_ctrl" to WINDOW_RR_FIELD,
+        )
         // TODO: route to Crashlytics when Firebase is integrated
     }
 }

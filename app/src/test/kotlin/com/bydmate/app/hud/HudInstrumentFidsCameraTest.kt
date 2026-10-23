@@ -38,7 +38,7 @@ class HudInstrumentFidsCameraTest {
     }
 
     private fun fids(helper: HelperClient, scope: TestScope) =
-        HudInstrumentFids(helper, scope, { false }, HudTextSanitizer(null))
+        HudInstrumentFids(helper, scope, { false }, HudPanelTextSanitizer(null))
 
     private fun camera(meters: Int) = NavGuidanceHub.Snapshot(
         active = true,
