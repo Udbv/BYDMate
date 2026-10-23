@@ -61,12 +61,19 @@ gh release create v3.15.0-dev.2 --repo Udbv/BYDMate --target develop --prereleas
   app/build/outputs/apk/waze/release/BYDMate-Waze-v3.15.0-dev.2.apk
 ```
 
-Stable (from `main`, ONLY after a real-car test of that exact build):
+Stable (from `main`, ONLY after a real-car test of that exact build) — **CI does it**:
+`.github/workflows/release-stable.yml` runs on every push to `main` and promotes the pre-release that
+`develop` published for the same `versionName` to a full release marked latest. Nothing is rebuilt,
+so Stable users get the very APK that was tested in the car. The tag keeps its `-dev.N` name: the APK
+reports that versionName, and the in-app checker needs tag == `v` + versionName to see itself as
+current. The run fails, publishing nothing, when there is no such pre-release, it has no APK, or its
+tag is not in `main`.
 ```bash
 git checkout main && git merge --ff-only develop && git push origin main
-gh release create v3.15.0 --repo Udbv/BYDMate --target main --title "BYDMate Waze 3.15.0" \
-  --notes-file docs/release-notes/v3.15.0.md app/build/outputs/apk/waze/release/BYDMate-Waze-v3.15.0.apk
 ```
+
+A stable release with a plain `X.Y.Z` name still goes by hand: bump `versionName` to `X.Y.Z` on
+`develop` (CI publishes it as a pre-release), test that build, then fast-forward `main` as above.
 
 Bump `versionCode` and `versionName` in `app/build.gradle.kts` before tagging; the tag must equal
 `v` + versionName so the in-app checker sees the running version as current.
