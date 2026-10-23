@@ -59,7 +59,8 @@ jobs:
         run: |
           name=$(sed -n 's/^ *versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
           [ -n "$name" ] || { echo "::error::versionName not found in app/build.gradle.kts"; exit 1; }
-          case "$name" in *-dev.*) ;; *) echo "::error::$name is not a -dev.N version; stable releases go through main"; exit 1;; esac
+          # Any version is published as a pre-release here; it reaches the Stable channel only when
+          # main gets the same versionName and release-stable.yml promotes it.
           notes="docs/release-notes/v$name.md"
           [ -f "$notes" ] || { echo "::error::$notes is missing"; exit 1; }
           if gh release view "v$name" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
