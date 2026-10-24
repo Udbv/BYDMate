@@ -3046,7 +3046,7 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
             text = state.logSaveStatus!!,
         )
     }
-    // Diagnostic fid recorder (-test/debug builds only): the daemon owns the run, this row
+    // Diagnostic fid recorder (-test/-dev/debug builds only): the daemon owns the run, this row
     // only reflects and toggles it, so a reopened screen still shows a recording in force.
     if (state.fidRecorderVisible) {
         SettingDivider()
@@ -3068,6 +3068,7 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
                 text = stringResource(R.string.settings_fid_recorder_file, state.fidRecorderFile!!),
             )
         }
+        if (state.fidRecorderSendStatus != null) SettingHint(text = state.fidRecorderSendStatus!!)
     }
     SettingDivider()
     SettingActionRow(

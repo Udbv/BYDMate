@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -159,4 +161,23 @@ class LogTelegramSender @Inject constructor(
         const val TRIP_RETRY_MS = 120_000L
         const val TRIP_ATTEMPTS = 3
     }
+}
+
+/**
+ * [source] packed into `<name>.zip` in [dir] for an upload; an existing zip of that name is
+ * replaced. Throws IOException when [source] cannot be read (gone, or no access).
+ */
+internal fun zipForUpload(source: File, dir: File): File {
+    val zip = File(dir, source.nameWithoutExtension + ".zip")
+    try {
+        ZipOutputStream(zip.outputStream().buffered()).use { out ->
+            out.putNextEntry(ZipEntry(source.name))
+            source.inputStream().use { it.copyTo(out) }
+            out.closeEntry()
+        }
+    } catch (e: java.io.IOException) {
+        zip.delete()
+        throw e
+    }
+    return zip
 }

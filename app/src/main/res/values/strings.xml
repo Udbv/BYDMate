@@ -1560,7 +1560,7 @@
     <string name="settings_trip_debug_auto_title">Отправлять журнал поездки в Telegram</string>
     <string name="settings_trip_debug_auto_desc">Когда начнётся следующая поездка, журнал прошлой сам придёт в ваш бот.</string>
     <string name="settings_fid_recorder_title">Регистратор датчиков</string>
-    <string name="settings_fid_recorder_desc">Пишет все изменения датчиков машины в файл в Загрузках, для разбора</string>
+    <string name="settings_fid_recorder_desc">Пишет все изменения датчиков машины в файл в Загрузках, для разбора. С привязанным ботом после остановки файл уходит в него</string>
     <string name="settings_fid_recorder_file">Файл: %1$s</string>
     <string name="settings_fid_recorder_error">Не записывает: %1$s</string>
     <string name="settings_quiet_notification_title">Тихое уведомление в шторке</string>

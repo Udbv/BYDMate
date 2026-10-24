@@ -34,7 +34,8 @@ import com.bydmate.app.data.local.dao.IdleDrainDao
 import com.bydmate.app.diagnostics.LogRecorder
 import com.bydmate.app.diagnostics.Trace
 import com.bydmate.app.BuildConfig
-import com.bydmate.app.data.push.fidRecorderEnabled
+import com.bydmate.app.data.push.fidRecorderSwitchVisible
+import com.bydmate.app.diagnostics.zipForUpload
 import com.bydmate.app.helper.push.FID_REC_NO_ERROR
 import com.bydmate.app.helper.push.fidRecorderStatusLines
 import com.bydmate.app.data.remote.InsightsManager
@@ -157,13 +158,15 @@ data class SettingsUiState(
     val lastLogPath: String? = null,
     /** «Отправить в Telegram» for the saved log is uploading (#324). */
     val logSending: Boolean = false,
-    /** The fid recorder row is a diagnostic tool: shown on -test and local debug builds only. */
-    val fidRecorderVisible: Boolean = fidRecorderEnabled(BuildConfig.VERSION_NAME, BuildConfig.DEBUG),
+    /** The fid recorder row is a diagnostic tool: shown on -test, -dev and local debug builds only. */
+    val fidRecorderVisible: Boolean = fidRecorderSwitchVisible(BuildConfig.VERSION_NAME, BuildConfig.DEBUG),
     val fidRecorderRunning: Boolean = false,
     /** Path of the file the current or last run wrote, with its size; null before the first run. */
     val fidRecorderFile: String? = null,
     /** Why the last start registered nothing (no file, daemon unreachable); null when it ran. */
     val fidRecorderError: String? = null,
+    /** Upload of the stopped recording to the bound bot; null when none was attempted. */
+    val fidRecorderSendStatus: String? = null,
     val tripCostTariff: String = "home",
     val consumptionGood: String = SettingsRepository.DEFAULT_CONSUMPTION_GOOD,
     val consumptionBad: String = SettingsRepository.DEFAULT_CONSUMPTION_BAD,
@@ -483,7 +486,7 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
     fun setFidRecorder(on: Boolean) {
         viewModelScope.launch {
             // Optimistic flip so the switch does not sit still while ~45 devices are registered.
-            _uiState.update { it.copy(fidRecorderRunning = on, fidRecorderError = null) }
+            _uiState.update { it.copy(fidRecorderRunning = on, fidRecorderError = null, fidRecorderSendStatus = null) }
             if (on) {
                 val started = helperClient.recStart(IntArray(0))
                 val error = when {
@@ -495,9 +498,31 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
                 _uiState.update { it.copy(fidRecorderError = error) }
             } else {
                 helperClient.recStop()
+                sendFidRecording()
             }
             refreshFidRecorder()
         }
+    }
+
+    /**
+     * A stopped recording goes to the bound bot by itself, zipped (the text shrinks ~10x and
+     * Telegram takes 50 MB), pinned like every diagnostic file. The original stays in Download.
+     */
+    private suspend fun sendFidRecording() {
+        if (!settingsRepository.getTgBackupConfig().configured) return
+        val path = helperClient.recStatus()?.filePath?.takeIf { it.isNotEmpty() } ?: return
+        _uiState.update { it.copy(fidRecorderSendStatus = appStrings.get(R.string.settings_log_tg_sending)) }
+        val status = try {
+            val zip = withContext(Dispatchers.IO) { zipForUpload(File(path), appContext.cacheDir) }
+            try {
+                logTelegramSender.sendQuietly(zip) ?: appStrings.get(R.string.settings_log_tg_busy)
+            } finally {
+                withContext(Dispatchers.IO) { zip.delete() }
+            }
+        } catch (e: java.io.IOException) {
+            appStrings.get(R.string.settings_log_tg_failed, e.message ?: "?")
+        }
+        _uiState.update { it.copy(fidRecorderSendStatus = status) }
     }
 
     /** Load all settings from the repository on init. */

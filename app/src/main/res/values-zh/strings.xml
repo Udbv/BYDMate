@@ -1518,7 +1518,7 @@
     <string name="settings_trip_debug_auto_title">将行程日志发送到 Telegram</string>
     <string name="settings_trip_debug_auto_desc">下一次行程开始时，上一次行程的日志会自动发送到您的机器人。</string>
     <string name="settings_fid_recorder_title">传感器记录器</string>
-    <string name="settings_fid_recorder_desc">把车辆传感器的每次变化写入“下载”中的文件，供分析使用</string>
+    <string name="settings_fid_recorder_desc">把车辆传感器的每次变化写入“下载”中的文件，供分析使用。已绑定机器人时，停止后文件会发送给它</string>
     <string name="settings_fid_recorder_file">文件：%1$s</string>
     <string name="settings_fid_recorder_error">未记录：%1$s</string>
     <string name="settings_quiet_notification_title">安静的通知</string>

@@ -1556,7 +1556,7 @@
     <string name="settings_trip_debug_auto_title">Адпраўляць журнал паездкі ў Telegram</string>
     <string name="settings_trip_debug_auto_desc">Калі пачнецца наступная паездка, журнал папярэдняй сам прыйдзе ў ваш бот.</string>
     <string name="settings_fid_recorder_title">Рэгістратар датчыкаў</string>
-    <string name="settings_fid_recorder_desc">Піша ўсе змены датчыкаў машыны ў файл у Загрузках, для разбору</string>
+    <string name="settings_fid_recorder_desc">Піша ўсе змены датчыкаў машыны ў файл у Загрузках, для разбору. З прывязаным ботам пасля спынення файл ідзе ў яго</string>
     <string name="settings_fid_recorder_file">Файл: %1$s</string>
     <string name="settings_fid_recorder_error">Не запісвае: %1$s</string>
     <string name="settings_quiet_notification_title">Ціхае апавяшчэнне ў шторцы</string>
