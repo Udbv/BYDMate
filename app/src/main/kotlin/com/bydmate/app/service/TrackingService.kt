@@ -868,6 +868,8 @@ class TrackingService : Service(), LocationListener {
         serviceScope.launch { powerOffArmer.run() }
         // A log recording that ends for good goes to the bot when the user asked for it (#324).
         serviceScope.launch { logTelegramSender.run() }
+        // The trip that ended before this start, to the owner's bot when they asked for that.
+        serviceScope.launch { logTelegramSender.sendFinishedTripLog(applicationContext) }
         // Car type (EV / DM-i hybrid): cache first, then a read round; the poll tick continues it.
         serviceScope.launch { vehicleKindMonitor.onServiceStart(System.currentTimeMillis()) }
         startPolling()

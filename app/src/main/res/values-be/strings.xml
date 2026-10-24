@@ -865,6 +865,7 @@
     <string name="settings_log_tg_failed">Не ўдалося адправіць: %1$s</string>
     <string name="settings_log_tg_too_big">Файл занадта вялікі для Telegram. Ён ляжыць у папцы Download.</string>
     <string name="settings_log_tg_missing">Файл не знойдзены. Магчыма, яго выдалілі з папкі Download.</string>
+    <string name="settings_log_tg_busy">Ужо адпраўляю іншы файл, паўтарыце праз хвіліну</string>
     <string name="settings_tg_log_auto_title">Адпраўляць запісаны лог у Telegram</string>
     <string name="settings_tg_log_auto_hint">Калі запіс лога скончыцца, файл сам прыйдзе ў ваш бот.</string>
     <string name="settings_update_check_in_progress">Праверка...</string>
@@ -1551,6 +1552,9 @@
     <string name="settings_trip_debug_title">Рэжым адладкі: журнал паездак</string>
     <string name="settings_trip_debug_desc">Машына сама піша журнал вядзення для кожнай паездкі: што паказаў навігатар, што пайшло на прыборную панэль і што яна прыняла. Файлы застаюцца ў машыне, папка %1$s. Запісвае назвы вуліц з экрана навігатара.</string>
     <string name="settings_trip_debug_files">Журналаў у машыне: %1$d (захоўваецца апошніх %2$d)</string>
+    <string name="settings_trip_debug_send_title">Журнал апошняй паездкі</string>
+    <string name="settings_trip_debug_auto_title">Адпраўляць журнал паездкі ў Telegram</string>
+    <string name="settings_trip_debug_auto_desc">Калі пачнецца наступная паездка, журнал папярэдняй сам прыйдзе ў ваш бот.</string>
     <string name="settings_fid_recorder_title">Рэгістратар датчыкаў</string>
     <string name="settings_fid_recorder_desc">Піша ўсе змены датчыкаў машыны ў файл у Загрузках, для разбору</string>
     <string name="settings_fid_recorder_file">Файл: %1$s</string>

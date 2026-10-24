@@ -246,6 +246,8 @@ data class SettingsUiState(
     val tgLogAutoSendEnabled: Boolean = false,
     /** Status of the last fid-catalog dump. Null = idle. Red if starts with error prefix. */
     val fidDumpStatus: String? = null,
+    /** Result of the last «Отправить в Telegram» for a trip log. */
+    val tripLogStatus: String? = null,
     val mapTileSource: String = SettingsRepository.DEFAULT_MAP_TILE_SOURCE,
     // Voice settings
     val voiceEnabled: Boolean = false,
@@ -2629,6 +2631,31 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
         }
     }
 
+    /**
+     * The newest trip log to the bound bot. The trip in progress is flushed first, so a log can be
+     * sent from the car mid-drive; the file stays where it is.
+     */
+    fun sendTripLogToTelegram() {
+        if (_uiState.value.logSending) return
+        _uiState.update { it.copy(logSending = true, tripLogStatus = appStrings.get(R.string.settings_log_tg_sending)) }
+        viewModelScope.launch {
+            try {
+                val file = withContext(Dispatchers.IO) {
+                    com.bydmate.app.diagnostics.TripDebugLog.drain()
+                    com.bydmate.app.diagnostics.TripDebugLog.files(appContext).firstOrNull()
+                }
+                val status = if (file == null) {
+                    appStrings.get(R.string.settings_log_tg_missing)
+                } else {
+                    logTelegramSender.sendQuietly(file) ?: appStrings.get(R.string.settings_log_tg_busy)
+                }
+                _uiState.update { it.copy(tripLogStatus = status) }
+            } finally {
+                _uiState.update { it.copy(logSending = logTelegramSender.sending.value) }
+            }
+        }
+    }
+
     fun showUpdateDialog() {
         _uiState.update { it.copy(showUpdateDialog = true, updateDialogState = UpdateState.Idle) }
     }
@@ -3008,9 +3035,10 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
      * The folder is public (W6-F4) because the previous private filesDir target was reachable
      * neither by a file manager nor by `adb pull`, so users could not hand the dump over.
      *
-     * Privacy: NO automatic upload, NO background collection. The dump contains only SDK
-     * constant names/values; no VIN, no location, no personal data. The file leaves the
-     * device only through the user-driven share sheet.
+     * Privacy: NO background collection. The dump contains only SDK constant names/values; no
+     * VIN, no location, no personal data. The file leaves the device only on this tap: to the
+     * user's own bot when one is bound (a head unit has no good share target), else through the
+     * share sheet.
      */
     fun dumpFids() {
         // Compute the locale-aware context on the calling thread (Main) before switching to IO.
@@ -3083,7 +3111,8 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
                     out.appendLine("---")
                     out.append(dump)
                 }
-                shareFile(file, "text/plain")
+                val bot = settingsRepository.getTgBackupConfig().configured
+                if (!bot) shareFile(file, "text/plain")
                 // Show the path the user actually sees in a file manager (storage root stripped),
                 // e.g. "Download/fid-dump-20260729-120000.txt".
                 val storageRoot = Environment.getExternalStorageDirectory()?.absolutePath
@@ -3093,7 +3122,13 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
                     else
                         path
                 }
-                _uiState.update { it.copy(fidDumpStatus = lc.getString(R.string.settings_fid_dump_saved, visiblePath)) }
+                val saved = lc.getString(R.string.settings_fid_dump_saved, visiblePath)
+                _uiState.update { it.copy(fidDumpStatus = saved) }
+                if (bot) {
+                    _uiState.update { it.copy(fidDumpStatus = saved + "\n" + lc.getString(R.string.settings_log_tg_sending)) }
+                    val sent = logTelegramSender.sendQuietly(file) ?: lc.getString(R.string.settings_log_tg_busy)
+                    _uiState.update { it.copy(fidDumpStatus = saved + "\n" + sent) }
+                }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(fidDumpStatus = lc.getString(R.string.settings_error_with_message, e.message ?: "?"))

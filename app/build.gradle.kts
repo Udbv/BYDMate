@@ -31,8 +31,8 @@ android {
         // on DiLink Android 12 (requestLegacyExternalStorage works).
         // targetSdk 30+ would break listFiles() on /storage/emulated/0/energydata/
         targetSdk = 29
-        versionCode = 509
-        versionName = "4.0.1-dev.1"   // development pre-release; stable X.Y.Z only after a real-car test
+        versionCode = 510
+        versionName = "4.0.1-dev.2"   // development pre-release; stable X.Y.Z only after a real-car test
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

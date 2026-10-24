@@ -220,6 +220,36 @@ class TelegramBackupSinkTest {
         assertEquals("chat_id=42&latitude=53.900000&longitude=-27.560000&disable_notification=true", body)
     }
 
+    @Test fun `a pinned send pins the sent message silently`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"ok":true,"result":{"message_id":321}}"""))
+        server.enqueue(MockResponse().setBody("""{"ok":true,"result":true}"""))
+        val file = tmp.newFile("trip-20261024-0700.log").apply { writeText("x") }
+
+        assertTrue(sink.sendDocument("123:abc", 42L, file, file.name, pin = true).isSuccess)
+
+        val upload = server.takeRequest()
+        assertEquals("/bot123:abc/sendDocument", upload.path)
+        assertTrue(upload.body.readUtf8().contains("Content-Type: text/plain"))
+        val pin = server.takeRequest()
+        assertEquals("/bot123:abc/pinChatMessage", pin.path)
+        assertEquals("chat_id=42&message_id=321&disable_notification=true", pin.body.readUtf8())
+    }
+
+    @Test fun `a failed pin still counts the file as sent`() = runTest {
+        server.enqueue(MockResponse().setBody("""{"ok":true,"result":{"message_id":321}}"""))
+        server.enqueue(MockResponse().setResponseCode(400).setBody("""{"ok":false,"error_code":400,"description":"Bad Request: not enough rights"}"""))
+
+        assertTrue(sink.sendDocument("123:abc", 42L, tmp.newFile("fid-dump-1.txt"), "c", pin = true).isSuccess)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test fun `a failed upload is not pinned`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(413).setBody("""{"ok":false,"error_code":413,"description":"Request Entity Too Large"}"""))
+
+        assertEquals(TelegramError.TOO_LARGE, failureOf(sink.sendDocument("123:abc", 42L, tmp.newFile("a.log"), "c", pin = true)).error)
+        assertEquals(1, server.requestCount)
+    }
+
     @Test fun `sendDocument uploads a multipart zip with chat id and caption`() = runTest {
         server.enqueue(MockResponse().setBody("""{"ok":true,"result":{}}"""))
         val file = tmp.newFile("bydmate_backup_auto_20260923_100000.zip").apply { writeBytes(byteArrayOf(80, 75, 3, 4)) }

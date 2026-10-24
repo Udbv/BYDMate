@@ -865,6 +865,7 @@
     <string name="settings_log_tg_failed">Nie udało się wysłać: %1$s</string>
     <string name="settings_log_tg_too_big">Plik jest za duży dla Telegrama. Leży w folderze Download.</string>
     <string name="settings_log_tg_missing">Nie znaleziono pliku. Mógł zostać usunięty z folderu Download.</string>
+    <string name="settings_log_tg_busy">Wysyłam już inny plik, spróbuj za minutę</string>
     <string name="settings_tg_log_auto_title">Wysyłaj nagrany log do Telegrama</string>
     <string name="settings_tg_log_auto_hint">Gdy nagrywanie logu się skończy, plik sam trafi do Twojego bota.</string>
     <string name="settings_update_check_in_progress">Sprawdzanie...</string>
@@ -1551,6 +1552,9 @@
     <string name="settings_trip_debug_title">Tryb diagnostyczny: dzienniki podróży</string>
     <string name="settings_trip_debug_desc">Samochód sam zapisuje dziennik nawigacji dla każdej podróży: co pokazała nawigacja, co trafiło na zestaw wskaźników i co on przyjął. Pliki zostają w aucie, w %1$s. Zapisuje nazwy ulic z ekranu nawigacji.</string>
     <string name="settings_trip_debug_files">Dzienniki w aucie: %1$d (przechowywane ostatnie %2$d)</string>
+    <string name="settings_trip_debug_send_title">Dziennik ostatniej podróży</string>
+    <string name="settings_trip_debug_auto_title">Wysyłaj dziennik podróży do Telegrama</string>
+    <string name="settings_trip_debug_auto_desc">Gdy zacznie się następna podróż, dziennik poprzedniej sam trafi do Twojego bota.</string>
     <string name="settings_fid_recorder_title">Rejestrator czujników</string>
     <string name="settings_fid_recorder_desc">Zapisuje każdą zmianę czujników auta do pliku w Pobranych, do analizy</string>
     <string name="settings_fid_recorder_file">Plik: %1$s</string>
