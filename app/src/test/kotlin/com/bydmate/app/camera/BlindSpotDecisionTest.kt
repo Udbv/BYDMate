@@ -16,7 +16,10 @@ class BlindSpotDecisionTest {
         gearIsReverse: Boolean = false,
         thresholdKmh: Int = 20,
         telemetryAgeMs: Long = 0L,
-    ) = BlindSpotInput(blink, speedKmh, gearIsReverse, thresholdKmh, telemetryAgeMs)
+    ) = BlindSpotInput(
+        blink, speedKmh, gearIsReverse, thresholdKmh, telemetryAgeMs,
+        nativeCameraForeground = false,
+    )
 
     @Test fun `left turn signal above threshold shows the left camera`() {
         val d = decideBlindSpot(input(blink = 2))
@@ -30,6 +33,33 @@ class BlindSpotDecisionTest {
 
     @Test fun `reverse gear closes everything`() {
         val d = decideBlindSpot(input(blink = 2, gearIsReverse = true))
+        assertEquals(BlindSpotSide.NONE, d.show)
+        assertFalse(d.cameraWarm)
+    }
+
+    /**
+     * The factory 360 owns the screen while it is up, and a warm camera under it streams two
+     * previews nobody sees: the 360 stuttered until BYDMate was killed (tester dump 2026-10-03).
+     */
+    @Test fun `native 360 in the foreground hides the window and cools the camera`() {
+        val d = decideBlindSpot(input(blink = 2).copy(nativeCameraForeground = true))
+        assertEquals(BlindSpotSide.NONE, d.show)
+        assertFalse("camera must not stream under the factory 360", d.cameraWarm)
+    }
+
+    /** The very same tick without the 360 shows the side, so only the 360 held it back. */
+    @Test fun `the same blinker shows again once the native 360 is gone`() {
+        assertEquals(
+            BlindSpotSide.LEFT,
+            decideBlindSpot(input(blink = 2).copy(nativeCameraForeground = false)).show,
+        )
+    }
+
+    /** Reverse still wins: the factory rear view is up, and nothing of ours stays warm. */
+    @Test fun `reverse closes everything even while the native 360 is up`() {
+        val d = decideBlindSpot(
+            input(blink = 2, gearIsReverse = true).copy(nativeCameraForeground = true),
+        )
         assertEquals(BlindSpotSide.NONE, d.show)
         assertFalse(d.cameraWarm)
     }
@@ -65,9 +95,19 @@ class BlindSpotDecisionTest {
         assertFalse(d.cameraWarm)
     }
 
-    @Test fun `camera stays warm inside the hysteresis band below the threshold`() {
-        assertTrue(decideBlindSpot(input(blink = 1, speedKmh = 15f)).cameraWarm)
-        assertFalse(decideBlindSpot(input(blink = 1, speedKmh = 14.9f)).cameraWarm)
+    /** The camera is opened on demand: speed alone no longer holds it open ahead of a signal. */
+    @Test fun `no turn signal at speed keeps the camera closed`() {
+        assertFalse(decideBlindSpot(input(blink = 1, speedKmh = 80f)).cameraWarm)
+        assertFalse(decideBlindSpot(input(blink = null, speedKmh = 80f)).cameraWarm)
+    }
+
+    @Test fun `hazard lights do not open the camera`() {
+        assertFalse(decideBlindSpot(input(blink = 6)).cameraWarm)
+    }
+
+    @Test fun `a turn signal below the threshold does not open the camera`() {
+        assertFalse(decideBlindSpot(input(blink = 2, speedKmh = 19.9f)).cameraWarm)
+        assertTrue(decideBlindSpot(input(blink = 4, speedKmh = 20f)).cameraWarm)
     }
 }
 
@@ -85,6 +125,39 @@ class BlindSpotArmedTest {
     @Test fun `reverse and unknown speed do not arm`() {
         assertFalse(blindSpotArmed(enabled = true, gear = 2, speedKmh = 40, thresholdKmh = 20))
         assertFalse(blindSpotArmed(enabled = true, gear = 4, speedKmh = null, thresholdKmh = 20))
+    }
+}
+
+class BlindSpotArmedReasonTest {
+
+    @Test fun `disabled feature reports disabled regardless of speed or gear`() {
+        assertEquals(
+            "disabled",
+            blindSpotArmedReason(enabled = false, gear = 4, speedKmh = 80, thresholdKmh = 20))
+    }
+
+    @Test fun `speed below the warm band names the gap`() {
+        assertEquals(
+            "speed 0 < 15",
+            blindSpotArmedReason(enabled = true, gear = 4, speedKmh = 0, thresholdKmh = 20))
+    }
+
+    @Test fun `speed inside the warm band is ok`() {
+        assertEquals(
+            "ok",
+            blindSpotArmedReason(enabled = true, gear = 4, speedKmh = 30, thresholdKmh = 20))
+    }
+
+    @Test fun `reverse gear wins over speed`() {
+        assertEquals(
+            "reverse",
+            blindSpotArmedReason(enabled = true, gear = 2, speedKmh = 80, thresholdKmh = 20))
+    }
+
+    @Test fun `missing speed is its own reason`() {
+        assertEquals(
+            "no speed",
+            blindSpotArmedReason(enabled = true, gear = 4, speedKmh = null, thresholdKmh = 20))
     }
 }
 
@@ -183,15 +256,64 @@ class BlindSpotTelemetryGateTest {
     }
 }
 
-class BlindSpotMirrorRoutingTest {
+class BlindSpotScreenRoutingTest {
 
-    @Test fun `without a cluster display the left camera always mirrors`() {
-        assertTrue(blindSpotUsesMirror(bothOnMain = false, hasClusterDisplay = false))
-        assertTrue(blindSpotUsesMirror(bothOnMain = true, hasClusterDisplay = false))
+    private val main = BlindSpotScreen.MAIN
+    private val cluster = BlindSpotScreen.CLUSTER
+
+    private fun route(side: BlindSpotSide, bothOnMain: Boolean, bothOnCluster: Boolean, hasCluster: Boolean) =
+        blindSpotScreen(side, bothOnMain, bothOnCluster, hasCluster)
+
+    @Test fun `without a cluster display both cameras go to the main screen whatever the opt-ins`() {
+        for (onMain in listOf(false, true)) for (onCluster in listOf(false, true)) {
+            assertEquals(main, route(BlindSpotSide.LEFT, onMain, onCluster, hasCluster = false))
+            assertEquals(main, route(BlindSpotSide.RIGHT, onMain, onCluster, hasCluster = false))
+        }
     }
 
-    @Test fun `with a cluster display the opt-in decides`() {
-        assertFalse(blindSpotUsesMirror(bothOnMain = false, hasClusterDisplay = true))
-        assertTrue(blindSpotUsesMirror(bothOnMain = true, hasClusterDisplay = true))
+    @Test fun `default with a cluster display - left on the cluster, right on the main screen`() {
+        assertEquals(cluster, route(BlindSpotSide.LEFT, false, false, hasCluster = true))
+        assertEquals(main, route(BlindSpotSide.RIGHT, false, false, hasCluster = true))
+    }
+
+    @Test fun `both on main keeps both on the main screen`() {
+        assertEquals(main, route(BlindSpotSide.LEFT, true, false, hasCluster = true))
+        assertEquals(main, route(BlindSpotSide.RIGHT, true, false, hasCluster = true))
+    }
+
+    @Test fun `both on cluster puts both on the cluster`() {
+        assertEquals(cluster, route(BlindSpotSide.LEFT, false, true, hasCluster = true))
+        assertEquals(cluster, route(BlindSpotSide.RIGHT, false, true, hasCluster = true))
+    }
+
+    @Test fun `both opt-ins set at once - main wins, the cluster is not touched`() {
+        assertEquals(main, route(BlindSpotSide.LEFT, true, true, hasCluster = true))
+        assertEquals(main, route(BlindSpotSide.RIGHT, true, true, hasCluster = true))
+    }
+
+    @Test fun `the routing reason names the rule that decided`() {
+        assertEquals("no_cluster_display", blindSpotRoutingReason(false, true, hasClusterDisplay = false))
+        assertEquals("both_on_main", blindSpotRoutingReason(true, true, hasClusterDisplay = true))
+        assertEquals("both_on_cluster", blindSpotRoutingReason(false, true, hasClusterDisplay = true))
+        assertEquals("default", blindSpotRoutingReason(false, false, hasClusterDisplay = true))
+    }
+}
+
+class BlindSpotMainScreenCoverageTest {
+
+    @Test fun `the right window covers the main screen only while it sits there`() {
+        assertTrue(blindSpotCoversMainScreen(BlindSpotSide.RIGHT, leftOnMainScreen = false, rightOnMainScreen = true))
+        assertTrue(blindSpotCoversMainScreen(BlindSpotSide.RIGHT, leftOnMainScreen = true, rightOnMainScreen = true))
+        assertFalse(blindSpotCoversMainScreen(BlindSpotSide.RIGHT, leftOnMainScreen = false, rightOnMainScreen = false))
+    }
+
+    @Test fun `the left window covers it only as the mirrored fallback`() {
+        assertFalse(blindSpotCoversMainScreen(BlindSpotSide.LEFT, leftOnMainScreen = false, rightOnMainScreen = true))
+        assertTrue(blindSpotCoversMainScreen(BlindSpotSide.LEFT, leftOnMainScreen = true, rightOnMainScreen = true))
+    }
+
+    @Test fun `nothing shown covers nothing`() {
+        assertFalse(blindSpotCoversMainScreen(BlindSpotSide.NONE, leftOnMainScreen = false, rightOnMainScreen = true))
+        assertFalse(blindSpotCoversMainScreen(BlindSpotSide.NONE, leftOnMainScreen = true, rightOnMainScreen = true))
     }
 }

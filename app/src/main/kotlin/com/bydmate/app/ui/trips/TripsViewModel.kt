@@ -5,8 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.bydmate.app.data.local.dao.TripPointDao
 import com.bydmate.app.data.local.entity.TripEntity
 import com.bydmate.app.data.local.entity.TripPointEntity
+import com.bydmate.app.data.nativestack.VehicleKind
+import com.bydmate.app.data.nativestack.VehicleKindMonitor
 import com.bydmate.app.data.repository.SettingsRepository
 import com.bydmate.app.data.repository.TripRepository
+import com.bydmate.app.R
+import com.bydmate.app.util.CalendarPeriods
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,7 +41,11 @@ data class MonthGroup(
     val totalKwh: Double,
     val avgConsumption: Double,
     val totalCost: Double,
-    val days: List<DayGroup>
+    val days: List<DayGroup>,
+    /** DM-i: litres of the month's trips, null when no trip carries a litre figure. */
+    val totalLiters: Double? = null,
+    /** DM-i: km of the month's trips that know their litres. */
+    val litersKm: Double? = null,
 )
 
 data class DayGroup(
@@ -46,13 +54,17 @@ data class DayGroup(
     val totalKwh: Double,
     val avgConsumption: Double,
     val totalCost: Double,
-    val trips: List<TripEntity>
+    val trips: List<TripEntity>,
+    val totalLiters: Double? = null,
+    val litersKm: Double? = null,
 )
 
 data class TripsUiState(
     val period: TripPeriod = TripPeriod.WEEK,
     val filter: TripFilter = TripFilter.ALL,
     val months: List<MonthGroup> = emptyList(),
+    // True while the period itself has trips but the active type filter hides all of them.
+    val hasTripsBeforeFilter: Boolean = false,
     val expandedMonths: Set<String> = emptySet(),
     val expandedDays: Set<String> = emptySet(),
     val selectedTrip: TripEntity? = null,
@@ -73,13 +85,15 @@ data class TripsUiState(
     val expandedTripId: Long? = null,
     val expandedTripPoints: List<TripPointEntity> = emptyList(),
     val mapTileSource: String = SettingsRepository.DEFAULT_MAP_TILE_SOURCE,
+    val vehicleKind: VehicleKind = VehicleKind.UNKNOWN,
 )
 
 @HiltViewModel
 class TripsViewModel @Inject constructor(
     private val tripRepository: TripRepository,
     private val tripPointDao: TripPointDao,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val vehicleKindMonitor: VehicleKindMonitor,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TripsUiState())
@@ -93,6 +107,9 @@ class TripsViewModel @Inject constructor(
             _uiState.update { it.copy(currencySymbol = symbol, mapTileSource = tileSource) }
         }
         loadTrips()
+        viewModelScope.launch {
+            vehicleKindMonitor.kind.collect { kind -> _uiState.update { it.copy(vehicleKind = kind) } }
+        }
     }
 
     fun setPeriod(period: TripPeriod) {
@@ -212,6 +229,7 @@ class TripsViewModel @Inject constructor(
                 _uiState.update { s ->
                     s.copy(
                         months = months,
+                        hasTripsBeforeFilter = allTrips.isNotEmpty(),
                         trips = filtered,
                         totalKm = totalKm,
                         totalKwh = totalKwh,
@@ -331,7 +349,9 @@ class TripsViewModel @Inject constructor(
                     totalKwh = kwh,
                     avgConsumption = if (km > 0) kwh / km * 100.0 else 0.0,
                     totalCost = dayTrips.sumOf { it.cost ?: 0.0 },
-                    trips = dayTrips
+                    trips = dayTrips,
+                    totalLiters = sumLiters(dayTrips),
+                    litersKm = litersKm(dayTrips),
                 )
             }
 
@@ -343,7 +363,9 @@ class TripsViewModel @Inject constructor(
                 totalKwh = kwh,
                 avgConsumption = if (km > 0) kwh / km * 100.0 else 0.0,
                 totalCost = monthTrips.sumOf { it.cost ?: 0.0 },
-                days = days
+                days = days,
+                totalLiters = sumLiters(monthTrips),
+                litersKm = litersKm(monthTrips),
             )
         }
     }
@@ -357,26 +379,26 @@ class TripsViewModel @Inject constructor(
                 cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
                 cal.timeInMillis to now
             }
-            TripPeriod.WEEK -> {
-                cal.add(Calendar.DAY_OF_YEAR, -7)
-                cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0)
-                cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
-                cal.timeInMillis to now
-            }
-            TripPeriod.MONTH -> {
-                cal.add(Calendar.DAY_OF_YEAR, -30)
-                cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0)
-                cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
-                cal.timeInMillis to now
-            }
-            TripPeriod.YEAR -> {
-                cal.add(Calendar.YEAR, -1)
-                cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0)
-                cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
-                cal.timeInMillis to now
-            }
+            TripPeriod.WEEK -> CalendarPeriods.startOfWeek(now) to now
+            TripPeriod.MONTH -> CalendarPeriods.startOfMonth(now) to now
+            TripPeriod.YEAR -> CalendarPeriods.startOfYear(now) to now
             TripPeriod.ALL -> 0L to now
         }
+    }
+}
+
+/**
+ * Empty-list text for the trip list. TODAY/WEEK are calendar based, so right after midnight
+ * or Monday there are genuinely no finished trips yet, even if the current one is running.
+ * Only applies when the period itself is empty; if a type filter hides an otherwise
+ * non-empty period, the generic "no data" text stays.
+ */
+fun emptyTripsStringRes(period: TripPeriod, hasTripsBeforeFilter: Boolean): Int {
+    if (hasTripsBeforeFilter) return R.string.trips_empty
+    return when (period) {
+        TripPeriod.TODAY -> R.string.trips_empty_today
+        TripPeriod.WEEK -> R.string.trips_empty_week
+        TripPeriod.MONTH, TripPeriod.YEAR, TripPeriod.ALL -> R.string.trips_empty
     }
 }
 

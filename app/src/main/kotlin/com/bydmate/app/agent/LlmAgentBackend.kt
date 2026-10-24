@@ -3,6 +3,8 @@ package com.bydmate.app.agent
 import android.util.Log
 import com.bydmate.app.data.remote.LlmHttpException
 import com.bydmate.app.data.remote.OpenRouterClient
+import com.bydmate.app.diagnostics.Trace
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import javax.inject.Inject
@@ -30,6 +32,10 @@ class LlmAgentBackend @Inject constructor(
 
     override suspend fun isConfigured(): Boolean = connections.primary() != null
 
+    override suspend fun prewarm() {
+        connections.primary()?.let { client.prewarm(it.baseUrl) }
+    }
+
     override suspend fun chat(
         messages: List<AgentMessage>,
         tools: JSONArray?,
@@ -37,7 +43,6 @@ class LlmAgentBackend @Inject constructor(
     ): Result<AgentReply> {
         val primary = connections.primary()
             ?: return Result.failure(LlmError("Агент не настроен: заполните адрес, API-ключ и модель в Настройки, Интеграции"))
-        val wire = toWire(messages)
         var forwarded = false
         val guarded: ((String) -> Unit)? = onDelta?.let { cb -> { d -> forwarded = true; cb(d) } }
 
@@ -47,28 +52,52 @@ class LlmAgentBackend @Inject constructor(
         // requirement: a model or upstream that rejects them with 400 gets the plain request
         // once, so a field the provider does not know can never silence the agent.
         suspend fun attempt(conn: LlmConnection): Result<AgentReply> {
+            // The cache breakpoint is OpenRouter/Anthropic wire syntax; a custom endpoint or
+            // z.ai gets the plain string content it understands. Gemini gets none either: there
+            // the breakpoint creates the cache synchronously inside the request (+1.3 s to the
+            // first token, measured 2026-09-25), the cache lives 5 minutes from that write, and a
+            // read saves only ~60 ms over no cache at all, so every turn after a pause paid the write.
+            val wire = toWire(messages, cacheStaticPrefix = cachesStaticPrefix(conn))
             val first = call(conn, wire, tools, guarded, withExtras = true)
             if (first.isSuccess || forwarded || !rejectedExtras(conn, first, guarded != null)) return first
             Log.w(TAG, "provider ${conn.id} rejected request extras (HTTP 400), retrying plain")
-            return call(conn, wire, tools, guarded, withExtras = false)
+            // The plain retry drops cache_control too: it lives inside the message content, not
+            // in the extras, so a model that rejects the breakpoint would fail the retry with
+            // the identical body and the agent would go silent instead of losing caching only.
+            return call(conn, toWire(messages), tools, guarded, withExtras = false)
+        }
+
+        // HTTP 200 with no text, no tool calls and finish_reason "error" is an upstream hiccup
+        // (seen on OpenRouter/Gemini) wearing a success status, not a real answer: treated as
+        // transient and retried like a 5xx/429 — but never once a delta already reached the
+        // caller, same as the forwarded guard everywhere else in this method.
+        fun isEmptyErrorReply(result: Result<AgentReply>): Boolean {
+            val reply = result.getOrNull() ?: return false
+            return !forwarded && reply.finishReason == FINISH_REASON_ERROR &&
+                reply.content.isNullOrBlank() && reply.toolCalls.isEmpty()
         }
 
         var result = attempt(primary)
-        if (result.isSuccess) return result
+        if (result.isSuccess && !isEmptyErrorReply(result)) return result
         // Once a delta reached the caller the user has heard the beginning: replaying the
         // request (retry or fallback) would speak it twice. Fail fast instead.
         if (forwarded) return interrupted(result)
-        if (isTransient(result.exceptionOrNull()) && nowMs() - startedAt < RETRY_BUDGET_MS) {
+        if ((isTransient(result.exceptionOrNull()) || isEmptyErrorReply(result)) && nowMs() - startedAt < RETRY_BUDGET_MS) {
+            if (isEmptyErrorReply(result)) Log.w(TAG, "empty reply with finish_reason=error, retrying")
             result = attempt(primary)
-            if (result.isSuccess) return result
+            if (result.isSuccess && !isEmptyErrorReply(result)) return result
             if (forwarded) return interrupted(result)
         }
         val fallback = connections.fallback()
         if (fallback != null && nowMs() - startedAt < FALLBACK_BUDGET_MS) {
             result = attempt(fallback)
-            if (result.isSuccess) return result
+            if (result.isSuccess && !isEmptyErrorReply(result)) return result
             if (forwarded) return interrupted(result)
         }
+        // Still an empty/error reply after every attempt: hand it back as-is, success and all —
+        // AgentOrchestrator turns a blank answer into "Пустой ответ модели" itself, same as
+        // before this retry existed, instead of a new LlmError text here.
+        if (result.isSuccess) return result
         val cause = result.exceptionOrNull()
         return Result.failure(LlmError(userMessage(cause), cause))
     }
@@ -82,16 +111,24 @@ class LlmAgentBackend @Inject constructor(
         tools: JSONArray?,
         onDelta: ((String) -> Unit)?,
         withExtras: Boolean,
-    ): Result<AgentReply> = (
-        if (onDelta != null) client.chatStream(
-            conn.baseUrl, conn.apiKey, conn.model, wire, tools,
-            if (withExtras) providerExtras(conn, streaming = true) else null, onDelta,
-        )
-        else client.chatRaw(
-            conn.baseUrl, conn.apiKey, conn.model, wire, tools,
-            if (withExtras) providerExtras(conn, streaming = false) else null,
-        )
-    ).map { parseReply(it) }
+    ): Result<AgentReply> {
+        val startMs = nowMs()
+        return (
+            if (onDelta != null) client.chatStream(
+                conn.baseUrl, conn.apiKey, conn.model, wire, tools,
+                if (withExtras) providerExtras(conn, streaming = true) else null, onDelta,
+            )
+            else client.chatRaw(
+                conn.baseUrl, conn.apiKey, conn.model, wire, tools,
+                if (withExtras) providerExtras(conn, streaming = false) else null,
+            )
+        ).map { parseReply(it) }.also { result ->
+            val tookMs = nowMs() - startMs
+            if (result.isFailure || tookMs > Trace.SLOW_CALL_MS) {
+                Trace.call("llm", conn.baseUrl.toHttpUrlOrNull()?.host ?: conn.id, tookMs, result.exceptionOrNull())
+            }
+        }
+    }
 
     private fun rejectedExtras(conn: LlmConnection, result: Result<AgentReply>, streaming: Boolean): Boolean {
         val e = result.exceptionOrNull()
@@ -119,6 +156,8 @@ class LlmAgentBackend @Inject constructor(
         internal const val RETRY_BUDGET_MS = 10_000L
         /** Hard cap for starting a fallback attempt, counted from the start of the turn. */
         internal const val FALLBACK_BUDGET_MS = 20_000L
+        /** finish_reason value for an upstream hiccup reported as HTTP 200, no answer. */
+        private const val FINISH_REASON_ERROR = "error"
 
         /** Provider-specific payload fields that cut latency: reasoning off where the provider
          *  supports switching it off, usage stats in the stream to check prompt caching in the
@@ -128,6 +167,9 @@ class LlmAgentBackend @Inject constructor(
             // "none" is rejected by models with mandatory reasoning (Gemini 3 Flash), "minimal" is not.
             LlmConnectionResolver.ID_OPENROUTER -> JSONObject()
                 .put("reasoning", JSONObject().put("effort", "minimal").put("exclude", true))
+                // Route to the fastest provider serving the model: the driver waits for the
+                // first spoken word, and providers of the same model differ by seconds.
+                .put("provider", JSONObject().put("sort", "latency"))
                 // stream_options is only legal alongside stream=true; a non-streaming request
                 // carrying it is rejected as an invalid request by OpenAI-compatible endpoints.
                 .also { if (streaming) it.put("stream_options", JSONObject().put("include_usage", true)) }
@@ -155,12 +197,30 @@ class LlmAgentBackend @Inject constructor(
             }
         }
 
-        /** OpenRouter wire encoding of the message history. */
-        internal fun toWire(messages: List<AgentMessage>): JSONArray = JSONArray().apply {
+        /** Whether [conn] gets the cache breakpoint: OpenRouter only, and not for Gemini models
+         *  (see the call site in chat()). */
+        internal fun cachesStaticPrefix(conn: LlmConnection): Boolean =
+            conn.id == LlmConnectionResolver.ID_OPENROUTER && !conn.model.startsWith(GEMINI_MODEL_PREFIX)
+
+        private const val GEMINI_MODEL_PREFIX = "google/gemini"
+
+        /**
+         * OpenRouter wire encoding of the message history. With [cacheStaticPrefix] the FIRST
+         * system message (the orchestrator puts the unchanging prompt there, everything that
+         * moves in a second one) is sent as a content part carrying an ephemeral cache_control
+         * breakpoint, so the provider can serve the tool schemas + prompt from its cache
+         * instead of re-reading them on every turn.
+         */
+        internal fun toWire(messages: List<AgentMessage>, cacheStaticPrefix: Boolean = false): JSONArray = JSONArray().apply {
+            var breakpointLeft = cacheStaticPrefix
             messages.forEach { m ->
                 put(JSONObject().apply {
                     when (m) {
-                        is AgentMessage.System -> { put("role", "system"); put("content", m.content) }
+                        is AgentMessage.System -> {
+                            put("role", "system")
+                            put("content", systemContent(m.content, breakpointLeft))
+                            breakpointLeft = false
+                        }
                         is AgentMessage.User -> { put("role", "user"); put("content", m.content) }
                         is AgentMessage.Assistant -> {
                             put("role", "assistant")
@@ -190,6 +250,14 @@ class LlmAgentBackend @Inject constructor(
             }
         }
 
+        /** System content: a plain string, or a single text part carrying the cache breakpoint. */
+        private fun systemContent(content: String, withBreakpoint: Boolean): Any =
+            if (!withBreakpoint) content
+            else JSONArray().put(JSONObject()
+                .put("type", "text")
+                .put("text", content)
+                .put("cache_control", JSONObject().put("type", "ephemeral")))
+
         /** Parses choices[0].message into [AgentReply]. */
         internal fun parseReply(message: JSONObject): AgentReply {
             val content = if (message.isNull("content")) null
@@ -206,7 +274,8 @@ class LlmAgentBackend @Inject constructor(
                     )
                 }
             }
-            return AgentReply(content, calls)
+            val finish = message.optString(OpenRouterClient.FINISH_REASON).takeIf { it.isNotBlank() }
+            return AgentReply(content, calls, finish)
         }
     }
 }

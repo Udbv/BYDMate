@@ -3,6 +3,7 @@ package com.bydmate.app.data.automation
 import com.bydmate.app.data.local.entity.ActionDef
 import com.bydmate.app.data.local.entity.RuleEntity
 import com.bydmate.app.data.local.entity.TriggerDef
+import com.bydmate.app.data.telegram.ReportField
 import com.bydmate.app.voice.VoicePhrase
 import com.bydmate.app.voice.VoiceTriggerValidation
 import org.json.JSONObject
@@ -20,19 +21,37 @@ sealed class ActionValidationError {
     data class MediaVolumeMissing(val index: Int) : ActionValidationError()
     data class SentryInvalid(val index: Int) : ActionValidationError()
     data class HotspotInvalid(val index: Int) : ActionValidationError()
+    data class ScreenInvalid(val index: Int) : ActionValidationError()
+    data class MediaKeyInvalid(val index: Int) : ActionValidationError()
     data class SpeakTextEmpty(val index: Int) : ActionValidationError()
     data class AgentQueryPromptEmpty(val index: Int) : ActionValidationError()
     data class SplitScreenNarrowEmpty(val index: Int) : ActionValidationError()
     data class SplitScreenWideEmpty(val index: Int) : ActionValidationError()
     data class SplitScreenSamePackage(val index: Int) : ActionValidationError()
     data class SplitScreenInvalidSide(val index: Int) : ActionValidationError()
+    /** A Telegram report with no item checked and no text of its own. */
+    data class TelegramReportEmpty(val index: Int) : ActionValidationError()
 }
 
-/** Reason a trigger draft failed validation (currently: voice-phrase collisions only). */
+/** Reason a trigger draft failed validation. */
 sealed class TriggerValidationError {
+    /** A condition on [param] whose value is empty or not a number («12,5» is one). */
+    data class ValueNotNumber(val param: String) : TriggerValidationError()
+    /** A steering-wheel key trigger with no key picked yet (code 0). */
+    object SteeringKeyUnassigned : TriggerValidationError()
+    /** A one-shot moment that is not a date and time. */
+    object OneShotInvalid : TriggerValidationError()
+    /** A one-shot rule may add conditions only with AND, never OR. */
+    object OneShotWithOr : TriggerValidationError()
+    /** A one-shot rule may add only param conditions: no events, places or schedules. */
+    object OneShotWithEvent : TriggerValidationError()
+    /** More than one one-shot moment in a rule. */
+    object OneShotTwice : TriggerValidationError()
     object VoicePhraseEmpty : TriggerValidationError()
-    object VoicePhraseBuiltin : TriggerValidationError()
-    object VoicePhraseTaken : TriggerValidationError()
+    /** The phrase is the user's own phrase for the built-in command [command]. */
+    data class VoicePhraseBuiltin(val command: String) : TriggerValidationError()
+    /** The phrase already triggers the automation [rule]. */
+    data class VoicePhraseTaken(val rule: String) : TriggerValidationError()
 }
 
 /**
@@ -60,7 +79,7 @@ object RuleDraftValidator {
                     val title = payloadJson(a.payload).optString("title")
                     if (title.isBlank()) return ActionValidationError.NotifTitleEmpty(n)
                 }
-                "app_launch" -> {
+                "app_launch", "app_close" -> {
                     val pkg = payloadJson(a.payload).optString("packageName")
                     if (pkg.isBlank()) return ActionValidationError.AppNotSelected(n)
                 }
@@ -101,6 +120,12 @@ object RuleDraftValidator {
                 "hotspot" -> {
                     if (a.payload !in listOf("0", "1")) return ActionValidationError.HotspotInvalid(n)
                 }
+                "screen" -> {
+                    if (a.payload !in listOf("0", "1")) return ActionValidationError.ScreenInvalid(n)
+                }
+                "media_key" -> {
+                    if (ActionDispatcher.mediaKeyCode(a.payload) == null) return ActionValidationError.MediaKeyInvalid(n)
+                }
                 "speak" -> {
                     if (payloadJson(a.payload).optString("text").isBlank()) {
                         return ActionValidationError.SpeakTextEmpty(n)
@@ -121,28 +146,78 @@ object RuleDraftValidator {
                     val side = json.optString("side")
                     if (side !in listOf("left", "right")) return ActionValidationError.SplitScreenInvalidSide(n)
                 }
+                "telegram_report" -> {
+                    val json = payloadJson(a.payload)
+                    val fields = ReportField.fromJson(json.optJSONArray("fields"))
+                    if (fields.isEmpty() && json.optString("text").isBlank()) {
+                        return ActionValidationError.TelegramReportEmpty(n)
+                    }
+                }
             }
         }
         return null
     }
 
-    fun validateTriggers(triggers: List<TriggerDef>, editingId: Long, existingRules: List<RuleEntity>): TriggerValidationError? {
+    /**
+     * [userCommandPhrases]: normalized user phrases of built-in commands → command name.
+     * [triggerLogic]: the rule's AND / OR, checked against a one-shot moment.
+     * [TriggerValidationError.SteeringKeyUnassigned] comes last: an import accepts it (the key
+     * codes differ per car, the driver picks the key after the import) and loses no other check.
+     */
+    fun validateTriggers(
+        triggers: List<TriggerDef>,
+        editingId: Long,
+        existingRules: List<RuleEntity>,
+        userCommandPhrases: Map<String, String> = emptyMap(),
+        triggerLogic: String = "AND",
+    ): TriggerValidationError? {
+        triggers.firstOrNull { it.kind == "param" && TriggerNumber.parse(it.value) == null }
+            ?.let { return TriggerValidationError.ValueNotNumber(it.param) }
+        validateOneShot(triggers, triggerLogic)?.let { return it }
+        validateVoice(triggers, editingId, existingRules, userCommandPhrases)?.let { return it }
+        val unassignedKey = triggers.any {
+            it.kind == AutomationEngine.TRIGGER_KIND_STEERING_KEY && (it.value.toIntOrNull() ?: 0) <= 0
+        }
+        return if (unassignedKey) TriggerValidationError.SteeringKeyUnassigned else null
+    }
+
+    private fun validateVoice(
+        triggers: List<TriggerDef>,
+        editingId: Long,
+        existingRules: List<RuleEntity>,
+        userCommandPhrases: Map<String, String>,
+    ): TriggerValidationError? {
         val voiceTriggers = triggers.filter { it.kind == "voice" }
         if (voiceTriggers.isEmpty()) return null
-        val otherPhrases = existingRules
-            .filter { it.id != editingId }
-            .flatMap { TriggerDef.listFromJson(it.triggers) }
-            .filter { it.kind == "voice" && it.value.isNotBlank() }
-            .map { VoicePhrase.normalize(it.value) }
-            .toSet()
+        val otherPhrases = buildMap {
+            for (rule in existingRules) {
+                if (rule.id == editingId) continue
+                TriggerDef.listFromJson(rule.triggers)
+                    .filter { it.kind == "voice" && it.value.isNotBlank() }
+                    .forEach { putIfAbsent(VoicePhrase.normalize(it.value), rule.name) }
+            }
+        }
         for (t in voiceTriggers) {
-            when (VoiceTriggerValidation.check(t.value, otherPhrases)) {
+            when (val c = VoiceTriggerValidation.check(t.value, otherPhrases, userCommandPhrases)) {
                 VoiceTriggerValidation.Collision.Empty -> return TriggerValidationError.VoicePhraseEmpty
-                VoiceTriggerValidation.Collision.BuiltIn -> return TriggerValidationError.VoicePhraseBuiltin
-                VoiceTriggerValidation.Collision.OtherRule -> return TriggerValidationError.VoicePhraseTaken
+                is VoiceTriggerValidation.Collision.UserCommandPhrase ->
+                    return TriggerValidationError.VoicePhraseBuiltin(c.command)
+                is VoiceTriggerValidation.Collision.OtherRule -> return TriggerValidationError.VoicePhraseTaken(c.rule)
                 VoiceTriggerValidation.Collision.None -> {}
             }
         }
         return null
+    }
+
+    private fun validateOneShot(triggers: List<TriggerDef>, logic: String): TriggerValidationError? {
+        val oneShots = triggers.filter { it.kind == OneShotTrigger.KIND }
+        return when {
+            oneShots.isEmpty() -> null
+            oneShots.size > 1 -> TriggerValidationError.OneShotTwice
+            OneShotTrigger.momentMs(oneShots[0].value) == null -> TriggerValidationError.OneShotInvalid
+            triggers.any { it.kind != OneShotTrigger.KIND && it.kind != "param" } -> TriggerValidationError.OneShotWithEvent
+            logic == "OR" && triggers.size > 1 -> TriggerValidationError.OneShotWithOr
+            else -> null
+        }
     }
 }

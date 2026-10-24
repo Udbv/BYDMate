@@ -11,5 +11,6 @@
     {"code": "RIGHT", "phrases": ["向右转", "右转"]},
     {"code": "STRAIGHT", "phrases": ["直行"]}
   ],
+  "lanes": {"left": ["左转", "向左"], "straight": ["直行"], "right": ["右转", "向右"], "uturn": ["掉头"]},
   "units": {"km": ["公里", "km"], "m": ["米", "m"], "mi": [], "ft": [], "hour": ["小时"], "minute": ["分钟", "分"]}
 }

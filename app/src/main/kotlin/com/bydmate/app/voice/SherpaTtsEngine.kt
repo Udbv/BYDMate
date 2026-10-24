@@ -8,14 +8,18 @@ import android.media.PlaybackParams
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import com.bydmate.app.platform.LegacyHeadUnit
+import com.bydmate.app.voice.online.TtsRouter
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsSupertonicModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.concurrent.BlockingQueue
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -283,6 +287,7 @@ class SherpaTtsEngine(
     override fun playPcm(samples: FloatArray, sampleRate: Int): Boolean {
         if (samples.isEmpty()) return false
         Log.i(TAG, "playPcm: samples=${samples.size} rate=$sampleRate")
+        val calledNs = System.nanoTime()
         val myGen = generation.incrementAndGet()
         val requestedRate = rate()  // frozen once; both worker and caller use this snapshot, no race
         val writeOutcome = CompletableFuture<Boolean>()
@@ -298,21 +303,12 @@ class SherpaTtsEngine(
                 runCatching {
                     val out = ensureTrackForRate(sampleRate)
                     if (out.playState != AudioTrack.PLAYSTATE_PLAYING) out.play()
-                    // Apply user speech rate via time-stretch; piper PCM is already rate-adjusted
-                    // at synthesis (TtsTuning.speed), so PlaybackParams are online-path only here.
-                    // If the HAL rejects the params (exotic firmware), logs a warning and falls
-                    // back to 1.0x so playback continues at the wrong speed rather than not at all.
-                    // The effective sample rate for wall-clock math follows the actual applied rate.
-                    val effectiveSampleRate = run {
-                        val requested = effectivePlaybackRate(sampleRate, requestedRate)
-                        val speed = requested.toFloat() / sampleRate
-                        val ok = runCatching {
-                            out.playbackParams = PlaybackParams().setSpeed(speed).setPitch(1f)
-                        }.onFailure { Log.w(TAG, "playbackParams rejected by HAL, playing at 1.0x", it) }.isSuccess
-                        if (ok) requested else sampleRate
-                    }
+                    val effectiveSampleRate = applySpeechRate(out, sampleRate, requestedRate)
                     var framesWritten = 0L
                     if (generation.get() == myGen) {
+                        // Voice speed wave: the moment this PCM starts feeding a playing track, and how
+                        // long it waited behind the previous sentence's drain on the worker.
+                        Log.i(TAG, "playPcm write start: waitMs=${(System.nanoTime() - calledNs) / 1_000_000}")
                         // Same publish-before-write ordering as speak()/enqueue() -- see writeSentence's doc.
                         val written = writeSentence(
                             samples = samples,
@@ -338,17 +334,7 @@ class SherpaTtsEngine(
                     // Signal the outcome to the calling thread BEFORE the drain wait so TtsRouter
                     // can decide immediately whether to fall back; drain continues here in background.
                     writeOutcome.complete(outcome)
-                    if (generation.get() == myGen) {
-                        // Remaining-frames timeout -- see the speak() drain comment.
-                        val timeout = queueDrainTimeoutMs(
-                            targetFrames = trackFramesWritten,
-                            currentFrames = playbackFrames(out),
-                            sampleRate = effectiveSampleRate,
-                        )
-                        awaitPlaybackDrain(out, trackFramesWritten, myGen, timeout)
-                        // Park the drained track (never flush) -- see the speak() drain comment.
-                        if (generation.get() == myGen) runCatching { out.pause() }
-                    }
+                    drainAndPark(out, myGen, effectiveSampleRate)
                 }.onFailure { e ->
                     Log.w(TAG, "tts playPcm failed", e)
                     if (!writeOutcome.isDone) writeOutcome.complete(false)
@@ -364,8 +350,116 @@ class SherpaTtsEngine(
         // writeWaitBoundMs is pessimistic: speedup (e.g. 2.0x) does NOT shorten the bound;
         // slowdown (0.5x) lengthens it proportionally. If PlaybackParams are rejected by the
         // HAL, actual playback runs at 1.0x and the bound must cover that full duration.
-        val timeoutMs = writeWaitBoundMs(samples.size, sampleRate, requestedRate)
-        return try {
+        return awaitWriteOutcome(writeOutcome, writeWaitBoundMs(samples.size, sampleRate, requestedRate))
+    }
+
+    /** Streaming twin of [playPcm] for online audio that arrives chunk by chunk: same generation,
+     *  publish-before-write, wall-clock floor, drain and park. The DiLink rules of [pumpStream]
+     *  apply: play() only with a 300 ms pre-roll buffered, pause() before a starving track gets
+     *  disabled, never flush(). */
+    override fun playPcmStream(chunks: BlockingQueue<FloatArray>, sampleRate: Int): Boolean {
+        Log.i(TAG, "playPcmStream start: rate=$sampleRate")
+        val calledNs = System.nanoTime()
+        val myGen = generation.incrementAndGet()
+        val requestedRate = rate()
+        val writeOutcome = CompletableFuture<Boolean>()
+        worker.execute {
+            if (generation.get() != myGen) {
+                writeOutcome.complete(true)
+                return@execute
+            }
+            _speaking.value = true
+            try {
+                runCatching {
+                    val out = ensureTrackForRate(sampleRate)
+                    val effectiveSampleRate = applySpeechRate(out, sampleRate, requestedRate)
+                    var firstWrite = true
+                    val result = pumpStream(
+                        next = { chunks.poll(it, TimeUnit.MILLISECONDS) },
+                        prerollFrames = sampleRate * STREAM_PREROLL_MS / 1000,
+                        initiallyPlaying = out.playState == AudioTrack.PLAYSTATE_PLAYING,
+                        play = { out.play() },
+                        pause = { out.pause() },
+                        write = { samples ->
+                            if (firstWrite) {
+                                firstWrite = false
+                                Log.i(TAG, "playPcmStream first write: waitMs=${(System.nanoTime() - calledNs) / 1_000_000}")
+                            }
+                            writeStreamChunk(out, myGen, samples, effectiveSampleRate)
+                        },
+                        audibleUntil = { audibleUntilMs },
+                        stillCurrent = { generation.get() == myGen },
+                        now = SystemClock::elapsedRealtime,
+                        stallMs = STREAM_STALL_MS,
+                        pollMs = STREAM_POLL_MS,
+                    )
+                    val outcome = generation.get() != myGen || result.played
+                    Log.i(
+                        TAG,
+                        "playPcmStream done: written=${result.framesWritten} received=${result.framesReceived} " +
+                            "pauses=${result.pauses} stalled=${result.stalled} outcome=$outcome",
+                    )
+                    writeOutcome.complete(outcome)
+                    drainAndPark(out, myGen, effectiveSampleRate)
+                }.onFailure { e ->
+                    Log.w(TAG, "tts playPcmStream failed", e)
+                    if (!writeOutcome.isDone) writeOutcome.complete(false)
+                }
+            } finally {
+                if (!writeOutcome.isDone) writeOutcome.complete(false)
+                if (generation.get() == myGen) {
+                    pendingTarget = null
+                    _speaking.value = false
+                }
+            }
+        }
+        return awaitWriteOutcome(writeOutcome, STREAM_WAIT_BOUND_MS)
+    }
+
+    /** One stream write with playPcm's publish-before-write ordering -- see writeSentence's doc. */
+    private fun writeStreamChunk(out: AudioTrack, myGen: Int, samples: FloatArray, effectiveSampleRate: Int): Int =
+        writeSentence(
+            samples = samples,
+            write = { out.write(it, 0, it.size, AudioTrack.WRITE_BLOCKING) },
+            publish = {
+                pendingTarget = PendingTarget(myGen, trackFramesWritten + samples.size)
+                stampAudibleClock(samples.size, effectiveSampleRate)
+            },
+            stillCurrent = { generation.get() == myGen },
+            retract = { pendingTarget = null; audibleUntilMs = 0L },
+        ).also { if (it > 0) trackFramesWritten += it }
+
+    /** Applies the user speech rate via time-stretch; piper PCM is already rate-adjusted at
+     *  synthesis (TtsTuning.speed), so PlaybackParams are online-path only. If the HAL rejects
+     *  the params (exotic firmware), logs a warning and falls back to 1.0x so playback continues
+     *  at the wrong speed rather than not at all. Returns the effective sample rate for
+     *  wall-clock math, following the actually applied rate. */
+    private fun applySpeechRate(out: AudioTrack, sampleRate: Int, requestedRate: Float): Int {
+        val requested = effectivePlaybackRate(sampleRate, requestedRate)
+        val speed = requested.toFloat() / sampleRate
+        val ok = runCatching {
+            out.playbackParams = PlaybackParams().setSpeed(speed).setPitch(1f)
+        }.onFailure { Log.w(TAG, "playbackParams rejected by HAL, playing at 1.0x", it) }.isSuccess
+        return if (ok) requested else sampleRate
+    }
+
+    /** Drain wait, then park the track; both skipped once [myGen] is superseded. */
+    private fun drainAndPark(out: AudioTrack, myGen: Int, sampleRate: Int) {
+        if (generation.get() != myGen) return
+        // Remaining-frames timeout -- see the speak() drain comment.
+        val timeout = queueDrainTimeoutMs(
+            targetFrames = trackFramesWritten,
+            currentFrames = playbackFrames(out),
+            sampleRate = sampleRate,
+        )
+        awaitPlaybackDrain(out, trackFramesWritten, myGen, timeout)
+        // Park the drained track (never flush) -- see the speak() drain comment.
+        if (generation.get() == myGen) runCatching { out.pause() }
+    }
+
+    /** Caller-side wait for a worker write; a hung write is rescued by force-stopping the track. */
+    private fun awaitWriteOutcome(writeOutcome: CompletableFuture<Boolean>, timeoutMs: Long): Boolean =
+        try {
             writeOutcome.get(timeoutMs, TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
             Log.w(TAG, "audio write stalled after ${timeoutMs}ms, forcing track stop")
@@ -375,7 +469,6 @@ class SherpaTtsEngine(
             worker.execute { runCatching { stale?.release() } }
             false
         }
-    }
 
     /** Reuses the current worker-thread-confined [track] when its sample rate already matches
      *  [sampleRate]; otherwise releases it and creates a fresh one. Shared by speak(), playPcm()
@@ -461,6 +554,10 @@ class SherpaTtsEngine(
         // drain/audible targets use the engine-level trackFramesWritten (cumulative over the
         // track's lifetime), this local only gates the drain wait in finish().
         private var totalFramesWritten = 0L
+        // Completed by finish()'s worker block once the reply drained (or was superseded).
+        private val played = CompletableDeferred<Unit>()
+
+        override suspend fun awaitPlayed() = played.await()
 
         override fun enqueue(text: String): Boolean {
             if (text.isBlank() || generation.get() != myGen) return false
@@ -547,6 +644,7 @@ class SherpaTtsEngine(
                         pendingTarget = null
                         _speaking.value = false
                     }
+                    played.complete(Unit)
                 }
             }
         }
@@ -630,11 +728,14 @@ class SherpaTtsEngine(
         // BYD DiLink routes STREAM_BTTS(17) to the UI "Voice" volume slider (live-validated on
         // Leopard 3, 2026-07-05). setLegacyStreamType is the only public way to target a custom
         // stream; if this firmware rejects it (exception or uninitialized track), fall back to
-        // the previous accessibility route, which has an independent volume.
+        // the previous accessibility route, which has an independent volume. Android 10 head
+        // units use the navigation stream and usage instead (see BYD_STREAM_NAVI).
         var viaFallback = false
+        val stream = primaryStreamType(LegacyHeadUnit.isAndroid10)
+        val usage = fallbackUsage(LegacyHeadUnit.isAndroid10)
         val result = createTrackWithFallback(
-            primary = { newTrack(bydVoiceAttributes(), format, bufLen).takeIfInitialized() },
-            fallback = { viaFallback = true; newTrack(accessibilityAttributes(), format, bufLen) },
+            primary = { newTrack(streamAttributes(stream), format, bufLen).takeIfInitialized() },
+            fallback = { viaFallback = true; newTrack(speechAttributes(usage), format, bufLen) },
         )
         if (result.state != AudioTrack.STATE_INITIALIZED) {
             Log.w(TAG, "audio track bad state")
@@ -652,7 +753,8 @@ class SherpaTtsEngine(
             val applied = runCatching { result.setStartThresholdInFrames(requested) }.getOrNull()
             Log.i(TAG, "start threshold: requested=$requested applied=$applied")
         }
-        Log.i(TAG, "track created: rate=$sampleRate state=${result.state} viaFallback=$viaFallback")
+        val route = if (viaFallback) "usage=$usage" else "stream=$stream"
+        Log.i(TAG, "track created: rate=$sampleRate state=${result.state} $route viaFallback=$viaFallback")
         return result
     }
 
@@ -664,12 +766,12 @@ class SherpaTtsEngine(
         if (state == AudioTrack.STATE_INITIALIZED) this
         else { runCatching { release() }; null }
 
-    private fun bydVoiceAttributes(): AudioAttributes =
-        AudioAttributes.Builder().setLegacyStreamType(BYD_STREAM_BTTS).build()
+    private fun streamAttributes(stream: Int): AudioAttributes =
+        AudioAttributes.Builder().setLegacyStreamType(stream).build()
 
-    private fun accessibilityAttributes(): AudioAttributes = AudioAttributes.Builder()
+    private fun speechAttributes(usage: Int): AudioAttributes = AudioAttributes.Builder()
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-        .setUsage(TTS_USAGE)
+        .setUsage(usage)
         .build()
 
     // Not private: awaitDrain is a pure poll loop exercised directly by SherpaTtsEngineTest
@@ -683,6 +785,17 @@ class SherpaTtsEngine(
         internal val TTS_USAGE = AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY
         // BYD custom stream behind the DiLink UI "Voice" volume slider.
         internal const val BYD_STREAM_BTTS = 17
+        // Navigation stream: the assistant's voice on Android 10 head units (PR #261), where the
+        // speech followed the music volume; this one has a volume of its own.
+        internal const val BYD_STREAM_NAVI = 14
+
+        /** The legacy stream the assistant's track asks for first. */
+        internal fun primaryStreamType(legacyHeadUnit: Boolean): Int =
+            if (legacyHeadUnit) BYD_STREAM_NAVI else BYD_STREAM_BTTS
+
+        /** The usage of the fallback track when the firmware rejects [primaryStreamType]. */
+        internal fun fallbackUsage(legacyHeadUnit: Boolean): Int =
+            if (legacyHeadUnit) AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE else TTS_USAGE
 
         // The track buffer holds this many seconds of audio so a whole sentence's blocking write
         // returns while the sentence is still playing -- the worker then synthesizes the NEXT
@@ -823,6 +936,143 @@ class SherpaTtsEngine(
             val written = write(samples)
             if (!stillCurrent()) retract()
             return written
+        }
+
+        // playPcmStream tuning: pre-roll before play(), pause margin ahead of the wall-clock floor,
+        // no-chunk stall limit, queue poll interval and the caller's hang-rescue bound.
+        internal const val STREAM_PREROLL_MS = 300
+        internal const val STREAM_STARVE_MARGIN_MS = 150L
+        private const val STREAM_POLL_MS = 40L
+        internal const val STREAM_WAIT_BOUND_MS = 60_000L
+
+        // The stall limit must never give up before TtsRouter does: the router always puts the
+        // end marker, but only after its stream timeout plus a possible whole-sentence fallback
+        // with the same timeout. Barge-in does not wait for it -- the generation check ends the
+        // pump within one poll. Stays below STREAM_WAIT_BOUND_MS, the caller's hang rescue.
+        private const val STREAM_STALL_MARGIN_MS = 4_000L
+        internal const val STREAM_STALL_MS = 2 * TtsRouter.SYNTH_TIMEOUT_MS + STREAM_STALL_MARGIN_MS
+
+        /** What [pumpStream] did. [played] = the stream reached its end marker with every received
+         *  frame written, and there was something to write. */
+        internal class StreamPumpResult(
+            val framesWritten: Long,
+            val framesReceived: Long,
+            val pauses: Int,
+            val stalled: Boolean,
+            val ended: Boolean,
+        ) {
+            val played: Boolean get() = ended && framesWritten > 0 && framesWritten >= framesReceived
+        }
+
+        /** Feeds chunks from [next] (null = nothing within [pollMs], EMPTY = end of stream) into
+         *  the track under the DiLink audio rules: play() only once [prerollFrames] are buffered
+         *  (or the stream ended shorter), since a playing track with nothing to play gets disabled
+         *  by AudioFlinger and never recovers; for the same reason pause() when no chunk came and
+         *  the written audio is about to run out ([audibleUntil] minus [STREAM_STARVE_MARGIN_MS]),
+         *  then play() again only after a fresh pre-roll. flush() is never called. Ends on
+         *  supersession, a short write, the end marker, or [stallMs] without a chunk. Pure so it
+         *  is unit-testable without AudioTrack/JNI (same seam pattern as [writeSentence]). */
+        @Suppress("LongParameterList") // pure seam: track ops and clocks are injected for tests
+        internal fun pumpStream(
+            next: (pollMs: Long) -> FloatArray?,
+            prerollFrames: Int,
+            initiallyPlaying: Boolean,
+            play: () -> Unit,
+            pause: () -> Unit,
+            write: (FloatArray) -> Int,
+            audibleUntil: () -> Long,
+            stillCurrent: () -> Boolean,
+            now: () -> Long,
+            stallMs: Long,
+            pollMs: Long,
+        ): StreamPumpResult {
+            val pump = StreamPump(prerollFrames, initiallyPlaying, play, pause, write)
+            var stalled = false
+            var lastChunkAt = now()
+            while (stillCurrent() && !pump.done && !stalled) {
+                val chunk = next(pollMs)
+                // A stop() during the blocking poll paused and released the track: never touch it again.
+                if (!stillCurrent()) break
+                if (chunk != null) {
+                    lastChunkAt = now()
+                    pump.take(chunk)
+                } else if (now() - lastChunkAt >= stallMs) {
+                    stalled = true
+                }
+                // Every iteration, not only on an empty poll: chunks that trickle in carrying less
+                // audio than the time between them drain the buffer just the same.
+                if (!stalled && pump.starving(now(), audibleUntil())) pump.park()
+            }
+            // A stall while parked would leave the written tail stuck in a paused track, and the
+            // drain wait after the pump would watch a head that never moves: resume it to play out.
+            if (stalled && stillCurrent()) pump.resumeParked()
+            return StreamPumpResult(pump.written, pump.received, pump.pauses, stalled, pump.ended && !pump.shortWrite)
+        }
+
+        /** Buffering and track state of one [pumpStream] run. */
+        private class StreamPump(
+            private val prerollFrames: Int,
+            var playing: Boolean,
+            private val play: () -> Unit,
+            private val pause: () -> Unit,
+            private val write: (FloatArray) -> Int,
+        ) {
+            private val pending = ArrayList<FloatArray>()
+            private var pendingFrames = 0
+            var written = 0L
+            var received = 0L
+            var pauses = 0
+            var ended = false
+            var shortWrite = false
+            val done: Boolean get() = ended || shortWrite
+
+            fun take(chunk: FloatArray) {
+                ended = chunk.isEmpty()
+                if (!ended) pending += chunk
+                pendingFrames += chunk.size
+                received += chunk.size
+                if (playing || ended || pendingFrames >= prerollFrames) flush()
+            }
+
+            fun starving(nowMs: Long, audibleUntilMs: Long): Boolean =
+                !done && playing && nowMs >= audibleUntilMs - STREAM_STARVE_MARGIN_MS
+
+            fun park() {
+                pause()
+                playing = false
+                pauses++
+            }
+
+            fun resumeParked() {
+                if (playing || pauses == 0) return
+                play()
+                playing = true
+            }
+
+            private fun flush() {
+                // At the end marker a paused track still holding its unplayed tail resumes too.
+                if (!playing && (pendingFrames > 0 || written > 0)) {
+                    play()
+                    playing = true
+                }
+                if (pendingFrames == 0) return
+                val samples = if (pending.size == 1) pending[0] else merge()
+                pending.clear()
+                pendingFrames = 0
+                val n = write(samples)
+                if (n > 0) written += n
+                shortWrite = n < samples.size
+            }
+
+            private fun merge(): FloatArray {
+                val merged = FloatArray(pendingFrames)
+                var offset = 0
+                for (chunk in pending) {
+                    chunk.copyInto(merged, offset)
+                    offset += chunk.size
+                }
+                return merged
+            }
         }
 
         private const val DRAIN_POLL_MS = 20L

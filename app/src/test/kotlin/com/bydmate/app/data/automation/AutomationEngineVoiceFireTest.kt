@@ -13,6 +13,9 @@ import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -47,7 +50,7 @@ class AutomationEngineVoiceFireTest {
             every { probePending } returns false
         }
         val ctx = ApplicationProvider.getApplicationContext<Context>()
-        return AutomationEngine(ruleDao, ruleLogDao, dispatcher, placeRepo, netMon, ctx)
+        return AutomationEngine(ruleDao, ruleLogDao, dispatcher, placeRepo, netMon, ctx, com.bydmate.app.util.AppStrings(ctx))
     }
 
     private val appAction = ActionDef(
@@ -61,6 +64,23 @@ class AutomationEngineVoiceFireTest {
         assertEquals(VoiceFireResult.NotFound, engine(ruleDao, dispatcher).fireVoiceRule(7, null))
     }
 
+    @Test fun `a rule with 20 actions runs all of them in order`() = runBlocking {
+        val actions = (1..20).map {
+            ActionDef(command = "", displayName = "A$it", kind = "app_launch", payload = """{"packageName":"p$it"}""")
+        }
+        val ruleDao = mockk<RuleDao> {
+            coEvery { getById(7) } returns rule(actions = actions)
+            coJustRun { updateLastTriggered(any(), any()) }
+        }
+        val ran = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val dispatcher = mockk<ActionDispatcher> {
+            coEvery { dispatch(any(), any()) } answers { ran += firstArg<ActionDef>().displayName; DispatchResult(true, null) }
+        }
+        engine(ruleDao, dispatcher).fireVoiceRule(7, diParsData())
+        coVerify(timeout = 2000, exactly = 20) { dispatcher.dispatch(any(), any()) }
+        assertEquals(actions.map { it.displayName }, ran.toList())
+    }
+
     @Test fun `app_launch fires and dispatches`() = runBlocking {
         val r = rule(actions = listOf(appAction))
         val ruleDao = mockk<RuleDao> {
@@ -70,9 +90,51 @@ class AutomationEngineVoiceFireTest {
         val dispatcher = mockk<ActionDispatcher> {
             coEvery { dispatch(any(), any()) } returns DispatchResult(true, null)
         }
+        // fireVoiceRule now hands the actions off to the engine's own scope and returns
+        // as soon as they're launched, not once dispatch() has actually run.
         val res = engine(ruleDao, dispatcher).fireVoiceRule(7, diParsData())
         assertEquals(VoiceFireResult.Fired(true), res)
-        coVerify { dispatcher.dispatch(match { it.kind == "app_launch" }, any()) }
+        coVerify(timeout = 2000) { dispatcher.dispatch(match { it.kind == "app_launch" }, any()) }
+    }
+
+    // Regression: a rule fired by voice used to run on the caller's own coroutine (the voice
+    // UI's routingJob), so the assistant window disappearing mid-execution cancelled that job
+    // and aborted the rule with actions left half-run — e.g. an action after a delay never
+    // firing, leaving climate control turned on. fireVoiceRule must launch execution in the
+    // engine's own scope so cancelling the caller has no effect on it.
+    @Test fun `caller cancellation after fireVoiceRule returns does not stop the sequence`() = runBlocking {
+        val actionA = ActionDef(command = "", displayName = "A", kind = "app_launch", payload = """{"packageName":"a"}""")
+        val delayAction = ActionDef(command = "", displayName = "Пауза", kind = "delay", payload = "50")
+        val actionB = ActionDef(command = "", displayName = "B", kind = "app_launch", payload = """{"packageName":"b"}""")
+        val r = rule(actions = listOf(actionA, delayAction, actionB))
+        val ruleDao = mockk<RuleDao> {
+            coEvery { getById(7) } returns r
+            coJustRun { updateLastTriggered(any(), any()) }
+        }
+        val bDispatched = AtomicInteger(0)
+        val dispatcher = mockk<ActionDispatcher> {
+            coEvery { dispatch(match { it.kind == "delay" }, any()) } coAnswers {
+                delay(50) // simulates the pause the tester hit "Кондёр включится и идёт пауза"
+                DispatchResult(true, null)
+            }
+            coEvery { dispatch(match { it.kind == "app_launch" && it.displayName == "B" }, any()) } coAnswers {
+                bDispatched.incrementAndGet()
+                DispatchResult(true, null)
+            }
+            coEvery { dispatch(match { it.displayName == "A" }, any()) } returns DispatchResult(true, null)
+        }
+        val eng = engine(ruleDao, dispatcher)
+
+        // Caller coroutine mirrors VoiceController's routingJob: fires the rule, then gets
+        // cancelled right after fireVoiceRule returns (assistant window disappears/times out).
+        val callerJob = launch { eng.fireVoiceRule(7, diParsData()) }
+        callerJob.join()
+        callerJob.cancel()
+
+        // Action B is after the delay; it must still run in the engine's own scope even
+        // though the caller that fired the rule is gone.
+        coVerify(timeout = 2000) { dispatcher.dispatch(match { it.displayName == "B" }, any()) }
+        assertEquals(1, bDispatched.get())
     }
 
     @Test fun `requirePark and not parked returns ParkRequired`() = runBlocking {

@@ -1,8 +1,13 @@
 package com.bydmate.app.cluster
 
+import com.bydmate.app.data.autoservice.AdbRestoreManager
+import com.bydmate.app.data.autoservice.CloudOverWifiManager
+import com.bydmate.app.data.camera.CameraStateMonitor
 import com.bydmate.app.data.vehicle.HelperBootstrap
 import com.bydmate.app.data.vehicle.HelperClient
+import com.bydmate.app.hud.HudCheck
 import com.bydmate.app.hud.HudController
+import com.bydmate.app.hud.HudPanelTester
 import com.bydmate.app.split.SplitPreferences
 import com.bydmate.app.voice.VoiceController
 import dagger.hilt.EntryPoint
@@ -10,7 +15,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 
 /**
- * Bridges the @Singleton HelperClient/HelperBootstrap/VoiceController/HudController/SplitPreferences
+ * Bridges the @Singleton HelperClient/HelperBootstrap/VoiceController/HudController/SplitPreferences/AdbRestoreManager
  * into SteeringWheelKeyService and SettingsScreen composables (framework-instantiated, not Hilt).
  */
 @EntryPoint
@@ -20,5 +25,10 @@ interface ClusterEntryPoint {
     fun helperBootstrap(): HelperBootstrap
     fun voiceController(): VoiceController
     fun hudController(): HudController
+    fun hudPanelTester(): HudPanelTester
     fun splitPreferences(): SplitPreferences
+    fun adbRestoreManager(): AdbRestoreManager
+    fun cloudOverWifiManager(): CloudOverWifiManager
+    fun cameraStateMonitor(): CameraStateMonitor
+    fun hudCheck(): HudCheck
 }

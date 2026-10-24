@@ -66,6 +66,21 @@ class WidgetPreferences(private val prefs: SharedPreferences) {
         awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
+    fun isPowerGraphEnabled(): Boolean = prefs.getBoolean(KEY_POWER_GRAPH, false)
+
+    fun setPowerGraphEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_POWER_GRAPH, enabled).apply()
+    }
+
+    fun powerGraphFlow(): Flow<Boolean> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->
+            if (changedKey == KEY_POWER_GRAPH) trySend(isPowerGraphEnabled())
+        }
+        trySend(isPowerGraphEnabled())
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     fun getScale(): Float = prefs.getFloat(KEY_SCALE, 1.0f)
 
     fun setScale(scale: Float) {
@@ -175,6 +190,19 @@ class WidgetPreferences(private val prefs: SharedPreferences) {
         awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
+    /**
+     * Icon catalog id shown on expandable button [number] instead of its digit.
+     * Null = no icon chosen, the button keeps showing the number.
+     */
+    fun buttonIconId(number: Int): String? = prefs.getString(buttonIconKey(number), null)
+
+    fun setButtonIconId(number: Int, id: String?) {
+        val key = buttonIconKey(number)
+        val editor = prefs.edit()
+        if (id == null) editor.remove(key) else editor.putString(key, id)
+        editor.apply()
+    }
+
     fun isHideOnYoutube(): Boolean = prefs.getBoolean(KEY_HIDE_ON_YOUTUBE, false)
 
     fun setHideOnYoutube(hide: Boolean) {
@@ -186,6 +214,22 @@ class WidgetPreferences(private val prefs: SharedPreferences) {
             if (changedKey == KEY_HIDE_ON_YOUTUBE) trySend(isHideOnYoutube())
         }
         trySend(isHideOnYoutube())
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    /** Show the widget only over the home screen (launcher); hide it in every other app. */
+    fun isHomeOnly(): Boolean = prefs.getBoolean(KEY_HOME_ONLY, false)
+
+    fun setHomeOnly(homeOnly: Boolean) {
+        prefs.edit().putBoolean(KEY_HOME_ONLY, homeOnly).apply()
+    }
+
+    fun homeOnlyFlow(): Flow<Boolean> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->
+            if (changedKey == KEY_HOME_ONLY) trySend(isHomeOnly())
+        }
+        trySend(isHomeOnly())
         prefs.registerOnSharedPreferenceChangeListener(listener)
         awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
@@ -240,6 +284,10 @@ class WidgetPreferences(private val prefs: SharedPreferences) {
         const val KEY_BUTTONS_ENABLED = "widget_buttons_enabled"
         const val KEY_HIDE_ON_YOUTUBE = "widget_hide_on_youtube"
         const val KEY_HIDE_IN_APPS = "widget_hide_in_apps"
+        const val KEY_POWER_GRAPH = "widget_power_graph"
+        const val KEY_HOME_ONLY = "widget_home_only"
+        const val KEY_BUTTON_ICON_PREFIX = "widget_button_icon_"
+        fun buttonIconKey(number: Int): String = "$KEY_BUTTON_ICON_PREFIX$number"
         const val DEFAULT_LEFT_TAP_APP_PKG = "ru.yandex.yandexnavi"
         const val DEFAULT_LEFT_TAP_APP_LABEL = "Яндекс.Навигатор"
         const val SCALE_MIN = 0.7f

@@ -1,9 +1,9 @@
 package com.bydmate.app.data.loop
 
+import android.os.SystemClock
 import android.util.Log
 import com.bydmate.app.data.local.EnergyDataReader
 import com.bydmate.app.data.local.dao.LastStateDao
-import com.bydmate.app.data.local.entity.LastStateEntity
 import com.bydmate.app.data.nativestack.ParsReader
 import com.bydmate.app.data.remote.DiParsData
 import kotlinx.coroutines.CoroutineDispatcher
@@ -23,6 +23,13 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
+ * A polled snapshot and when its read started, on the monotonic clock
+ * ([SystemClock.elapsedRealtime]). The time is set once, where the snapshot is produced, so a
+ * replay to a later subscriber (a service restarted in the same process) keeps the old time.
+ */
+data class TimedSnapshot(val data: DiParsData, val measuredAtElapsedMs: Long)
+
+/**
  * Single owner of NativeParsReader. All read consumers subscribe to [flow].
  * Cadence is decided per tick via [LoopFsm.classify]; backoff applies when
  * fetch() returns null.
@@ -34,12 +41,20 @@ class SharedAdaptiveLoop constructor(
     private val energyDataReader: EnergyDataReader,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val cadence: CadenceConfig = CadenceConfig.default(),
+    private val elapsedNow: () -> Long = SystemClock::elapsedRealtime,
 ) {
     private val _flow = MutableSharedFlow<DiParsData>(
         replay = 1, extraBufferCapacity = 0,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     val flow: SharedFlow<DiParsData> = _flow.asSharedFlow()
+
+    /** [flow] with the measurement time of each snapshot. */
+    private val _samples = MutableSharedFlow<TimedSnapshot>(
+        replay = 1, extraBufferCapacity = 0,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val samples: SharedFlow<TimedSnapshot> = _samples.asSharedFlow()
 
     private val _connected = MutableStateFlow(false)
     val connected: StateFlow<Boolean> = _connected.asStateFlow()
@@ -64,6 +79,8 @@ class SharedAdaptiveLoop constructor(
     private suspend fun runLoop() {
         var consecutiveNull = 0
         while (true) {
+            // Taken before the read: the snapshot is never younger than this.
+            val readStartedAt = elapsedNow()
             val data = runCatching { parsReader.fetch() }.getOrNull()
             if (data == null) {
                 consecutiveNull++
@@ -75,6 +92,7 @@ class SharedAdaptiveLoop constructor(
             }
             consecutiveNull = 0
             _connected.value = true
+            _samples.emit(TimedSnapshot(data, readStartedAt))
             _flow.emit(data)
             runCatching { persistSnapshot(data) }
                 .onFailure { Log.w(TAG, "persistSnapshot failed, loop continues", it) }
@@ -95,21 +113,17 @@ class SharedAdaptiveLoop constructor(
             prev.ignition == ignition &&
             now - prev.ts < HEARTBEAT_MS
         ) return
-        lastStateDao.upsert(
-            LastStateEntity(
-                id = 1,
-                ts = now,
-                soc = data.soc,
-                mileage = data.mileage,
-                totalElec = data.totalElecConsumption,
-                ignition = ignition,
-                openTripId = prev?.openTripId,
-                tripStartTs = prev?.tripStartTs,
-                tripStartSoc = prev?.tripStartSoc,
-                tripStartMileage = prev?.tripStartMileage,
-                tripStartTotalElec = prev?.tripStartTotalElec,
-                energydataAvailable = if (energyDataReader.isAvailable()) 1 else 0,
-            )
+        // Snapshot-only write: never touches open_trip_id / trip_start_*, which TripRecorder
+        // owns. A whole-row upsert() here raced with TripRecorder's openTrip()/clearOpenTrip()
+        // between getCurrent() above and the write, and could wipe a trip opened or closed
+        // concurrently with this tick.
+        lastStateDao.writeSnapshot(
+            ts = now,
+            soc = data.soc,
+            mileage = data.mileage,
+            totalElec = data.totalElecConsumption,
+            ignition = ignition,
+            energydataAvailable = if (energyDataReader.isAvailable()) 1 else 0,
         )
     }
 

@@ -13,6 +13,19 @@ class RuleDraftValidatorTest {
 
     // --- validateActions ---
 
+    @Test fun telegram_report_without_items_or_text_is_invalid() {
+        val err = RuleDraftValidator.validateActions(listOf(
+            ActionDef(command = "telegram_report", displayName = "x", kind = "telegram_report",
+                payload = """{"fields":[],"text":"  "}""")))
+        assertEquals(ActionValidationError.TelegramReportEmpty(1), err)
+    }
+
+    @Test fun telegram_report_with_only_own_text_is_valid() {
+        assertNull(RuleDraftValidator.validateActions(listOf(
+            ActionDef(command = "telegram_report", displayName = "x", kind = "telegram_report",
+                payload = """{"fields":[],"text":"Я выехал"}"""))))
+    }
+
     @Test fun empty_actions_list_is_valid() {
         assertNull(RuleDraftValidator.validateActions(emptyList()))
     }
@@ -48,6 +61,20 @@ class RuleDraftValidatorTest {
             ActionDef(command = "", displayName = "x", kind = "app_launch",
                 payload = """{"packageName":"","appLabel":""}""")))
         assertEquals(ActionValidationError.AppNotSelected(1), err)
+    }
+
+    @Test fun app_close_action_blank_package_is_invalid() {
+        val err = RuleDraftValidator.validateActions(listOf(
+            ActionDef(command = "", displayName = "x", kind = "app_close",
+                payload = """{"packageName":"","appLabel":""}""")))
+        assertEquals(ActionValidationError.AppNotSelected(1), err)
+    }
+
+    @Test fun media_key_action_takes_only_play_or_pause() {
+        fun key(p: String) = listOf(ActionDef(command = "", displayName = "x", kind = "media_key", payload = p))
+        assertEquals(null, RuleDraftValidator.validateActions(key("play")))
+        assertEquals(null, RuleDraftValidator.validateActions(key("pause")))
+        assertEquals(ActionValidationError.MediaKeyInvalid(1), RuleDraftValidator.validateActions(key("toggle")))
     }
 
     @Test fun call_action_phone_too_short_is_invalid() {
@@ -134,6 +161,15 @@ class RuleDraftValidatorTest {
             ActionDef(command = "sentry", displayName = "x", kind = "sentry", payload = "1"))))
     }
 
+    @Test fun screen_action_payload_is_0_or_1() {
+        fun check(payload: String?) = RuleDraftValidator.validateActions(listOf(
+            ActionDef(command = "screen", displayName = "x", kind = "screen", payload = payload)))
+        assertNull(check("0"))
+        assertNull(check("1"))
+        assertEquals(ActionValidationError.ScreenInvalid(1), check("2"))
+        assertEquals(ActionValidationError.ScreenInvalid(1), check(null))
+    }
+
     @Test fun hotspot_action_invalid_payload_is_invalid() {
         val err = RuleDraftValidator.validateActions(listOf(
             ActionDef(command = "hotspot", displayName = "x", kind = "hotspot", payload = "2")))
@@ -209,16 +245,25 @@ class RuleDraftValidatorTest {
         assertEquals(TriggerValidationError.VoicePhraseEmpty, RuleDraftValidator.validateTriggers(triggers, -1L, emptyList()))
     }
 
-    @Test fun builtin_voice_phrase_is_invalid() {
-        // "открой окна" -> NluParser -> OPEN+WINDOW_ALL -> built-in command (see VoiceTriggerValidationTest).
+    @Test fun phrase_the_builtin_parser_understands_is_valid() {
+        // Automations resolve before built-in commands, so the rule takes the phrase over.
         val triggers = listOf(TriggerDef(param = "Voice", chineseName = "语音", operator = "==", value = "открой окна", displayName = "x", kind = "voice"))
-        assertEquals(TriggerValidationError.VoicePhraseBuiltin, RuleDraftValidator.validateTriggers(triggers, -1L, emptyList()))
+        assertNull(RuleDraftValidator.validateTriggers(triggers, -1L, emptyList()))
     }
 
-    @Test fun voice_phrase_taken_by_other_rule_is_invalid() {
+    @Test fun user_phrase_of_a_builtin_command_is_invalid_and_names_the_command() {
+        val triggers = listOf(TriggerDef(param = "Voice", chineseName = "语音", operator = "==", value = "Проветрить!", displayName = "x", kind = "voice"))
+        val userPhrases = mapOf(com.bydmate.app.voice.VoicePhrase.normalize("проветрить") to "все окна на проветривание")
+        assertEquals(
+            TriggerValidationError.VoicePhraseBuiltin("все окна на проветривание"),
+            RuleDraftValidator.validateTriggers(triggers, -1L, emptyList(), userPhrases),
+        )
+    }
+
+    @Test fun voice_phrase_taken_by_other_rule_is_invalid_and_names_the_rule() {
         val triggers = listOf(TriggerDef(param = "Voice", chineseName = "语音", operator = "==", value = "навигатор", displayName = "x", kind = "voice"))
         val existing = listOf(ruleWithVoice(id = 2, phrase = "навигатор"))
-        assertEquals(TriggerValidationError.VoicePhraseTaken, RuleDraftValidator.validateTriggers(triggers, -1L, existing))
+        assertEquals(TriggerValidationError.VoicePhraseTaken("r2"), RuleDraftValidator.validateTriggers(triggers, -1L, existing))
     }
 
     @Test fun voice_phrase_taken_by_the_rule_being_edited_is_not_a_collision() {

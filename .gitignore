@@ -36,6 +36,7 @@ docs/research/
 docs/superpowers/
 docs/native-data-stack/
 docs/README.md
+docs/DECISIONS.md
 scripts/native-stack/
 screen/
 .superpowers/
@@ -54,5 +55,12 @@ docs/superpowers/**/handoff-*
 .claude/
 .mcp.json
 
-# Kotlin compiler session files
+# Kotlin 2.x compiler daemon working dir (sessions markers, error logs)
 .kotlin/
+
+# Build output of the :bydauto-stubs module (rebuilt by Gradle, was committed by mistake).
+/bydauto-stubs/build
+
+# Owner's private notes, kept out of the public repo.
+PHILOSOPHY.md
+CONTEXT.md

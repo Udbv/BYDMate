@@ -28,6 +28,8 @@ interface AdbOnDeviceClient {
     /** Initiates the ADB handshake. Suspends until handshake completes or fails. */
     suspend fun connect(): Result<Unit>
     suspend fun isConnected(): Boolean
+    /** Why the last connect attempt failed; null after a successful one or before any. No side effects. */
+    fun lastConnectFailure(): AdbConnectFailure?
     /** Executes a one-shot shell command and returns stdout, or null on failure. */
     suspend fun exec(cmd: String): String?
     /**
@@ -37,6 +39,15 @@ interface AdbOnDeviceClient {
      * No-op effect if already granted. Returns true on success.
      */
     suspend fun grantUsageStatsAppop(packageName: String): Boolean
+
+    /**
+     * Grants WRITE_SECURE_SETTINGS to our own package via shell uid, so the app can turn
+     * Android's wireless debugging back on after a reboot on firmwares that no longer keep
+     * port 5555 open (see AdbRestoreManager). Granted while the classic port is still alive,
+     * regardless of whether the restore toggle is on — afterwards there is no channel left
+     * to grant it through. Idempotent. Returns true on success.
+     */
+    suspend fun grantWriteSecureSettings(packageName: String): Boolean
 
     /**
      * Spawns the helper daemon under shell uid via app_process, using the app's
@@ -89,7 +100,10 @@ class AdbOnDeviceClientImpl @Inject constructor(
      */
     @Suppress("unused")  // assigned via internal setter from tests
     internal var protocolFactory: () -> AdbProtocol = {
-        AdbProtocolClient(keyStore.loadOrGenerate())
+        AdbProtocolClient(
+            keyPair = keyStore.loadOrGenerate(),
+            certificateProvider = { keyStore.loadOrGenerateCertificate() },
+        )
     }
 
     @Volatile private var protocol: AdbProtocol? = null
@@ -112,9 +126,12 @@ class AdbOnDeviceClientImpl @Inject constructor(
         protocol?.isConnected() ?: false
     }
 
+    override fun lastConnectFailure(): AdbConnectFailure? = protocol?.lastConnectFailure
+
     override suspend fun exec(cmd: String): String? = withContext(Dispatchers.IO) {
-        // Structural barrier against accidental WRITE — only allow GETs to autoservice.
-        require(cmd.matches(WRITE_BARRIER_REGEX)) {
+        // Structural barrier against accidental WRITE — only allow GETs to autoservice, plus the
+        // fixed cloud-over-Wi-Fi command set the user switches on explicitly.
+        require(cmd.matches(WRITE_BARRIER_REGEX) || cmd.matches(CLOUD_OVER_WIFI_REGEX)) {
             "AdbOnDeviceClient: refused command (write barrier): $cmd"
         }
         val p = protocol ?: return@withContext null
@@ -147,6 +164,28 @@ class AdbOnDeviceClientImpl @Inject constructor(
             out.isBlank()
         } catch (e: Exception) {
             Log.w(TAG, "grantUsageStatsAppop failed: ${e.message}")
+            false
+        }
+    }
+
+    override suspend fun grantWriteSecureSettings(packageName: String): Boolean = withContext(Dispatchers.IO) {
+        // Only permit our own package — never grant permissions to anything else.
+        require(packageName == ctx.packageName) {
+            "grantWriteSecureSettings: refused package $packageName"
+        }
+        val cmd = "pm grant $packageName android.permission.WRITE_SECURE_SETTINGS"
+        val p = protocol ?: return@withContext false
+        try {
+            // pm prints nothing on success (and on a re-grant); any output is an error.
+            val out = p.exec(cmd)
+            if (out == null) {
+                Log.w(TAG, "grantWriteSecureSettings: transport error")
+                return@withContext false
+            }
+            if (out.isNotBlank()) Log.w(TAG, "grantWriteSecureSettings: pm answered: ${out.trim().take(300)}")
+            out.isBlank()
+        } catch (e: Exception) {
+            Log.w(TAG, "grantWriteSecureSettings failed: ${e.message}")
             false
         }
     }
@@ -219,14 +258,26 @@ class AdbOnDeviceClientImpl @Inject constructor(
     }
 
     override suspend fun readHelperLog(): String? = withContext(Dispatchers.IO) {
-        val p = protocol ?: return@withContext null
+        val p = protocolOrConnect() ?: return@withContext null
         runCatching { p.exec("cat $HELPER_LOG_PATH") }.getOrNull()
     }
 
     override suspend fun helperHeartbeat(): Boolean = withContext(Dispatchers.IO) {
-        val p = protocol ?: return@withContext false
+        val p = protocolOrConnect() ?: return@withContext false
         val out = runCatching { p.exec("ps -A -o NAME") }.getOrNull() ?: return@withContext false
         out.lineSequence().any { it.trim() == HELPER_PROCESS_NAME }
+    }
+
+    /**
+     * The live protocol, connecting lazily like spawnHelper/killHelper do. A process recreated
+     * while the daemon runs has no protocol yet, and a bare `protocol ?: return false` reported
+     * "no daemon process" for a daemon that is very much alive — which sent HelperBootstrap
+     * straight into kill+respawn (#64/#148). Null only when the connect itself failed.
+     */
+    private suspend fun protocolOrConnect(): AdbProtocol? {
+        protocol?.let { return it }
+        if (connect().isFailure) return null
+        return protocol
     }
 
     override suspend fun shutdown() {
@@ -246,6 +297,18 @@ class AdbOnDeviceClientImpl @Inject constructor(
         // Rejects tx=6 (setInt), tx=8 (setBuffer), and arbitrary shell.
         private val WRITE_BARRIER_REGEX = Regex("""^service call autoservice [579] i32 \d+ i32 -?\d+$""")
 
+        // The exact commands of CloudOverWifiManager (#310) and nothing around them: reads of the
+        // listed properties, the cloud status, the cloud start/stop, and the BYD data-profile
+        // broadcast whose profile name is plain [a-z_] (it is read back from the car).
+        private val CLOUD_OVER_WIFI_REGEX = Regex(
+            """^(getprop (persist\.sys\.byd\.apn_type|ro\.build\.byd\.apn_type|""" +
+                """persist\.radio\.net\.lte\.apn1\.disable|net\.lte\.apn[13]\.state|sys\.tcp_step|""" +
+                """sys\.tcp_reg_errcode|persist\.sys\.cloud\.app_reg_status|""" +
+                """gsm\.sim\.operator\.(numeric|iso-country))""" +
+                """|service call cloudmanager (7|1 i32 (4|-5))""" +
+                """|am broadcast --user 0 -a com\.byd\.action\.RADIO_CONFIG -p com\.android\.phone """ +
+                """-f 0x01000000 --es opt_name set_default_data --es apn_type [a-z_]+)$"""
+        )
         // Spawn token shape — alphanumeric only, so it can never break out of the spawn
         // command line. HelperBootstrap generates 32 hex characters.
         private val SPAWN_TOKEN_REGEX = Regex("""^[A-Za-z0-9]{16,64}$""")

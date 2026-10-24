@@ -20,13 +20,19 @@ import com.bydmate.app.data.local.HistoryImporter
 import com.bydmate.app.data.local.LocalePreferences
 import com.bydmate.app.data.local.decideLanguage
 import com.bydmate.app.data.automation.DriveModeRuleMigration
+import com.bydmate.app.data.automation.PowerStateRuleMigration
+import com.bydmate.app.data.automation.TrunkRuleMigration
 import com.bydmate.app.data.local.dao.ChargeDao
 import com.bydmate.app.data.remote.InsightsManager
 import com.bydmate.app.data.repository.SettingsRepository
+import com.bydmate.app.diagnostics.Trace
+import com.bydmate.app.diagnostics.TraceArea
+import com.bydmate.app.diagnostics.TraceJournal
 import com.bydmate.app.ui.widget.WidgetController
 import com.bydmate.app.ui.widget.WidgetPreferences
 import com.bydmate.app.util.CrashLog
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -51,8 +57,23 @@ class BYDMateApp : Application(), Configuration.Provider {
     @Inject lateinit var insightsManager: InsightsManager
     @Inject lateinit var splitOverlayController: com.bydmate.app.split.SplitOverlayController
     @Inject lateinit var driveModeRuleMigration: DriveModeRuleMigration
+    @Inject lateinit var defaultRulesSeeder: com.bydmate.app.data.automation.DefaultRulesSeeder
+    @Inject lateinit var trunkRuleMigration: TrunkRuleMigration
+    @Inject lateinit var powerStateRuleMigration: PowerStateRuleMigration
+    @Inject lateinit var traceJournal: TraceJournal
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /**
+     * Nothing launched here may take the process down. A SupervisorJob alone does not do that:
+     * an exception escaping a child still reaches the thread's default handler, which is our
+     * crash handler, which lets the platform kill us -- so a single failing one-shot migration
+     * would turn into "BYDMate dies on every start" with no way back.
+     */
+    private val appScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO +
+            CoroutineExceptionHandler { _, e ->
+                android.util.Log.e("BYDMateApp", "background failure", e)
+            }
+    )
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -61,6 +82,10 @@ class BYDMateApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        Trace.install(traceJournal)
+        Trace.event(TraceArea.APP, "start", "version" to BuildConfig.VERSION_CODE, "name" to BuildConfig.VERSION_NAME)
+        // Rarely runs on Android (a killed process gets no hooks), but costs nothing when it does.
+        Runtime.getRuntime().addShutdownHook(Thread { traceJournal.flushBlocking(TRACE_FLUSH_MS) })
         // Navigator phrase tables (assets/navi/phrases): language packs for the HUD maneuver parser.
         com.bydmate.app.navdata.NavPhraseTables.ensureLoaded(this)
         // Allow in-process ServiceManager.getService() on Android 9+ to reach the helper
@@ -83,34 +108,78 @@ class BYDMateApp : Application(), Configuration.Provider {
         bootstrapLocale()
         initOsmdroid()
         appScope.launch {
-            // v2.8.1: clear stale "DIPLUS" data_source value from pre-native-stack
-            // builds. One-shot, gated by its own flag.
-            settingsRepository.migrateDataSourceIfNeeded()
-
-            if (!settingsRepository.isInsightCacheV2MigrationDone()) {
-                insightsManager.migrateLegacyCache()
-                settingsRepository.setInsightCacheV2MigrationDone()
+            // Start-up maintenance. Each step is guarded on its own: a migration that trips over
+            // a bad row must not swallow the ones behind it.
+            startupStep("data source") {
+                // v2.8.1: clear stale "DIPLUS" data_source value from pre-native-stack
+                // builds. One-shot, gated by its own flag.
+                settingsRepository.migrateDataSourceIfNeeded()
             }
-            // One-shot migration: remove phantom autoservice rows created by the
-            // lifetime_kwh driving-counter bug in v2.4.15/v2.4.16.
-            if (!settingsRepository.isMigrationV2_4_17Done()) {
-                val removed = chargeDao.deletePhantomAutoserviceRows()
-                settingsRepository.setMigrationV2_4_17Done()
-                android.util.Log.i("BYDMateApp", "v2.4.17 migration: removed $removed phantom autoservice rows")
+            startupStep("tg report odometer") {
+                // 3.19.1: the odometer joins a power-off report choice saved before it existed. One-shot.
+                settingsRepository.addTgReportOdometerOnce()
+            }
+            startupStep("insight cache v2") {
+                if (!settingsRepository.isInsightCacheV2MigrationDone()) {
+                    insightsManager.migrateLegacyCache()
+                    settingsRepository.setInsightCacheV2MigrationDone()
+                }
+            }
+            startupStep("v2.4.17 phantom rows") {
+                // One-shot migration: remove phantom autoservice rows created by the
+                // lifetime_kwh driving-counter bug in v2.4.15/v2.4.16.
+                if (!settingsRepository.isMigrationV2_4_17Done()) {
+                    val removed = chargeDao.deletePhantomAutoserviceRows()
+                    settingsRepository.setMigrationV2_4_17Done()
+                    android.util.Log.i("BYDMateApp", "v2.4.17 migration: removed $removed phantom autoservice rows")
+                }
             }
             // One-shot: revive DriveMode rules saved against the old "0" = NORMAL code.
-            driveModeRuleMigration.runOnce()
+            startupStep("drive mode rules") { driveModeRuleMigration.runOnce() }
+            // One-shot: revive Trunk rules saved against the old "0" = closed code.
+            startupStep("trunk rules") { trunkRuleMigration.runOnce() }
+            // One-shot: move rules off the removed PowerState condition.
+            startupStep("power state rules") { powerStateRuleMigration.runOnce() }
+            // One-shot: the two start-up rules almost every car wants, so an update never
+            // means adding them again by hand. Edits and deletions afterwards are respected.
+            startupStep("default rules") { defaultRulesSeeder.runOnce() }
             // One-time cleanup of existing duplicates from v2.0.0
-            historyImporter.cleanupDuplicates()
-            // Only sync if setup is completed (prevents duplicates during first wizard run)
-            if (settingsRepository.isSetupCompleted()) {
-                historyImporter.runSync()
+            startupStep("duplicate history") { historyImporter.cleanupDuplicates() }
+            startupStep("history sync") {
+                // Only sync if setup is completed (prevents duplicates during first wizard run)
+                if (settingsRepository.isSetupCompleted()) {
+                    historyImporter.runSync()
+                }
             }
         }
         scheduleDataThinning()
+        appScope.launch {
+            com.bydmate.app.service.UpdateApkCleanup.run(
+                android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
+                BuildConfig.VERSION_NAME,
+            )
+        }
         registerActivityLifecycleCallbacks(WidgetLifecycleCallbacks(this, splitOverlayController))
         // Start split-screen overlay observers (mirrors WidgetController init pattern).
         splitOverlayController.start(appScope)
+    }
+
+    /**
+     * Runs one piece of start-up maintenance, logging rather than propagating anything it throws.
+     *
+     * These run detached on [appScope] while the rest of the app is already coming up, so the
+     * world can move underneath them -- the database can close on a fast shutdown, a row can be
+     * malformed. None of that is worth a failed start, and a step that fails leaves its
+     * "done" flag unset so the next start retries it.
+     */
+    private inline fun startupStep(name: String, body: () -> Unit) {
+        try {
+            body()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            android.util.Log.w("BYDMateApp", "start-up step '$name' failed: ${e.message}", e)
+        }
     }
 
     /**
@@ -131,6 +200,9 @@ class BYDMateApp : Application(), Configuration.Provider {
             // so the platform kills/restarts the process the normal way.
             try {
                 CrashLog.record(this, throwable)
+                // The events right before the crash are the ones that explain it: save them now.
+                Trace.event(TraceArea.APP, "crash", "error" to throwable.javaClass.simpleName)
+                traceJournal.flushBlocking(TRACE_FLUSH_MS)
             } finally {
                 previousHandler?.uncaughtException(thread, throwable)
             }
@@ -182,6 +254,7 @@ class BYDMateApp : Application(), Configuration.Provider {
 
         override fun onActivityResumed(activity: Activity) {
             if (!counter.onResumed(activity.javaClass)) return
+            Trace.event(TraceArea.USER, "app-open")
             // User opened BYDMate → widget hides; also clear the
             // "hidden until app launch" long-press flag so it reappears
             // next time the app goes to background.
@@ -193,11 +266,14 @@ class BYDMateApp : Application(), Configuration.Provider {
 
         override fun onActivityPaused(activity: Activity) {
             if (!counter.onPaused(activity.javaClass)) return
+            Trace.event(TraceArea.USER, "app-background")
+            // A backgrounded process is the one the system kills first.
+            Trace.flush()
             WidgetController.setAppForegrounded(false)
             splitOverlay.setOwnAppForegrounded(false)
             val prefs = WidgetPreferences(app)
             if (prefs.isEnabled() && Settings.canDrawOverlays(app)) {
-                WidgetController.attach(app)
+                WidgetController.attach(app, "app_backgrounded")
             }
         }
 
@@ -207,6 +283,9 @@ class BYDMateApp : Application(), Configuration.Provider {
     }
 
     companion object {
+        // How long a dying process may wait for the trace to reach the disk.
+        private const val TRACE_FLUSH_MS = 500L
+
         /** 高德地图道路瓦片 — 中国大陆可用，免 API Key。
          *  查询参数风格 (?x=&y=&z=) 需要重写 getTileURLString。 */
         val AmapTileSource = object : OnlineTileSourceBase(

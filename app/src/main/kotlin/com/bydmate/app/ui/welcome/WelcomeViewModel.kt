@@ -1,14 +1,18 @@
 package com.bydmate.app.ui.welcome
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bydmate.app.R
+import com.bydmate.app.data.autoservice.AdbOnDeviceClient
 import com.bydmate.app.data.local.HistoryImporter
+import com.bydmate.app.data.local.LocalePreferences
 import com.bydmate.app.data.repository.SettingsRepository
 import com.bydmate.app.data.repository.TripRepository
 import com.bydmate.app.service.TrackingService
 import com.bydmate.app.util.appLocalizedContext
+import com.bydmate.app.util.applyAppLanguage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,42 +24,81 @@ import javax.inject.Inject
 
 data class WelcomeUiState(
     val step: Int = 1,
+    val language: String = "ru",
     val batteryCapacity: String = SettingsRepository.DEFAULT_BATTERY_CAPACITY,
     val currency: String = SettingsRepository.DEFAULT_CURRENCY,
     val currencySymbol: String = "BYN",
+    /** True once the user picked a currency; language changes stop overriding it. */
+    val currencyTouched: Boolean = false,
     val homeTariff: String = SettingsRepository.DEFAULT_HOME_TARIFF,
     val dcTariff: String = SettingsRepository.DEFAULT_DC_TARIFF,
-    val tripCostMode: String = "home", // "home", "dc", "custom"
-    val customTariff: String = SettingsRepository.DEFAULT_HOME_TARIFF,
     val isLoading: Boolean = false,
     val importStatus: String? = null,
-    val isComplete: Boolean = false
+    val isComplete: Boolean = false,
+    val adbCheck: AdbCheck = AdbCheck.NotChecked,
 )
+
+/** State of the wizard's advisory ADB check. */
+enum class AdbCheck { NotChecked, Checking, Failed, Ok }
 
 @HiltViewModel
 class WelcomeViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val settingsRepository: SettingsRepository,
+    private val localePreferences: LocalePreferences,
     private val tripRepository: TripRepository,
-    private val historyImporter: HistoryImporter
+    private val historyImporter: HistoryImporter,
+    private val adbClient: AdbOnDeviceClient,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(WelcomeUiState())
+    private val _uiState = MutableStateFlow(
+        (localePreferences.getLanguage() ?: "ru").let { lang ->
+            val currency = findCurrency(currencyForLanguage(lang))
+            WelcomeUiState(language = lang, currency = currency.code, currencySymbol = currency.symbol)
+        }
+    )
     val uiState: StateFlow<WelcomeUiState> = _uiState.asStateFlow()
 
     fun setBatteryCapacity(value: String) = _uiState.update { it.copy(batteryCapacity = value) }
     fun setHomeTariff(value: String) = _uiState.update { it.copy(homeTariff = value) }
     fun setDcTariff(value: String) = _uiState.update { it.copy(dcTariff = value) }
-    fun setCustomTariff(value: String) = _uiState.update { it.copy(customTariff = value) }
-    fun setTripCostMode(mode: String) = _uiState.update { it.copy(tripCostMode = mode) }
 
     fun setCurrency(code: String) {
-        val currency = SettingsRepository.CURRENCIES.find { it.code == code }
-            ?: SettingsRepository.CURRENCIES.first()
-        _uiState.update { it.copy(currency = currency.code, currencySymbol = currency.symbol) }
+        val currency = findCurrency(code)
+        _uiState.update {
+            it.copy(currency = currency.code, currencySymbol = currency.symbol, currencyTouched = true)
+        }
     }
 
-    fun nextStep() = _uiState.update { it.copy(step = (it.step + 1).coerceAtMost(2)) }
+    /** Applies the language right away so the following wizard steps render in it. */
+    fun setLanguage(lang: String) {
+        applyAppLanguage(appContext, localePreferences, lang)
+        _uiState.update { state ->
+            if (state.currencyTouched) {
+                state.copy(language = lang)
+            } else {
+                // Follow the language until the user picks a currency: Chinese implies CNY
+                val currency = findCurrency(currencyForLanguage(lang))
+                state.copy(language = lang, currency = currency.code, currencySymbol = currency.symbol)
+            }
+        }
+    }
+
+    /**
+     * One connect to the on-device adbd. No daemon spawn here: the service does that once the
+     * wizard ends. May block up to 60 s while DiLink shows its own «Allow debugging» dialog.
+     */
+    fun checkAdb() {
+        if (_uiState.value.adbCheck == AdbCheck.Checking) return
+        _uiState.update { it.copy(adbCheck = AdbCheck.Checking) }
+        viewModelScope.launch {
+            val ok = adbClient.connect().isSuccess
+            if (!ok) Log.i(TAG, "ADB check failed: ${adbClient.lastConnectFailure()}")
+            _uiState.update { it.copy(adbCheck = if (ok) AdbCheck.Ok else AdbCheck.Failed) }
+        }
+    }
+
+    fun nextStep() = _uiState.update { it.copy(step = (it.step + 1).coerceAtMost(TOTAL_STEPS)) }
     fun prevStep() = _uiState.update { it.copy(step = (it.step - 1).coerceAtLeast(1)) }
 
     fun startBydMate() {
@@ -70,13 +113,6 @@ class WelcomeViewModel @Inject constructor(
             settingsRepository.setString(SettingsRepository.KEY_CURRENCY, state.currency)
             settingsRepository.setString(SettingsRepository.KEY_HOME_TARIFF, state.homeTariff)
             settingsRepository.setString(SettingsRepository.KEY_DC_TARIFF, state.dcTariff)
-
-            val tariffValue = when (state.tripCostMode) {
-                "home" -> "home"
-                "dc" -> "dc"
-                else -> state.customTariff
-            }
-            settingsRepository.setString(SettingsRepository.KEY_TRIP_COST_TARIFF, tariffValue)
 
             // Detect upgrade vs fresh install
             val tripCount = tripRepository.getTripCount()
@@ -98,9 +134,20 @@ class WelcomeViewModel @Inject constructor(
             settingsRepository.setSetupCompleted()
 
             // Start tracking service
-            TrackingService.start(appContext)
+            TrackingService.start(appContext, com.bydmate.app.service.AutostartTrace.TRIGGER_WELCOME)
 
             _uiState.update { it.copy(isLoading = false, isComplete = true) }
         }
+    }
+
+    companion object {
+        const val TOTAL_STEPS = 4
+        private const val TAG = "Welcome"
+
+        private fun currencyForLanguage(lang: String): String =
+            if (lang == "zh") "CNY" else SettingsRepository.DEFAULT_CURRENCY
+
+        private fun findCurrency(code: String): SettingsRepository.Currency =
+            SettingsRepository.CURRENCIES.find { it.code == code } ?: SettingsRepository.CURRENCIES.first()
     }
 }

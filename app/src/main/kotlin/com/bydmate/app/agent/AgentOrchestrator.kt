@@ -1,11 +1,16 @@
 package com.bydmate.app.agent
 
+import android.util.Log
+import com.bydmate.app.data.nativestack.VehicleKind
+import com.bydmate.app.data.nativestack.VehicleKindMonitor
 import com.bydmate.app.data.repository.SettingsRepository
+import com.bydmate.app.diagnostics.Trace
 import com.bydmate.app.voice.AgentIdentity
 import com.bydmate.app.voice.AgentPersona
 import com.bydmate.app.voice.AgentPersonaPrompt
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -22,6 +27,7 @@ import javax.inject.Singleton
  * via Mutex — concurrent PTT + chat asks serialize, history stays consistent.
  */
 @Singleton
+@Suppress("TooManyFunctions") // the turn loop plus its small prompt/history helpers
 class AgentOrchestrator @Inject constructor(
     private val backend: AgentBackend,
     private val tools: AgentTools,
@@ -29,15 +35,42 @@ class AgentOrchestrator @Inject constructor(
     private val isMoving: () -> Boolean = { false },
     private val identity: () -> AgentIdentity = { AgentIdentity("", AgentPersona.NAVIGATOR) },
     private val memoryBlock: () -> String = { "" },
+    private val dayMemory: DayMemory = DayMemory(prefs = null),
 ) {
+    // Method injection keeps every existing constructor call intact. Null until Hilt injects it;
+    // the car then counts as not a hybrid and gets the EV prompt.
+    private var vehicleKindMonitor: VehicleKindMonitor? = null
+
+    /** Called by Hilt after construction; call manually in unit tests of the hybrid prompt. */
+    @Inject
+    internal fun injectVehicleKind(monitor: VehicleKindMonitor) {
+        vehicleKindMonitor = monitor
+    }
+
     /** Test seam — deterministic clock for the session TTL. */
     internal var nowMs: () -> Long = { System.currentTimeMillis() }
+
+    /** Test seam — one line per traced step of the turn. Production writes to logcat under
+     *  [TAG], which the log recorder captures, so a "the agent lied" report is diagnosable
+     *  from the user's own log. */
+    internal var trace: (String) -> Unit = { Log.i(TAG, it) }
 
     private val mutex = Mutex()
     private val history = mutableListOf<AgentMessage>()
     private var lastAnswerAt = 0L
 
-    suspend fun ask(userText: String, onSentence: ((String) -> Unit)? = null): AgentResult {
+    /** Warms the model host on push-to-talk, before the utterance is even recognized. */
+    suspend fun prewarm() {
+        if (settingsRepository.isAgentEnabled()) backend.prewarm()
+    }
+
+    /** [onFiller] gets the speech-only filler phrase (see runLoopTraced); it sits before
+     *  [onSentence] so a trailing lambda keeps meaning the streamed answer sentences. */
+    suspend fun ask(
+        userText: String,
+        onFiller: ((String) -> Unit)? = null,
+        onSentence: ((String) -> Unit)? = null,
+    ): AgentResult {
         mutex.withLock {
             if (!settingsRepository.isAgentEnabled()) {
                 // Close the follow-up window: a disabled/unconfigured agent must not swallow NLU traffic.
@@ -55,14 +88,18 @@ class AgentOrchestrator @Inject constructor(
 
             clearStaleHistory()
             val snapshot = history.toList()
-            history += AgentMessage.User(if (isMoving()) "$text $MOVING_TAG" else text)
+            history += AgentMessage.User(withTimeTag(text) + if (isMoving()) " $MOVING_TAG" else "")
             try {
                 trimHistory()
-                return runLoop(
-                    history, buildSystemPrompt(), tools.schemas(),
-                    allowAutomationTools = true, onSentence,
+                val result = runLoop(
+                    history, systemMessages(), tools.schemas(),
+                    allowAutomationTools = true, onSentence, onFiller,
                     onTerminal = { lastAnswerAt = nowMs() },
                 )
+                // Only finished exchanges are worth keeping: an error or a disabled agent is
+                // not something the driver referred to and must not come back tomorrow.
+                if (result is AgentResult.Answer) dayMemory.record(text, result.text, nowMs())
+                return result
             } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
                 // Roll history back to the entry snapshot: a cancelled turn must not leave an
                 // unpaired tool_calls Assistant (the next ask would be rejected by the provider).
@@ -89,11 +126,25 @@ class AgentOrchestrator @Inject constructor(
     /** True while the agent's LAST reply was a clarifying question ("Какое окно?")
      *  asked within [FOLLOW_UP_WINDOW_MS]: the driver's next utterance is the ANSWER
      *  and must go straight to [ask], not through NLU (which would turn "водителя"
-     *  into a seat command or a NotUnderstood and lose the pending question). */
+     *  into a seat command or a NotUnderstood and lose the pending question).
+     *
+     *  A trailing "?" alone is not enough: the agent also asks rhetorical questions AFTER
+     *  it already acted ("Приоткрыл окно. Опять в форточку дышать собрался?"), and those
+     *  must not open the window. So this walks [history] backwards from the last message to
+     *  the most recent User message (the current turn); if any Assistant reply in that span
+     *  carried a tool call, the turn already acted and the trailing "?" is rhetorical. */
     suspend fun expectsFollowUp(): Boolean = mutex.withLock {
         if (nowMs() - lastAnswerAt > FOLLOW_UP_WINDOW_MS) return false
         val last = history.lastOrNull() as? AgentMessage.Assistant ?: return false
-        last.toolCalls.isEmpty() && last.content?.trimEnd()?.endsWith("?") == true
+        if (last.content?.trimEnd()?.endsWith("?") != true) return false
+        for (i in history.indices.reversed()) {
+            when (val msg = history[i]) {
+                is AgentMessage.User -> return@withLock true
+                is AgentMessage.Assistant -> if (msg.toolCalls.isNotEmpty()) return@withLock false
+                is AgentMessage.Tool, is AgentMessage.System -> {}
+            }
+        }
+        true
     }
 
     /** Automation-origin agent turn: single prompt, throwaway message list. Never touches the
@@ -108,64 +159,149 @@ class AgentOrchestrator @Inject constructor(
             if (!backend.isConfigured()) return AgentResult.Error("Агент не настроен: заполните адрес, API-ключ и модель в Настройки, Интеграции")
             val text = userText.trim()
             if (text.isEmpty()) return AgentResult.Disabled
-            val messages = mutableListOf<AgentMessage>(AgentMessage.User(text))
-            return runLoop(messages, buildSystemPrompt(includeMemory = false), tools.schemas(includeAutomationTools = false),
-                allowAutomationTools = false, onSentence = null, onTerminal = {})
+            val messages = mutableListOf<AgentMessage>(AgentMessage.User(withTimeTag(text)))
+            return runLoop(messages, systemMessages(includeMemory = false), tools.schemas(includeAutomationTools = false),
+                allowAutomationTools = false, onSentence = null, onFiller = null, onTerminal = {})
         } finally {
             mutex.unlock()
         }
     }
 
-    // Everything here is stable across the turns of one session (date and persona change far
-    // more slowly than the conversation), so system + tools stay a byte-identical prefix and
-    // the provider's prompt cache keeps hitting. Per-turn state — driving or not — rides on
-    // the user message instead (see [MOVING_TAG]). Driver facts move at the same slow pace:
-    // only a remember_fact/forget_fact call rewrites the block, and that is rare by design.
-    // A detached turn (automation rule, not the driver) neither reads nor writes the memory.
-    private fun buildSystemPrompt(includeMemory: Boolean = true): String = SYSTEM_PROMPT +
-        "\nСегодня " + SimpleDateFormat("d MMMM yyyy 'года,' EEEE", Locale("ru"))
+    /** The driver's line plus the local clock time ([TIME_TAG_PREFIX]). The time rides on the
+     *  user message, like [MOVING_TAG], because a per-minute value in the system messages would
+     *  break the cached prefix on every turn. */
+    private fun withTimeTag(text: String): String =
+        "$text ($TIME_TAG_PREFIX " + SimpleDateFormat("HH:mm", Locale.ROOT).format(Date(nowMs())) + ")"
+
+    /**
+     * Two system messages, and the split is the point: the first is [SYSTEM_PROMPT] and
+     * nothing else, byte-identical on every turn of every day, so the provider can cache it
+     * (the backend puts the cache breakpoint on exactly this message, where a breakpoint pays:
+     * see LlmAgentBackend.cachesStaticPrefix). Everything that moves
+     * — today's date, the persona, the driver facts — goes into the second one, after the
+     * breakpoint. Per-turn state (clock time, driving or not) rides on the user message instead (see
+     * [MOVING_TAG]). A detached turn (automation rule, not the driver) carries no memory —
+     * neither the driver facts nor today's exchanges.
+     */
+    private fun systemMessages(includeMemory: Boolean = true): List<AgentMessage> {
+        val dynamic = "Сегодня " + SimpleDateFormat("d MMMM yyyy 'года,' EEEE", Locale("ru"))
             .format(Date(nowMs())) + "." +
-        AgentPersonaPrompt.block(identity()) +
-        (if (includeMemory) memoryBlock() else "")
+            AgentPersonaPrompt.block(identity()) +
+            (if (includeMemory) memoryBlock() + dayMemory.promptBlock(nowMs()) else "")
+        val static = if (vehicleKindMonitor?.kind?.value == VehicleKind.HYBRID) HYBRID_SYSTEM_PROMPT else SYSTEM_PROMPT
+        return listOf(AgentMessage.System(static), AgentMessage.System(dynamic))
+    }
 
     /** The LLM/tool loop shared by [ask] (live, persistent history) and [askDetached]
      *  (automation origin, throwaway messages). [onTerminal] fires exactly where the live
      *  path used to stamp lastAnswerAt. Caller must hold [mutex]. */
+    @Suppress("LongParameterList") // the loop's inputs and callbacks, passed straight through
     private suspend fun runLoop(
         messages: MutableList<AgentMessage>,
-        systemPrompt: String,
+        systemMessages: List<AgentMessage>,
         toolSchemas: JSONArray,
         allowAutomationTools: Boolean,
         onSentence: ((String) -> Unit)?,
+        onFiller: ((String) -> Unit)?,
         onTerminal: () -> Unit,
+    ): AgentResult {
+        val startedAt = nowMs()
+        val rounds = intArrayOf(0)
+        val tracer = AgentTrace({ nowMs() }, toolNames(toolSchemas), { line -> trace(line) })
+        tracer.started(Trace.cause(), detached = !allowAutomationTools)
+        var outcome = "cancelled"
+        try {
+            val result = runLoopTraced(
+                messages, systemMessages, toolSchemas, allowAutomationTools, onSentence, onFiller, onTerminal,
+                rounds, tracer,
+            )
+            outcome = when (result) {
+                is AgentResult.Answer -> "answer"
+                is AgentResult.Error -> "error: " + AgentTrace.clip(result.message)
+                AgentResult.Disabled -> "disabled"
+            }
+            return result
+        } finally {
+            tracer.turn(nowMs() - startedAt, rounds[0], outcome)
+        }
+    }
+
+    /** The names offered to the model this turn (OpenAI tool schema: `function.name`), so the
+     *  trace can tell a real tool call from a name the model invented. */
+    private fun toolNames(schemas: JSONArray): Set<String> =
+        (0 until schemas.length()).mapNotNullTo(mutableSetOf()) {
+            schemas.optJSONObject(it)?.optJSONObject("function")?.optString("name")?.takeIf(String::isNotEmpty)
+        }
+
+    /** The answer as the driver gets it: trimmed, and marked with [TRUNCATED_MARK] when
+     *  max_tokens cut it, so a reply that stops mid-sentence is visibly a cut and not a bug. */
+    private fun finalAnswer(reply: AgentReply): String {
+        val answer = reply.content?.trim().orEmpty()
+        if (answer.isEmpty() || reply.finishReason != FINISH_LENGTH) return answer
+        return if (answer.endsWith(TRUNCATED_MARK)) answer else answer + TRUNCATED_MARK
+    }
+
+    /** The loop itself; [rounds] carries the LLM round count out to the tracing wrapper. */
+    @Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
+    private suspend fun runLoopTraced(
+        messages: MutableList<AgentMessage>,
+        systemMessages: List<AgentMessage>,
+        toolSchemas: JSONArray,
+        allowAutomationTools: Boolean,
+        onSentence: ((String) -> Unit)?,
+        onFiller: ((String) -> Unit)?,
+        onTerminal: () -> Unit,
+        rounds: IntArray,
+        tracer: AgentTrace,
     ): AgentResult {
         val outcomes = mutableListOf<AgentToolOutcome>()
         val callCounts = mutableMapOf<String, Int>()
         var loopStrikes = 0
+        // True once a sentence — the model's own streamed text via onSentence, or the filler
+        // below via onFiller — has been handed out this turn; gates the filler so it never
+        // doubles up on live speech and never fires twice. Lives outside the round loop: it
+        // spans the whole turn.
+        var spoken = false
+        val speak: ((String) -> Unit)? = onSentence?.let { cb -> { s: String -> spoken = true; cb(s) } }
         repeat(MAX_ITERATIONS) {
             // Fresh chunker per LLM turn: a tool round's unterminated tail is discarded when
             // the chunker falls out of scope at the end of this iteration (only completed
             // sentences were forwarded); the final turn flushes its tail below.
-            val chunker = if (onSentence != null) SentenceChunker() else null
-            val onDelta: ((String) -> Unit)? = if (onSentence != null && chunker != null) {
-                { d -> chunker.feed(d).forEach(onSentence) }
+            val chunker = if (speak != null) SentenceChunker() else null
+            rounds[0]++
+            tracer.roundStarted()
+            val onDelta: ((String) -> Unit)? = if (speak != null && chunker != null) {
+                { d -> tracer.delta(); chunker.feed(d).forEach(speak) }
             } else null
             val reply = backend
-                .chat(listOf(AgentMessage.System(systemPrompt)) + messages, toolSchemas, onDelta)
+                .chat(systemMessages + messages, toolSchemas, onDelta)
                 .getOrElse {
-                    return AgentResult.Error(
-                        (it as? LlmError)?.userMessage ?: "Нет связи с сервером, скажи простую команду"
-                    )
+                    val message = (it as? LlmError)?.userMessage ?: "Нет связи с сервером, скажи простую команду"
+                    tracer.replyFailed(message)
+                    return AgentResult.Error(message)
                 }
+            tracer.reply(reply)
             if (reply.toolCalls.isEmpty()) {
-                val answer = reply.content?.trim().orEmpty()
+                val answer = finalAnswer(reply)
                 if (answer.isEmpty()) return AgentResult.Error("Пустой ответ модели")
-                if (onSentence != null) chunker?.flush()?.let(onSentence)
+                if (speak != null) chunker?.flush()?.let(speak)
                 messages += AgentMessage.Assistant(answer)
                 onTerminal()
                 return AgentResult.Answer(answer, outcomes.toList())
             }
             messages += AgentMessage.Assistant(reply.content, reply.toolCalls)
+            // Filler: this round is about to run a slow tool (search, weather, chargers, trip/
+            // charge stats, range, navigation) and nothing has been spoken yet this turn — speak
+            // a short persona phrase now, ahead of the tool result. Speech only: its own callback
+            // (never the answer text stream), never added to messages/history and never part of
+            // the returned answer.
+            val slowCall = reply.toolCalls.firstOrNull { it.name in SLOW_TOOLS }
+            if (onFiller != null && !spoken && slowCall != null) {
+                val phrase = identity().persona.fillerPhrase()
+                tracer.filler(phrase, slowCall.name)
+                spoken = true
+                onFiller(phrase)
+            }
             for ((i, call) in reply.toolCalls.withIndex()) {
                 val key = call.name + "|" + call.arguments
                 val seen = callCounts.getOrDefault(key, 0)
@@ -173,6 +309,7 @@ class AgentOrchestrator @Inject constructor(
                     // Loop guard: the model re-requests an identical call; feed it a synthetic
                     // error instead of executing, and give up after MAX_LOOP_STRIKES rounds.
                     loopStrikes++
+                    tracer.tool(call, "loop-guard", 0L, "")
                     outcomes += AgentToolOutcome(call.name, false)
                     messages += AgentMessage.Tool(call.id, LOOP_ERROR)
                     if (loopStrikes >= MAX_LOOP_STRIKES) {
@@ -189,10 +326,13 @@ class AgentOrchestrator @Inject constructor(
                     continue
                 }
                 callCounts[key] = seen + 1
-                val res = tools.execute(call, allowAutomationTools)
+                val toolStart = nowMs()
+                val toolEvent = tracer.toolStarted(call)
+                val res = withContext(Trace.causedBy(toolEvent)) { tools.execute(call, allowAutomationTools) }
                 // ok = the tool JSON has no "error" key; unparseable output counts as ok
                 // (free-form success payloads like web_search results are not errors).
                 val ok = runCatching { !JSONObject(res).has("error") }.getOrDefault(true)
+                tracer.tool(call, if (ok) "ok" else "error", nowMs() - toolStart, res)
                 outcomes += AgentToolOutcome(call.name, ok)
                 messages += AgentMessage.Tool(call.id, res)
             }
@@ -227,15 +367,33 @@ class AgentOrchestrator @Inject constructor(
     }
 
     companion object {
+        private const val TAG = "AgentLoop"
+
         /** Appended to the driver's own line while the car moves; the terse-answer rule for it
          *  lives in the static [SYSTEM_PROMPT]. */
         internal const val MOVING_TAG = "(машина в движении)"
+
+        /** Opens the "(время HH:mm)" tag [withTimeTag] adds to every user line; the rule that
+         *  time comes only from it lives in the static [SYSTEM_PROMPT]. */
+        internal const val TIME_TAG_PREFIX = "время"
         private const val SESSION_TTL_MS = 300_000L
         private const val FOLLOW_UP_WINDOW_MS = 60_000L
         private const val MAX_ITERATIONS = 8
         private const val MAX_HISTORY = 20
         private const val MAX_IDENTICAL_CALLS = 2
         private const val MAX_LOOP_STRIKES = 2
+
+        /** Tool calls slow enough (network round-trip) that a filler phrase ahead of the result
+         *  is worth speaking; fast, local calls (vehicle_control etc.) never get one. */
+        private val SLOW_TOOLS = setOf(
+            "web_search", "get_weather", "find_chargers", "query_trips", "query_charges",
+            "range_to_destination", "navigate_to", "where_am_i",
+        )
+
+        /** Provider stop reason meaning the answer hit max_tokens, plus the mark that makes
+         *  such a cut visible in the pill and in the journal. */
+        private const val FINISH_LENGTH = "length"
+        private const val TRUNCATED_MARK = "…"
         private const val LOOP_ERROR =
             """{"error":"этот вызов уже выполнялся с теми же аргументами, смени подход или ответь пользователю"}"""
         internal val SYSTEM_PROMPT = """
@@ -255,6 +413,13 @@ class AgentOrchestrator @Inject constructor(
               инструментом, потом действуй, в ответе назови факт и что сделал.
             - Запрос неоднозначен - задай ОДИН короткий уточняющий вопрос, не гадай
               ("Какое окно - водителя или все?").
+            - Если в разделе О ВОДИТЕЛЕ есть его привычка по комфорту (температура климата,
+              уровень подогрева, режим обдува), а команда её не уточняет ("включи климат",
+              "подогрей сиденье") - примени сохранённое значение и назови его в ответе
+              ("Климат на 22, как обычно").
+            - Подогрев или вентиляция сиденья без названного уровня ("включи подогрев водителя")
+              и без привычки в О ВОДИТЕЛЕ - ставь 1 уровень: не на всех машинах есть уровни
+              выше второго.
             - Факты о машине, поездках и зарядках бери ТОЛЬКО из инструментов, не выдумывай.
             - BYDMate видит только электрическую часть машины: расход и запас считаются
               в кВт·ч по батарее, данных о топливе и ДВС у тебя нет. Не рассуждай о типе
@@ -263,6 +428,8 @@ class AgentOrchestrator @Inject constructor(
               его нулём или выключенным.
             - Не выдумывай функции, которых нет среди инструментов: скажи прямо, что не умеешь.
             - Помни контекст: "а теперь закрой" относится к предыдущей команде.
+            - Ты видишь только последние реплики разговора. Если о чём-то спрашивают, а этого нет
+              в разговоре перед тобой, скажи, что не помню; не утверждай, что такого не было.
             - Если инструмент вернул error - коротко назови причину; не говори, что выполнил.
             - Вопросы про заряд до конца маршрута (хватит ли батареи, сколько останется на финише) - вызови get_route_info и отвечай по полю energy_estimate, сам арифметику не считай.
             - Если инструмент вернул status "ожидает подтверждения на экране" - команда ЕЩЁ НЕ
@@ -277,16 +444,50 @@ class AgentOrchestrator @Inject constructor(
               по имени изредка, не в каждой фразе.
             - Если реплика водителя заканчивается пометкой "$MOVING_TAG" - отвечай максимально
               коротко, одним подтверждением.
+            - Текущее время приходит пометкой "($TIME_TAG_PREFIX ЧЧ:ММ)" в реплике водителя. Называй
+              время только по пометке в последней реплике; другого источника времени у тебя нет.
+            - Где машина, какой населённый пункт, что рядом - вызови where_am_i. Называй места
+              только из его ответа, не угадывай и не ищи координаты через web_search. Он знает
+              расстояние до центров, не границы: не говори, что мы в населённом пункте, говори
+              "примерно N км от X". Исключение - ответ с полем address: расстояний в нём нет,
+              говори "мы в X или рядом, улица Y". Если where_am_i вернул error или пустой список -
+              скажи, что не знаешь, где мы. Если в ответе есть fix_note - всегда добавь его
+              оговорку, даже если машина сейчас стоит: нулевая скорость сейчас не значит, что
+              она не ехала после потери сигнала.
+            - Зарядки - find_chargers. Назови 1-3 станции из ответа: имя или адрес, расстояние
+              "по прямой", впереди или в какой стороне, а если поля есть - сколько разъёмов
+              свободно, мощность и цену. status_stale=true - занятость устарела, не говори
+              "свободна сейчас". connector_known=false или status_known=false - скажи, что
+              разъёмы или занятость неизвестны, не придумывай их. Если note говорит, что впереди
+              станций нет или нет станций с разъёмом машины, скажи об этом. Когда водитель
+              выберет станцию, вызови navigate_to с её lat и lon.
 
             АВТОМАТИЗАЦИИ И МЕСТА: у пользователя есть автоматизации (триггер + действия) и
             Места (гео-точки). Для триггеров place_enter/place_exit сначала проверь имя через
             list_places; если Места нет - предложи создать его через create_place. Триггер
             time_range "HH:MM-HH:MM" с одинаковым началом и концом срабатывает ровно в этот
-            момент времени. После create_automation подтверди имя, триггер и действия.
+            момент времени.
+            - Если в просьбе про автоматизацию не хватает триггера, порога или действия, или их
+              можно понять двумя способами ("когда холодно", "если заряд низкий", "включи
+              климат по утрам") - задай ОДИН короткий уточняющий вопрос и только потом создавай
+              правило. Не додумывай ни порог, ни время, ни действие.
+            - create_automation возвращает поле rule с кратким описанием созданного правила:
+              прочитай его водителю целиком, чтобы он услышал, что именно создано.
 
             О ПРИЛОЖЕНИИ: BYDMate ведёт журнал поездок и зарядок (GPS-маршруты, расход,
             стоимость), показывает статистику и AI-инсайты, умеет автоматизации
             (триггер + действие) и управляет устройствами машины.
         """.trimIndent()
+
+        /** The fuel sentence of [SYSTEM_PROMPT]; on a DM-i [HYBRID_SYSTEM_PROMPT] swaps it out. */
+        private const val EV_FUEL_RULE = "- BYDMate видит только электрическую часть машины: расход и запас считаются\n" +
+            "  в кВт·ч по батарее, данных о топливе и ДВС у тебя нет. Не рассуждай о типе\n" +
+            "  силовой установки (электромобиль или гибрид) и не выдумывай расход топлива."
+        private const val HYBRID_FUEL_RULE = "- Машина - подключаемый гибрид (DM-i). Расход в кВт·ч считается по батарее.\n" +
+            "  Об уровне бака и запасе хода на топливе говори по полям fuel_percent и fuel_range_km\n" +
+            "  из get_vehicle_state, запас на батарее - ev_range_km. Расход топлива не выдумывай."
+
+        /** [SYSTEM_PROMPT] for a plug-in hybrid: the agent may speak about the tank. */
+        internal val HYBRID_SYSTEM_PROMPT = SYSTEM_PROMPT.replace(EV_FUEL_RULE, HYBRID_FUEL_RULE)
     }
 }

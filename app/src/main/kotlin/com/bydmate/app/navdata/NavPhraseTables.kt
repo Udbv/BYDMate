@@ -38,6 +38,13 @@ object NavPhraseTables {
         val exitNouns: List<String>,
         val ordinalSuffixes: List<String>,
         val units: Map<String, List<String>>,
+        /** Bare direction words Waze writes into a lane cell's description, per direction key
+         *  ("left", "straight", "right", "uturn"). Separate from [maneuvers] because a lane label
+         *  is a single word, not an instruction sentence. */
+        val lanes: Map<String, List<String>> = emptyMap(),
+        /** Words of Waze's reports list, per key ("camera", "police", "ahead"). Stems, matched as
+         *  substrings: Ukrainian inflects them and Waze writes them inside longer phrases. */
+        val reports: Map<String, List<String>> = emptyMap(),
     )
 
     /** Everything the engines need, precompiled once per load. */
@@ -50,7 +57,32 @@ object NavPhraseTables {
         }
 
         /** Numbered-exit regexes in file order; group 1 is the exit number. */
+
+        /**
+         * Lane-label patterns across every loaded language: bare direction words as Waze writes
+         * them into a lane cell's content description, paired with the direction key.
+         */
+        val lanePatterns: List<Pair<Regex, String>> = tables.flatMap { t ->
+            t.lanes.flatMap { (key, words) ->
+                words.map { word -> literalRegex(word) to key }
+            }
+        }
         val numberedExitPatterns: List<Regex> = tables.mapNotNull { it.numberedExit }
+
+        /**
+         * Report words of every loaded language, merged per key and lowercased.
+         *
+         * Deliberately not regexes: these are stems ("поліц", "camera") the reader matches as
+         * plain substrings, because the letter boundaries [lanePatterns] uses would reject
+         * exactly the inflected forms Waze writes.
+         */
+        private val reportWords: Map<String, List<String>> = tables
+            .flatMap { it.reports.entries }
+            .groupBy({ it.key }, { it.value })
+            .mapValues { (_, lists) -> lists.flatten().map { it.lowercase() }.distinct() }
+
+        /** Report words for one key, empty when no loaded pack names it. */
+        fun reportWords(key: String): List<String> = reportWords[key].orEmpty()
 
         private fun unitAlternation(key: String): String =
             tables.flatMap { it.units[key].orEmpty() }.distinct()
@@ -142,6 +174,12 @@ object NavPhraseTables {
             exitNouns = (root["exitNouns"] as? List<*>).orEmpty().map { it as String },
             ordinalSuffixes = (root["ordinalSuffixes"] as? List<*>).orEmpty().map { it as String },
             units = units,
+            lanes = (root["lanes"] as? Map<*, *>).orEmpty().entries.associate { (k, v) ->
+                (k as String) to (v as List<*>).map { (it as String).lowercase() }
+            },
+            reports = (root["reports"] as? Map<*, *>).orEmpty().entries.associate { (k, v) ->
+                (k as String) to (v as List<*>).map { (it as String).lowercase() }
+            },
         )
     }
 

@@ -17,9 +17,13 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import com.bydmate.app.R
+import com.bydmate.app.util.appLocalizedContext
 import com.bydmate.app.data.vehicle.FreeformLaunchResult
 import com.bydmate.app.data.vehicle.HelperBootstrap
 import com.bydmate.app.data.vehicle.HelperClient
+import com.bydmate.app.data.vehicle.SplitTaskState
+import com.bydmate.app.diagnostics.Trace
+import com.bydmate.app.diagnostics.TraceArea
 import com.bydmate.app.helper.HelperBinderProtocol
 import com.bydmate.app.split.DisabledSplitPreferences
 import com.bydmate.app.split.SplitFreeformVerdict
@@ -37,6 +41,27 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/**
+ * The cluster surface one projection attempt targets, and how it was found.
+ *
+ * [appDisplay] is the app-uid [Display] whenever DisplayManager in our own process can see the
+ * surface — the whole fleet so far (Leopard 3, Sea Lion 07, DiLink 5.1, UI7). It is null when only
+ * the daemon could enumerate the display (#194: DiLink 4.0 whitelists DisplayManager per app and
+ * answers our process with display 0 alone), and the branches that need a real [Display] — the
+ * overlay and the VirtualDisplay pipeline behind it — are then unavailable.
+ */
+data class ClusterTarget(
+    val displayId: Int,
+    val name: String,
+    val width: Int,
+    val height: Int,
+    val densityDpi: Int,
+    val appDisplay: Display?,
+)
 
 /**
  * Owns the cluster projection lifecycle. An overlay SurfaceView is placed on the
@@ -63,6 +88,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 object ClusterProjectionManager {
     private const val TAG = "ClusterProjection"
     private const val DEFAULT_CLUSTER_DISPLAY_ID = 2          // Phase 0: fission display id
+    private const val DEFAULT_CLUSTER_DENSITY_DPI = 320       // Phase 0: native Leopard 3 cluster density
     private const val VIRTUAL_DISPLAY_FLAGS = 322             // TRUSTED | OWN_CONTENT_ONLY | PRESENTATION (OpenBYD)
     private const val VD_FLAG_PUBLIC = 1                      // DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC
     private const val VD_NAME = "BYDMate_Cluster_VD"
@@ -73,13 +99,19 @@ object ClusterProjectionManager {
     // how often. The reported death happens a few seconds after the move, i.e. after the daemon
     // has already answered OK (see [armDirectDeathWatch]).
     private const val DIRECT_DEATH_CHECK_INTERVAL_MS = 2000L
+    /** When the one post-projection check looks at the cluster. */
+    private const val VERIFY_AFTER_MS = 3_000L
     private const val DIRECT_DEATH_CHECKS = 3
+    /** How many times one projection puts its moved task back on the cluster before giving up. */
+    private const val DIRECT_MOVE_RETURNS = 2
 
     const val PREFS_NAME = "cluster_projection"
     // Master enable for star-controlled projection (settings switch). Read by SteeringWheelKeyService.
     const val KEY_MIRROR_ENABLED = "mirror_enabled"
     // Read by SteeringWheelKeyService: volume-knob press = play/pause instead of source switch.
     const val KEY_KNOB_PLAY_PAUSE = "knob_play_pause"
+    // Read by ClusterMusicBridge: mirror Yandex music onto the instrument's music card.
+    const val KEY_CLUSTER_MUSIC_CARD = "cluster_music_card"
     // Steering-wheel keycode that toggles projection. Default = right star (DEFAULT_TRIGGER_KEYCODE).
     // Stored independently of the master switch so the choice survives turning the feature off.
     const val KEY_TRIGGER_KEYCODE = "trigger_keycode"
@@ -98,17 +130,27 @@ object ClusterProjectionManager {
     const val KEY_TARGET_LABEL = "target_label"
     // Last VirtualDisplay id we created. Persisted so a fresh app process can release the display
     // a prior (dead) process left orphaned in the long-lived daemon, instead of leaking it.
-    private const val KEY_LAST_VD_ID = "last_vd_id"
+    internal const val KEY_LAST_VD_ID = "last_vd_id"
     /** Wave P: power the cluster compositor automatically around projection (default ON). */
     const val KEY_AUTO_CONTAINER = "auto_container_enabled"
     /** Projection transport: direct freeform launch (default) vs legacy VirtualDisplay pipeline. */
     const val KEY_DIRECT_PROJECTION = "direct_projection_enabled"
+    /** Render on the full-cluster projection surface ("..._0") instead of the default "..._1". */
+    const val KEY_PREFER_FULL_DISPLAY = "cluster_prefer_full_display"
+    /**
+     * Set while the cluster display of this car is invisible to the app uid (#194), i.e. the
+     * direct transport is not a choice but the only one that works. NOT a transport choice of the
+     * user's: it never counts as one ([hasTransportChoice] ignores it), it is written by the
+     * projection itself, and it is cleared the moment an app-uid lookup succeeds — so a firmware
+     * update that opens the display up returns the car to its own setting.
+     */
+    internal const val KEY_DIRECT_FORCED = "cluster_direct_forced"
     // Set while the daemon has powered the cluster compositor up for our projection; cleared only
     // after a CONFIRMED power-down. Survives process death: when the car shuts off mid-projection
     // the off sequence (18 -> pause -> 0) never runs, the compositor reboots in projection mode
     // with nobody drawing, and the cluster stays black — recoverStaleCompositor() reads this at
     // service start to send the missing power-down.
-    private const val KEY_COMPOSITOR_POWERED = "compositor_powered_on"
+    internal const val KEY_COMPOSITOR_POWERED = "compositor_powered_on"
 
     // Set when the freeform switch was rejected: enable_freeform_support is read once at boot,
     // so the settings screen shows a "reboot the car" hint until a direct attempt succeeds.
@@ -122,8 +164,25 @@ object ClusterProjectionManager {
     // override on the next pull-back.
     const val KEY_DIRECT_DISPLAY_ID = "direct_display_id"
 
-    // WindowConfiguration windowing mode (android.app; hidden constant, stable since API 28).
+    // Per-package verdict "this app dies when the cluster display carries a non-native density"
+    // (#121, 2GIS/Qt), learned from behaviour by the post-launch death watch — never a package
+    // list. Stamped with [DENSITY_PROBE_GENERATION], not the versionCode: a verdict survives app
+    // updates (an app that truly cannot take the density pays its probe deaths once), and only a
+    // build that changes how the density is applied bumps the generation to re-probe everything.
+    // Every key of the verdict (generation stamp, why) shares the prefix, so the wipe and the
+    // backup exclusion cover them all.
+    const val KEY_DENSITY_UNSAFE_PREFIX = "direct_density_unsafe_"
+    const val KEY_DENSITY_UNSAFE_GENERATION = KEY_DENSITY_UNSAFE_PREFIX + "generation"
+    private const val KEY_DENSITY_UNSAFE_WHY_PREFIX = KEY_DENSITY_UNSAFE_PREFIX + "why_"
+    // 1: two-strike probe (3.19.6 latched on one loss and stamped the versionCode; those verdicts
+    // are wiped once by the first read under this generation).
+    // 2: a task moved off the cluster alive and freeform is no strike. Generation-1 verdicts whose
+    // reason is a live task on another display ("fled") are dropped once, "died" ones are kept.
+    const val DENSITY_PROBE_GENERATION = 2
+
+    // WindowConfiguration windowing modes (android.app; hidden constants, stable since API 28).
     private const val WINDOWING_MODE_FULLSCREEN = 1
+    private const val WINDOWING_MODE_FREEFORM = 5
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val mutex = Mutex()
@@ -194,6 +253,27 @@ object ClusterProjectionManager {
     private var projectedPackage: String? = null
     /** Cluster display id while direct (freeform) projection is active; -1 otherwise. */
     private var directDisplayId = -1
+    /**
+     * True once THIS attempt asked the daemon to place a task on the cluster. An attempt that
+     * fails before that (no cluster display, daemon unreachable, surface never arrived) left the
+     * user's own navigator window exactly where it was — and since the Android 10 compat fix the
+     * daemon reports that task, so a pullback would force a live user window fullscreen.
+     */
+    @Volatile private var placementAttempted = false
+    /** #288: the projected task's state before the VD launch of this attempt, for [scheduleVerify]. */
+    private var vdStartState: SplitTaskState? = null
+    /**
+     * [KEY_PREFER_FULL_DISPLAY] as read when the current projection session started. Pinned for
+     * the session so a toggle flip mid-projection cannot make [swapToNewSize] resolve a different
+     * surface than the one Navi sits on (bounds from one display applied to another). null = no
+     * session; [resolveClusterDisplay] then reads the live preference.
+     */
+    private var sessionPreferFull: Boolean? = null
+    /** Density override this process last sent for the cluster display: 0 = native (no override
+     *  or reset), -1 = nothing sent yet. Diagnostics only. */
+    @Volatile
+    private var directDensityApplied: Int = -1
+
     /** Post-move liveness watch of the direct projection (#134); see [armDirectDeathWatch]. */
     private var directDeathWatchJob: Job? = null
     // PROJECT_MEDIA has no app-side query API (unlike SYSTEM_ALERT_WINDOW / canDrawOverlays),
@@ -251,6 +331,8 @@ object ClusterProjectionManager {
 
     private fun log(payload: String) {
         journal?.append(payload)
+        // The journal keeps 30 lines in prefs; the trace puts them on the shared timeline (#288).
+        Trace.journal(TraceArea.CLUSTER, payload)
     }
 
     /** Live projection state for the diagnostic dump. Read lock-free, like [isProjectionActive]:
@@ -263,6 +345,7 @@ object ClusterProjectionManager {
         val overlayAttached: Boolean,
         val attemptInProgress: Boolean,
         val lastFailure: String?,
+        val directDensityDpi: Int,
     )
 
     fun diag(): Diag = Diag(
@@ -273,6 +356,7 @@ object ClusterProjectionManager {
         overlayAttached = overlayView != null,
         attemptInProgress = projectionAttemptInProgress,
         lastFailure = lastFailure,
+        directDensityDpi = directDensityApplied,
     )
 
     /** Journal ring for the dump, oldest first; usable before any projection ran in this process. */
@@ -310,10 +394,76 @@ object ClusterProjectionManager {
                     return@withLock
                 }
                 Log.i(TAG, "setMode: $currentMode -> $mode")
-                log("setMode $currentMode -> $mode (reason=$reason)")
+                log("setMode $currentMode -> $mode (reason=$reason${moveContext(appContext, mode, helper)})")
                 applyModeLocked(appContext, mode, helper, bootstrap)
             }
         }
+    }
+
+    /**
+     * What the projection starts from (#288, #259): whether split is on and the windowing mode and
+     * display of the navigator's task before it moves. Empty for OFF: one task read per press.
+     */
+    private suspend fun moveContext(context: Context, mode: ClusterMode, helper: HelperClient): String {
+        if (mode != ClusterMode.FULLSCREEN) return ""
+        val split = if (splitPreferences.isFeatureEnabled()) "on" else "off"
+        val state = runCatching { helper.getTaskState(targetPackage(context)) }
+            .onFailure { if (it is CancellationException) throw it }
+            .getOrNull()
+        val task = if (state == null || state.taskId <= 0) "navi_wm=none"
+                   else "navi_wm=${state.windowingMode} navi_display=${state.displayId}"
+        return " split=$split $task"
+    }
+
+    /**
+     * One look at a VirtualDisplay projection [VERIFY_AFTER_MS] after it went active (#288: the
+     * journal says active, the cluster stays dark): where the projected task really is and in
+     * which windowing mode. Skipped when the projection already ended or changed hands. A direct
+     * projection gets the same line from its death watch's first read (no read of its own).
+     *
+     * #288: a projection that started from a native split pane ([before]) gets the same
+     * [splitPlacementFailure] check here as right after the launch — an app that restarts on the
+     * move (2GIS) is on the VD at the immediate check and gone a moment later — and ends the same
+     * honest way: OFF, pulled back. Any other start keeps the verify a log line.
+     */
+    private fun scheduleVerify(context: Context, helper: HelperClient, pkg: String?, vdId: Int, before: SplitTaskState?) {
+        val target = pkg ?: return
+        scope.launch {
+            delay(VERIFY_AFTER_MS)
+            if (currentMode != ClusterMode.FULLSCREEN || projectedPackage != target) return@launch
+            val state = runCatching { helper.getTaskState(target) }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrNull()
+            log(verifyLine(VERIFY_AFTER_MS, "vd=$vdId", state))
+            val splitMiss = splitPlacementFailure(before, state, vdId) ?: return@launch
+            mutex.withLock {
+                // The projection may have ended or moved to another VD while the read ran.
+                if (currentMode != ClusterMode.FULLSCREEN || projectedPackage != target ||
+                    remoteDisplayId != vdId
+                ) return@withLock
+                Log.e(TAG, "verify found the task off the VD ($splitMiss)")
+                log("verify: task not on vd=$vdId pkg=$target $splitMiss")
+                onClusterSendFailed?.invoke(target)
+                hideOverlay(helper)
+                failProjectionLocked(context, helper, "projection")
+            }
+        }
+    }
+
+    /** One task read; null when the daemon could not answer. */
+    private suspend fun readTaskState(helper: HelperClient, pkg: String): SplitTaskState? =
+        runCatching { helper.getTaskState(pkg) }
+            .onFailure { if (it is CancellationException) throw it }
+            .getOrNull()
+
+    private fun verifyLine(afterMs: Long, where: String, state: SplitTaskState?): String {
+        val task = when {
+            state == null -> "task=unknown"
+            state.taskId <= 0 -> "task=none"
+            else -> "task_display=${state.displayId} wm=${state.windowingMode}"
+        }
+        val split = if (splitPreferences.isFeatureEnabled()) "on" else "off"
+        return "verify after_ms=$afterMs $where $task overlay=${overlayView != null} split=$split"
     }
 
     /**
@@ -328,19 +478,23 @@ object ClusterProjectionManager {
      * Applies the user's calibrated cluster window bounds to [taskId] on [taskDisplayId].
      *
      * Called ONCE by SplitSessionManager when a split pane's task departs to the cluster display
-     * via the native "show on cluster" button (Task M). No-ops unless [taskDisplayId] matches the
-     * RESOLVED cluster display id (queried via [resolveClusterDisplay] under [mutex]).
+     * via the native "show on cluster" button (Task M). No-ops unless [taskDisplayId] is actually
+     * a cluster projection surface.
      *
-     * Why resolveClusterDisplay rather than directDisplayId: directDisplayId is a live-session-only
-     * member assigned only when OUR direct freeform projection is running. The target scenario
-     * (native BYD "show on cluster" button) does not involve our projection at all, so
-     * directDisplayId is -1 and gating on it would make this function always a no-op.
-     * resolveClusterDisplay locates the display by name ("XDJAScreenProjection") and works
-     * regardless of whether our projection is active. Taking [mutex] here is safe under the
-     * established lock order: this function is called from [SplitSessionManager]'s watchdog
-     * (already holding SSM.mutex) via the [applyCalibratedBounds] lambda, so the acquisition
-     * order is SSM.mutex → CPM.mutex — the only permitted direction (see [onBeforeClusterSend]
-     * KDoc for the full cycle analysis).
+     * Why not resolveClusterDisplay: resolveClusterDisplay applies the user's "Full cluster
+     * screen" preference and picks ONE of possibly several "XDJAScreenProjection_N" surfaces by
+     * that preference — but the native button decides which surface the task lands on
+     * independently of the preference. On a firmware with two projection surfaces, if the native
+     * button moves the task to a surface other than the one the preference points at, comparing
+     * [taskDisplayId] against resolveClusterDisplay's pick would falsely no-op and never apply
+     * calibration. Instead this function looks up [taskDisplayId] directly and classifies it as a
+     * cluster surface by name ("XDJAScreenProjection"), falling back to [DEFAULT_CLUSTER_DISPLAY_ID]
+     * only when no display carries that name at all — mirroring resolveClusterDisplay's own
+     * fallback. Geometry is computed from THAT display's real size, so each surface gets bounds
+     * matched to its own resolution. Taking [mutex] here is safe under the established lock order:
+     * this function is called from [SplitSessionManager]'s watchdog (already holding SSM.mutex)
+     * via the [applyCalibratedBounds] lambda, so the acquisition order is SSM.mutex → CPM.mutex —
+     * the only permitted direction (see [onBeforeClusterSend] KDoc for the full cycle analysis).
      *
      * Density is explicitly out of scope: the native mechanism owns the cluster display when this
      * is called, and a density change is a car-visible side effect outside the split session.
@@ -354,12 +508,22 @@ object ClusterProjectionManager {
     suspend fun applyCalibratedBoundsToTask(taskId: Int, taskDisplayId: Int, context: Context, helper: HelperClient): Boolean {
         if (taskDisplayId <= 0) return true
         return mutex.withLock {
-            val clusterDisplay = resolveClusterDisplay(context) ?: return@withLock true
-            if (taskDisplayId != clusterDisplay.displayId) return@withLock true
+            val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+            val display = dm.getDisplay(taskDisplayId)
+            val hasNamedProjectionDisplay = dm.displays.any {
+                it.name.contains("XDJAScreenProjection", ignoreCase = true)
+            }
+            val isClusterSurface = display != null && (
+                display.name.contains("XDJAScreenProjection", ignoreCase = true) ||
+                    (!hasNamedProjectionDisplay && taskDisplayId == DEFAULT_CLUSTER_DISPLAY_ID)
+            )
+            if (!isClusterSurface) return@withLock true
+            val point = Point()
+            @Suppress("DEPRECATION") display!!.getRealSize(point)
             val (widthPct, heightPct) = readSizePct(context)
             val (offsetXPct, offsetYPct) = readOffsetPct(context)
             val geo = geometryFor(
-                ClusterMode.FULLSCREEN, clusterWidth, clusterHeight,
+                ClusterMode.FULLSCREEN, point.x, point.y,
                 widthPct, heightPct, offsetXPct, offsetYPct,
             ) ?: return@withLock true
             val b = freeformBounds(geo)
@@ -368,7 +532,8 @@ object ClusterProjectionManager {
             val ok = runCatching { helper.setTaskBounds(taskId, b[0], b[1], b[2], b[3]) }
                 .onFailure { if (it is CancellationException) throw it }
                 .getOrDefault(false)
-            Log.i(TAG, "applyCalibratedBoundsToTask: task=$taskId display=$taskDisplayId bounds=[${b[0]},${b[1]},${b[2]},${b[3]}] ok=$ok")
+            Log.i(TAG, "applyCalibratedBoundsToTask: task=$taskId display=$taskDisplayId " +
+                "name=\"${display.name}\" ${point.x}x${point.y} bounds=[${b[0]},${b[1]},${b[2]},${b[3]}] ok=$ok")
             ok
         }
     }
@@ -487,7 +652,7 @@ object ClusterProjectionManager {
             runCatching {
                 helper.putGlobalSetting(
                     "enable_freeform_support",
-                    freeformFlagValue(readDirectEnabled(context), splitPreferences.isFeatureEnabled()))
+                    freeformFlagValue(effectiveDirect(context), splitPreferences.isFeatureEnabled()))
             }.getOrDefault(false)
         }
 
@@ -536,27 +701,32 @@ object ClusterProjectionManager {
         if (!bootstrap.ensureRunning()) return true        // daemon gone; keep what's on screen
         if (directDisplayId != -1) {
             // Direct mode: no overlay/VD to rebuild — retarget the freeform window in place.
-            val display = resolveClusterDisplay(context) ?: return true
+            // The target is resolved for its side effects (cluster W/H/dpi); the resize itself
+            // addresses the live task, so the daemon-only case needs no Display here either.
+            resolveClusterTarget(context, helper) ?: return true
             val (widthPct, heightPct) = readSizePct(context)
             val (offsetXPct, offsetYPct) = readOffsetPct(context)
             val geo = geometryFor(
                 ClusterMode.FULLSCREEN, clusterWidth, clusterHeight,
                 widthPct, heightPct, offsetXPct, offsetYPct,
             ) ?: return true
-            val plan = renderPlanFor(geo, clusterDensityDpi, readScalePct(context))
+            // Bounds only: the density that carries the scale is set BEFORE a launch, never under
+            // the live window (#121), so a scale edit lands on the next send to the cluster.
+            val scalePct = readScalePct(context)
+            val dpi = directDensityLabel(directDensityFor(scalePct))
             val taskId = helper.getTaskId(projectedPackage ?: targetPackage(context)) ?: return true
             val b = freeformBounds(geo)
             helper.setTaskBounds(taskId, b[0], b[1], b[2], b[3])
-            @Suppress("KotlinConstantConditions")
-            if (DIRECT_DENSITY_SCALE_ENABLED) applyDirectDensity(helper, directDisplayId, plan)
-            Log.i(TAG, "resize (direct): bounds=[${b[0]},${b[1]},${b[2]},${b[3]}] dpi=${plan.densityDpi}")
+            Log.i(TAG, "resize (direct): bounds=[${b[0]},${b[1]},${b[2]},${b[3]}] " +
+                "scale=$scalePct% dpi=$dpi (applies on next send to cluster)")
             log("resize direct: task=$taskId bounds=[${b[0]},${b[1]},${b[2]},${b[3]}] " +
-                "dpi=${plan.densityDpi} (scale n/a in direct mode)")
+                "scale=$scalePct% dpi=$dpi (applies on next send to cluster)")
             return true
         }
         val oldOverlay = overlayView ?: return true
         val oldVdId = remoteDisplayId
-        val display = resolveClusterDisplay(context) ?: return true
+        // The overlay needs a real Display; a live overlay means the app uid has one.
+        val display = resolveClusterTarget(context, helper)?.appDisplay ?: return true
         val (widthPct, heightPct) = readSizePct(context)
         val (offsetXPct, offsetYPct) = readOffsetPct(context)
         val geo = geometryFor(
@@ -664,6 +834,42 @@ object ClusterProjectionManager {
     /** Transport pref as consumers must see it: runs the one-time migration first. */
     fun isDirectProjectionEnabled(context: Context): Boolean = readDirectEnabled(context)
 
+    /** #194: this car's cluster display is reachable only through the daemon (see [KEY_DIRECT_FORCED]). */
+    private fun readDirectForced(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_DIRECT_FORCED, false)
+
+    /**
+     * The transport the projection will actually use: the user's choice, or direct regardless of
+     * it when this car has no other option (#194). Every writer of enable_freeform_support asks
+     * THIS, not the raw preference — otherwise the boot-time realignment would put the flag back
+     * to 0 on a DiLink 4.0 whose owner picked "factory", and the next ignition cycle would have no
+     * freeform to place the window with. The settings chip and [hasTransportChoice] deliberately
+     * keep reading the raw preference: the marker is a property of the car, not a user decision.
+     */
+    private fun effectiveDirect(context: Context): Boolean =
+        readDirectEnabled(context) || readDirectForced(context)
+
+    /** Records whether this car's cluster display is app-uid visible; see [KEY_DIRECT_FORCED]. */
+    private fun setDirectForced(context: Context, forced: Boolean) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_DIRECT_FORCED, false) == forced) return
+        prefs.edit().putBoolean(KEY_DIRECT_FORCED, forced).apply()
+        log("direct transport forced marker -> $forced")
+    }
+
+    /** True when the user asked for the full-cluster projection surface ("..._0"). */
+    fun isPreferFullDisplay(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_PREFER_FULL_DISPLAY, false)
+
+    /** Stores the display preference; it takes effect at the next projection start. */
+    fun setPreferFullDisplay(context: Context, enabled: Boolean) {
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_PREFER_FULL_DISPLAY, enabled).apply()
+        Log.i(TAG, "prefer full display -> $enabled")
+    }
+
     /** True when the user ever made an explicit transport choice (UI chip or migration).
      *  The system freeform flag is managed ONLY for these users; a passive user's flag is
      *  never touched — it may be owned by a third-party projection app. */
@@ -714,6 +920,8 @@ object ClusterProjectionManager {
         if (orphan != -1) {
             Log.i(TAG, "releasing orphaned VirtualDisplay id=$orphan from a prior session")
             helper.releaseVirtualDisplay(orphan)
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().remove(KEY_LAST_VD_ID).apply()
         }
     }
 
@@ -732,6 +940,7 @@ object ClusterProjectionManager {
                 pullBackToMain(context, helper, focus = true)
                 hideOverlay(helper)
                 projectedPackage = null
+                sessionPreferFull = null
                 currentMode = ClusterMode.OFF
                 lastFailure = null
                 frame?.restore(helper, ClusterFrameUi7.Owner.PROJECTION)
@@ -753,20 +962,57 @@ object ClusterProjectionManager {
                     log("projection active: pkg=$projectedPackage " +
                         if (directDisplayId != -1) "direct display=$directDisplayId"
                         else "vd=$remoteDisplayId")
+                    if (directDisplayId == -1) {
+                        scheduleVerify(context, helper, projectedPackage, remoteDisplayId, vdStartState)
+                    }
                 } else {
-                    // projection failed: keep state honest. project() already tore down the
-                    // overlay/VD on its failure paths; make sure Navi is back on the main screen.
-                    Log.e(TAG, "projection failed; falling back to OFF")
-                    log("projection failed ($failure); falling back to OFF")
-                    pullBackToMain(context, helper, focus = true)
-                    projectedPackage = null
-                    currentMode = ClusterMode.OFF
-                    lastFailure = failure
-                    frame?.restore(helper, ClusterFrameUi7.Owner.PROJECTION)
-                    if (autoContainerEnabled(context)) powerDownCompositor(context, helper)
+                    // project() already tore down the overlay/VD on its failure paths.
+                    failProjectionLocked(context, helper, failure)
                 }
             }
         }
+    }
+
+    /**
+     * Caller MUST hold [mutex]. Keeps the state honest after a failed projection: the projected
+     * app back on the main screen (fullscreen, through [pullBackToMain]) and the mode OFF. Does
+     * not touch [directDeathWatchJob], so the watch can end its own projection through here.
+     */
+    private suspend fun failProjectionLocked(context: Context, helper: HelperClient, failure: String) {
+        Log.e(TAG, "projection failed; falling back to OFF")
+        log("projection failed ($failure); falling back to OFF")
+        pullBackToMain(context, helper, focus = true)
+        projectedPackage = null
+        sessionPreferFull = null
+        currentMode = ClusterMode.OFF
+        lastFailure = failure
+        frame?.restore(helper, ClusterFrameUi7.Owner.PROJECTION)
+        if (autoContainerEnabled(context)) powerDownCompositor(context, helper)
+    }
+
+    /**
+     * #194 order: on a firmware whose cluster display is invisible to the app uid the compositor
+     * is powered up only AFTER the task is confirmed on it. Everywhere else the power-up leads the
+     * placement (see [project]) because a failed placement still falls back to the overlay/VD
+     * pipeline; here there is no fallback, and a 16 sent for a placement that then failed would
+     * leave the cluster in projection mode with nothing drawing on it.
+     *
+     * Same write-ahead marker contract as the leading power-up: committed BEFORE the call, so a
+     * power cut in between still leaves the boot recovery something to heal from, and a failed
+     * commit skips the power-up.
+     */
+    private suspend fun powerUpCompositorAfterPlacement(context: Context, helper: HelperClient) {
+        @Suppress("ApplySharedPref")
+        val markerWritten = withContext(Dispatchers.IO) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().putBoolean(KEY_COMPOSITOR_POWERED, true).commit()
+        }
+        if (!markerWritten) {
+            log("compositor marker not persisted; power-up after placement skipped")
+            return
+        }
+        val up = runCatching { helper.setClusterContainerMode(true) }.getOrDefault(false)
+        log("compositor power-up after placement ok=$up")
     }
 
     /**
@@ -849,8 +1095,20 @@ object ClusterProjectionManager {
         val staleId = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getInt(KEY_DIRECT_DISPLAY_ID, -1)
         if (staleId == -1) return
-        if (!runCatching { helper.setDisplayDensity(staleId, 0) }.getOrDefault(false)) {
+        // The stranded task is still ON that display: resetting now is the live Configuration
+        // change of #121, and tryDirectProjection is about to re-adopt the task rather than
+        // relaunch it, so it leaves the density as is too. The marker stays set either way, so
+        // density absorption remains suppressed and the base does not compound.
+        val strandedHere = runCatching { helper.getTaskState(targetPackage(context)) }
+            .getOrNull()?.let { it.taskId > 0 && it.displayId == staleId } == true
+        if (strandedHere) {
+            log("direct: stale density kept, task still on display $staleId")
+            return
+        }
+        if (runCatching { helper.setDisplayDensity(staleId, 0) }.getOrNull()?.ok != true) {
             Log.w(TAG, "recoverStaleDirectDensity: reset failed on display $staleId")
+        } else {
+            directDensityApplied = 0
         }
     }
 
@@ -877,11 +1135,20 @@ object ClusterProjectionManager {
                     return@withLock
                 }
                 Log.i(TAG, "recoverStaleDirectTask: pulling back task left in direct mode by a prior session")
-                val resetOk = runCatching { helper.setDisplayDensity(staleId, 0) }.getOrDefault(false)
                 val taskId = helper.getTaskId(targetPackage(appContext))
                 var modeOk = false
                 var moveOk = false
-                if (taskId != null) {
+                // Same already-home guard as pullBackToMain: since the Android 10 compat fix the
+                // daemon reports the user's own navigator task here too, and a task already
+                // fullscreen on the main display is a completed reclaim, not something to restore.
+                val homeState = if (taskId != null) helper.getTaskState(targetPackage(appContext)) else null
+                val alreadyHome = homeState != null && homeState.taskId == taskId &&
+                    homeState.displayId == 0 && homeState.windowingMode == WINDOWING_MODE_FULLSCREEN
+                if (alreadyHome) {
+                    modeOk = true
+                    moveOk = true
+                    log("recovery: task=$taskId already home (display 0, fullscreen), nothing to restore")
+                } else if (taskId != null) {
                     modeOk = helper.setTaskWindowingMode(taskId, WINDOWING_MODE_FULLSCREEN)
                     // Same compat-path handling as pullBackToMain: a changed task id means the
                     // daemon relaunched the task fullscreen on the main display already.
@@ -890,10 +1157,31 @@ object ClusterProjectionManager {
                         moveOk = true
                         log("recovery: task recreated by setMode: $taskId -> $relaunchedId")
                     } else {
-                        moveOk = helper.moveTaskToDisplay(taskId, 0)
+                        // Same light-path readback as pullBackToMain: a task already on the main
+                        // display must not be moved again (AOSP 12 throws), or the marker would
+                        // survive and this recovery would run at every service start.
+                        val state = if (modeOk) helper.getTaskState(targetPackage(appContext)) else null
+                        if (state != null && state.taskId == taskId && state.displayId == 0) {
+                            moveOk = true
+                            log("recovery: light path, task=$taskId already on display 0")
+                        } else {
+                            moveOk = helper.moveTaskToDisplay(taskId, 0)
+                        }
                         helper.setTaskBounds(taskId, 0, 0, 0, 0)  // cosmetic; not gating the marker
                     }
                 }
+                // Density LAST and only on a confirmed reclaim, as in pullBackToMain (#121): the
+                // stranded task leaves the cluster display first, so the override is never dropped
+                // under a live window; a failed reclaim keeps both the override and the marker.
+                val reclaimed = taskId == null || moveOk
+                val reset = if (reclaimed) {
+                    runCatching { helper.setDisplayDensity(staleId, 0) }.getOrNull()
+                } else null
+                val resetOk = reset?.ok == true
+                if (resetOk) directDensityApplied = 0
+                if (reclaimed) log("recovery: density reset ok=$resetOk display=$staleId " +
+                    "readback=[${reset?.readback.orEmpty()}]")
+                else log("recovery: density reset skipped, task still on display $staleId")
                 if (shouldClearDirectMarker(resetOk, taskId != null, modeOk, moveOk)) {
                     prefs.edit().putInt(KEY_DIRECT_DISPLAY_ID, -1).apply()
                     log("recovery: direct task reclaimed from display $staleId")
@@ -936,7 +1224,7 @@ object ClusterProjectionManager {
             if (!force && !hasTransportChoice(appContext) && !splitEnabled) return@launch
             // When direct is chosen (and split is off), the flag is already 1 from project().
             // Only VD/factory transport and the split consumer need this boot-time realignment.
-            if (!force && readDirectEnabled(appContext) && !splitEnabled) return@launch
+            if (!force && effectiveDirect(appContext) && !splitEnabled) return@launch
             if (!bootstrap.ensureRunning()) {
                 Log.w(TAG, "realignFreeformFlag: daemon unreachable; retrying next service start")
                 return@launch
@@ -952,29 +1240,35 @@ object ClusterProjectionManager {
     private suspend fun project(
         context: Context, mode: ClusterMode, helper: HelperClient, bootstrap: HelperBootstrap,
     ): String? {
+        placementAttempted = false
         if (!bootstrap.ensureRunning()) {
             Log.e(TAG, "helper daemon not running; aborting projection")
             log("abort: helper daemon not running")
             return "daemon"
         }
         recoverStaleDirectDensity(context, helper)
+        // Pin the display preference for this session (see [sessionPreferFull]).
+        sessionPreferFull = isPreferFullDisplay(context)
         // VD/factory transport: return the freeform flag to 0 BEFORE any display-dependent
         // branch. On cars whose cluster display never resolves (Song, DiLink 3-4) project()
         // exits below, so a later write never runs there - exactly the population the
         // factory restore exists for. Direct mode keeps its byte-identical call order: its
         // write stays in the direct-first block below.
-        val direct = readDirectEnabled(context)
-        if (!direct && hasTransportChoice(context)) runCatching {
+        // effectiveDirect, not the raw pref: on a car whose cluster is daemon-only (#194) the
+        // factory restore must not zero the flag the placement depends on — see [effectiveDirect].
+        // Identical to the raw pref everywhere the app uid can see the cluster display.
+        val directTransport = effectiveDirect(context)
+        if (!directTransport && hasTransportChoice(context)) runCatching {
             helper.putGlobalSetting(
                 "enable_freeform_support",
-                freeformFlagValue(direct, splitPreferences.isFeatureEnabled()))
+                freeformFlagValue(directTransport, splitPreferences.isFeatureEnabled()))
         }
         // #85/#62: resolve the display BEFORE any compositor ИПЦ write. Song family /
         // DiLink 3-4 expose no projection display; powering the compositor up there painted
         // a black rectangle on the cluster that survived until reboot. Local read-only
         // DisplayManager query - hoisting it does not reorder any daemon call on cars
         // that do have the display.
-        val display = resolveClusterDisplay(context) ?: run {
+        val target = resolveClusterTarget(context, helper) ?: run {
             // Failure-path parity with the pre-hoist order: a live overlay (reproject on a
             // display that vanished mid-session) must not survive a failed attempt. No-op on
             // cars without a cluster display - overlayView is always null there.
@@ -995,9 +1289,19 @@ object ClusterProjectionManager {
             }
             return "projection"
         }
-        log("transport=${if (direct) "direct" else "vd"} display=${display.displayId} " +
-            "${clusterWidth}x$clusterHeight dpi=$clusterDensityDpi")
-        if (autoContainerEnabled(context)) {
+        // #194: a display only the daemon can see has no app-uid [Display] behind it, so the
+        // overlay — and with it the whole VirtualDisplay pipeline — cannot be built. The transport
+        // is then direct regardless of the settings chip: it is the only one that works there.
+        val daemonOnly = target.appDisplay == null
+        val direct = directTransport || daemonOnly
+        log("transport=${if (direct) "direct" else "vd"} display=${target.displayId} " +
+            "\"${target.name}\" ${clusterWidth}x$clusterHeight dpi=$clusterDensityDpi " +
+            "prefer_full=$sessionPreferFull")
+        if (daemonOnly) log("transport=direct (forced: display invisible to app uid)")
+        // The compositor power-up moves BELOW the placement in the daemon-only case (see the
+        // direct block): with no overlay to fall back on, a 16 sent before a placement that then
+        // fails would leave the cluster in projection mode with nobody drawing on it.
+        if (autoContainerEnabled(context) && !daemonOnly) {
             // Wave P: power the cluster compositor up before projecting; replaces the manual
             // "star key -> Navi mode" step. Fail-soft: projection proceeds even if this call
             // fails (the compositor may already be on). The marker is persisted even on failure —
@@ -1020,7 +1324,11 @@ object ClusterProjectionManager {
             }
         }
         if (overlayView != null) hideOverlay(helper)  // defensive: never stack overlays
-        if (!ensureOverlayPermission(context, helper)) {
+        if (daemonOnly) {
+            // No overlay is ever built on this path, so a missing SYSTEM_ALERT_WINDOW must not
+            // abort the one transport the car has.
+            log("overlay permission check skipped (direct-only)")
+        } else if (!ensureOverlayPermission(context, helper)) {
             Log.e(TAG, "overlay permission unavailable; aborting projection")
             log("abort: SYSTEM_ALERT_WINDOW unavailable")
             return "projection"
@@ -1052,12 +1360,23 @@ object ClusterProjectionManager {
                     freeformFlagValue(direct, splitPreferences.isFeatureEnabled()))
             }
             if (remoteDisplayId == -1) releaseOrphanedDisplay(context, helper)
-            if (tryDirectProjection(context, helper, display, geo, plan)) {
+            if (tryDirectProjection(context, helper, target, geo, plan)) {
+                // #194: the compositor is powered up only now, with the task already placed —
+                // the opposite order of the rest of the fleet, where the overlay/VD fallback
+                // still covers a failed placement (see the auto-container block above).
+                if (daemonOnly && autoContainerEnabled(context)) powerUpCompositorAfterPlacement(context, helper)
                 // Platformized firmware only: open the cluster's Map frame now that something of
                 // ours is actually on it. Fail-soft — a projection is never failed by the frame.
                 frame?.apply(helper, ClusterFrameUi7.Owner.PROJECTION)
                 return null
             }
+        }
+        if (daemonOnly) {
+            // The VD pipeline below needs an app-uid Display for its overlay; there is none.
+            Log.e(TAG, "direct projection failed and no VD fallback on this firmware")
+            log("direct failed and no VD fallback on this firmware (display invisible to app uid)")
+            onClusterSendFailed?.invoke(targetPackage(context))
+            return "projection"
         }
 
         // F-1 fix (Round 8): hoist pkg so all VD terminal failure paths can call onClusterSendFailed.
@@ -1077,6 +1396,11 @@ object ClusterProjectionManager {
         // again just before launchAndForce is always safe. The first re-arm covers surface→createVd;
         // the second re-arm covers the launchAndForce window specifically.
         onBeforeClusterSend?.invoke(pkg)
+        // The daemon-only case returned above, so the app uid has a Display for the overlay here.
+        val display = target.appDisplay ?: run {
+            log("abort: no app-uid display for the VD pipeline")
+            return "projection"
+        }
         val failure = try {
             val surface = withTimeoutOrNull(SURFACE_TIMEOUT_MS) {
                 addOverlayAndAwaitSurface(context, display, geo, plan, helper)
@@ -1122,10 +1446,23 @@ object ClusterProjectionManager {
             // grace immediately before this call so the full DEPARTURE_GRACE_MS window covers the
             // task-transition phase (see SSM.DEPARTURE_GRACE_MS invariant KDoc for derivation).
             onBeforeClusterSend?.invoke(pkg)
+            placementAttempted = true
+            // #288: where the task starts from; only a native split pane gets the check below.
+            val before = readTaskState(helper, pkg)
+            vdStartState = before
             val ok = helper.launchAndForce(pkg, id, plan.bufferWidth, plan.bufferHeight)
             if (!ok) {
                 Log.e(TAG, "launchAndForce failed")
                 log("vd: launchAndForce failed pkg=$pkg vd=$id (task never appeared on the cluster)")
+                onClusterSendFailed?.invoke(pkg)
+                hideOverlay(helper); return "projection"
+            }
+            val splitMiss = splitPlacementFailure(
+                before, if (inSplitPane(before)) readTaskState(helper, pkg) else null, id,
+            )
+            if (splitMiss != null) {
+                Log.e(TAG, "launchAndForce left the task off the VD ($splitMiss)")
+                log("vd: launchAndForce ok but task not on vd=$id pkg=$pkg $splitMiss")
                 onClusterSendFailed?.invoke(pkg)
                 hideOverlay(helper); return "projection"
             }
@@ -1152,7 +1489,7 @@ object ClusterProjectionManager {
      * (direct mode active, no overlay/VD needed); false = fall back to the VD pipeline.
      */
     private suspend fun tryDirectProjection(
-        context: Context, helper: HelperClient, display: Display, geo: ClusterGeometry, plan: RenderPlan,
+        context: Context, helper: HelperClient, target: ClusterTarget, geo: ClusterGeometry, plan: RenderPlan,
     ): Boolean {
         val pkg = targetPackage(context)
         val bounds = freeformBounds(geo)
@@ -1189,7 +1526,7 @@ object ClusterProjectionManager {
         // marker is healed by the next recoverStaleDirectTask / recoverStaleDirectDensity pass.
         @Suppress("ApplySharedPref")
         val markerWritten = withContext(Dispatchers.IO) {
-            prefs.edit().putInt(KEY_DIRECT_DISPLAY_ID, display.displayId).commit()
+            prefs.edit().putInt(KEY_DIRECT_DISPLAY_ID, target.displayId).commit()
         }
         if (!markerWritten) {
             Log.w(TAG, "direct projection: write-ahead marker not persisted; VD fallback")
@@ -1200,26 +1537,77 @@ object ClusterProjectionManager {
         // suppress watchdog misclassifications during the transient REMOVE+RELAUNCH (Q1 / F-1).
         // No-op when [pkg] is not a split pane or no session is active.
         onBeforeClusterSend?.invoke(pkg)
-        // RECENTS, unlike the split panes (which went STANDARD in 392 to get their own input
-        // shield): the cluster hosts a single task alone on its display, so the shared-root
-        // touch defect never applied here — and this typing is what the on-car acceptance of
-        // the projection path was run with. Fleet safety: do not change it without a car.
+        // STANDARD (#134): a live navigator task is STANDARD, so asking for RECENTS forced the
+        // daemon to remove and recreate it (a task can only be typed at creation) — on Sea Lion 07
+        // the navigator process died with it and the route was lost. STANDARD matches the live
+        // type, so the daemon takes the light path (one `am start` with mode+display, task id
+        // survives). Price: AOSP draws its freeform DecorCaption over a STANDARD window.
+        placementAttempted = true
+        // Scale (#121): the density override is the only scale lever in direct mode, and it is set
+        // HERE — before the launch, with a settle — because changing the density of a display that
+        // already hosts a rendered window is the Configuration change that kills 2GIS (Qt). Same
+        // order BYD DashCast uses (`wm density N -d <display>`, then `am start`). A task of ours
+        // already sitting on the target display is exactly that forbidden case: the launch below
+        // only re-adopts it, so the density stays as it is.
+        val adopted = runCatching { helper.getTaskState(pkg) }.getOrNull()
+            ?.let { it.taskId > 0 && it.displayId == target.displayId } == true
+        var densitySent = 0
+        if (adopted) {
+            log("direct: task already on display ${target.displayId}, density left as is")
+        } else if (densityUnsafe(context, pkg)) {
+            log("direct: density skipped for $pkg (died after non-native dpi earlier)")
+        } else {
+            val scalePct = readScalePct(context)
+            val density = directDensityFor(scalePct)
+            val result = runCatching { helper.setDisplayDensity(target.displayId, density) }
+                .getOrNull()
+            val ok = result?.ok == true
+            if (ok) directDensityApplied = density
+            log("direct: density scale=$scalePct% dpi=${directDensityLabel(density)} " +
+                "display=${target.displayId} ok=$ok readback=[${result?.readback.orEmpty()}] " +
+                "(before launch)")
+            if (density != 0) {
+                densitySent = density
+                delay(DIRECT_DENSITY_SETTLE_MS)
+            }
+        }
+        // A failed launch leaves the display scaled for whatever the firmware puts there next, and
+        // UNAVAILABLE also clears the direct marker boot recovery would reset it from.
+        suspend fun resetDensityAfter(what: String) {
+            if (densitySent == 0) return
+            // ...but only once the task is off that display. The daemon's failure path restores
+            // fullscreen WITHOUT moving the task back (it can be left fullscreen ON the cluster
+            // display), and resetting under a live window is the Configuration change of #121 that
+            // the pre-launch order exists to avoid — the same confirmed-only invariant
+            // pullBackToMain follows. The override and the write-ahead marker both stay, so
+            // recoverStaleDirectDensity / recoverStaleDirectTask drop them at the next start.
+            val stillOnTarget = runCatching { helper.getTaskState(pkg) }.getOrNull()
+                ?.let { it.taskId > 0 && it.displayId == target.displayId } == true
+            if (stillOnTarget) {
+                prefs.edit().putInt(KEY_DIRECT_DISPLAY_ID, target.displayId).apply()
+                log("direct: density reset skipped after $what, " +
+                    "task still on display ${target.displayId}")
+                return
+            }
+            val result = runCatching { helper.setDisplayDensity(target.displayId, 0) }.getOrNull()
+            val ok = result?.ok == true
+            if (ok) directDensityApplied = 0
+            log("direct: density reset after $what ok=$ok readback=[${result?.readback.orEmpty()}]")
+        }
         return when (helper.launchFreeform(
-            pkg, display.displayId, bounds[0], bounds[1], bounds[2], bounds[3],
-            HelperBinderProtocol.PANE_TYPE_RECENTS,
+            pkg, target.displayId, bounds[0], bounds[1], bounds[2], bounds[3],
+            HelperBinderProtocol.PANE_TYPE_STANDARD,
         )) {
             FreeformLaunchResult.OK -> {
-                directDisplayId = display.displayId
+                directDisplayId = target.displayId
                 prefs.edit().putBoolean(KEY_FREEFORM_REBOOT_PENDING, false).apply()
                 verdict.clearOnSuccess()
-                @Suppress("KotlinConstantConditions")
-                if (DIRECT_DENSITY_SCALE_ENABLED) applyDirectDensity(helper, display.displayId, plan)
                 projectedPackage = pkg
-                Log.i(TAG, "direct projection: $pkg on display ${display.displayId} " +
+                Log.i(TAG, "direct projection: $pkg on display ${target.displayId} " +
                     "bounds=[${bounds[0]},${bounds[1]},${bounds[2]},${bounds[3]}] dpi=${plan.densityDpi}")
-                log("direct OK: $pkg display=${display.displayId} " +
+                log("direct OK: $pkg display=${target.displayId} " +
                     "bounds=[${bounds[0]},${bounds[1]},${bounds[2]},${bounds[3]}] dpi=${plan.densityDpi}")
-                armDirectDeathWatch(helper, pkg, display.displayId, bounds)
+                armDirectDeathWatch(context, helper, pkg, target.displayId, bounds, densitySent)
                 true
             }
             FreeformLaunchResult.UNAVAILABLE -> {
@@ -1236,6 +1624,7 @@ object ClusterProjectionManager {
                     .apply()
                 Log.i(TAG, "direct projection: freeform unavailable (reboot pending); VD fallback")
                 log("direct UNAVAILABLE: freeform not active yet (reboot pending); VD fallback")
+                resetDensityAfter("UNAVAILABLE")
                 // After the edit above: the verdict pairs this outcome with the armed hint.
                 if (verdict.noteUnavailable()) {
                     log("freeform unavailable again after reboot - latching unsupported verdict")
@@ -1248,8 +1637,8 @@ object ClusterProjectionManager {
                     runCatching {
                         OverlayNotificationManager.show(
                             context,
-                            context.getString(R.string.settings_display_mirror_title),
-                            context.getString(R.string.settings_cluster_direct_reboot_hint),
+                            context.appLocalizedContext().getString(R.string.settings_display_mirror_title),
+                            context.appLocalizedContext().getString(R.string.settings_cluster_direct_reboot_hint),
                         )
                     }
                 }
@@ -1259,7 +1648,8 @@ object ClusterProjectionManager {
                 // Same rationale as UNAVAILABLE above: grace survives for the VD fallback.
                 // onClusterSendFailed is called only at terminal VD failures, not here.
                 Log.w(TAG, "direct projection failed; VD fallback (marker kept for recovery)")
-                log("direct FAILED: launchFreeform rejected pkg=$pkg display=${display.displayId}; VD fallback")
+                log("direct FAILED: launchFreeform rejected pkg=$pkg display=${target.displayId}; VD fallback")
+                resetDensityAfter("FAILED")
                 false
             }
         }
@@ -1270,7 +1660,7 @@ object ClusterProjectionManager {
      * cluster and its process dies a few seconds later — long after [HelperClient.launchFreeform]
      * answered OK, so the daemon's own relaunch-once check (2GIS fix, commit 527682c2) has already
      * run and seen a live task. This watch polls the task for a short window afterwards and, when
-     * the cluster has lost it, relaunches it ONCE through that same call: with no live task left,
+     * the cluster has lost it, relaunches it through that same call: with no live task left,
      * the daemon's resolveOrLaunchTask starts the app with `--windowingMode 5 --display N`, so it
      * is BORN on the cluster display and the killing cross-display move never happens.
      *
@@ -1279,72 +1669,276 @@ object ClusterProjectionManager {
      * healthy projection while the cluster stays empty (Codex audit). Both cases take the same
      * recovery, with their own journal wording.
      *
-     * One relaunch only — a second loss is journaled and the watch ends, no retry loop.
+     * At the native density one relaunch only — a second loss is journaled and the watch ends,
+     * no retry loop.
      *
      * The caller holds [mutex]; each check takes it too, so a concurrent setMode is serialized
      * against a relaunch instead of racing it, and the state guard is read under the same lock
      * that writes it. [applyModeLocked] cancels the watch on every mode transition.
      *
      * Healthy fleet (Leopard 3, where the navigator survives the move): three
-     * [HelperClient.getTaskState] reads and nothing else — no journal lines, no daemon writes.
+     * [HelperClient.getTaskState] reads and nothing else — one verify line, no daemon writes.
+     *
+     * The watch doubles as the probe behind [densityUnsafe]: when [densityApplied] is non-zero the
+     * scale override is a suspect for the death (#121), but one loss is no proof — on some cars the
+     * move itself kills the app whatever the density (#134). So the first loss relaunches at the
+     * same density; a second loss drops it to the native one and latches the package. Every
+     * relaunch after a scaled loss gets a full set of checks again, so a loss seen on the last
+     * check is not left unwatched. Worst case: three sets of checks and two relaunches.
+     *
+     * A third shape is no death at all: the placed task itself (same id), alive and still freeform,
+     * on another display — moved there by the app's own start chain after a cold start (tester's
+     * car, 3.19.8). It is never a strike; the task goes back to the cluster and the checks start
+     * over, at most [DIRECT_MOVE_RETURNS] times per projection. When it does not stay, and when a
+     * born-on-display relaunch does not hold, the projection ends through [failProjectionLocked]:
+     * the task fullscreen on the main screen and the mode OFF, not a piece of window there under a
+     * projection still reported active.
      */
-    private fun armDirectDeathWatch(helper: HelperClient, pkg: String, displayId: Int, bounds: IntArray) {
+    @Suppress("LongMethod", "CyclomaticComplexMethod") // one watch loop, one branch per loss shape
+    private fun armDirectDeathWatch(
+        context: Context, helper: HelperClient, pkg: String, displayId: Int, bounds: IntArray,
+        densityApplied: Int,
+    ) {
         directDeathWatchJob?.cancel()
         directDeathWatchJob = scope.launch {
-            var relaunched = false
-            repeat(DIRECT_DEATH_CHECKS) {
+            var density = densityApplied
+            var strikes = 0
+            var returns = 0
+            var nativeRelaunched = false
+            var verified = false
+            // Id of the task last seen on the cluster; 0 until one was seen.
+            var placedTaskId = 0
+            var checksLeft = DIRECT_DEATH_CHECKS
+            while (checksLeft > 0) {
+                checksLeft--
                 delay(DIRECT_DEATH_CHECK_INTERVAL_MS)
                 mutex.withLock {
                     // Anything but our own live direct session ends the watch: an OFF, a rebuild or
                     // a switch of the projected app already owns the cluster.
-                    if (currentMode != ClusterMode.FULLSCREEN ||
-                        projectedPackage != pkg || directDisplayId != displayId) return@launch
+                    if (!ownsDirectSession(pkg, displayId)) return@launch
                     // The channel the split watchdog reads tasks with: null = the daemon could not
                     // answer, and an unreachable daemon must not be read as a lost projection.
                     val state = helper.getTaskState(pkg) ?: return@withLock
+                    // The first answer doubles as the post-projection check (#288).
+                    if (!verified) {
+                        verified = true
+                        log(verifyLine(DIRECT_DEATH_CHECK_INTERVAL_MS, "direct display=$displayId", state))
+                    }
                     // Alive ON THE CLUSTER, not just alive: the daemon answers with the package's
                     // first task regardless of display, so a task the system auto-restarted on the
                     // main screen (taskId > 0, displayId 0) would otherwise mask the death and leave
                     // the cluster empty for the rest of the session.
-                    if (state.taskId > 0 && state.displayId == displayId) return@withLock
-                    val what = if (state.taskId > 0) "fled to display ${state.displayId}" else "died post-move"
-                    if (relaunched) {
+                    if (state.taskId > 0 && state.displayId == displayId) {
+                        placedTaskId = state.taskId
+                        return@withLock
+                    }
+                    if (isMovedTask(state, placedTaskId)) {
+                        returns++
+                        val what = traceMovedTask(pkg, displayId, state, returns)
+                        if (returns > DIRECT_MOVE_RETURNS) {
+                            Log.w(TAG, "direct projection: $pkg $what again; ending the projection")
+                            log("direct: task did not stay on display $displayId after " +
+                                "$DIRECT_MOVE_RETURNS returns ($what) pkg=$pkg; ending projection")
+                            failProjectionLocked(context, helper, "projection")
+                            return@launch
+                        }
+                        Log.w(TAG, "direct projection: $pkg $what; returning it to display $displayId")
+                        log("direct task $what; returning it to display $displayId " +
+                            "(return $returns of $DIRECT_MOVE_RETURNS, pkg=$pkg)")
+                        // The same task is moved back: the daemon finds it and re-pins it, the call
+                        // project() makes on every star press. Density untouched: a move is no strike.
+                        val result = helper.launchFreeform(
+                            pkg, displayId, bounds[0], bounds[1], bounds[2], bounds[3],
+                            HelperBinderProtocol.PANE_TYPE_STANDARD,
+                        )
+                        log("direct: return result=$result")
+                        if (result == FreeformLaunchResult.OK) placedTaskId = taskOnCluster(helper, pkg, displayId) ?: placedTaskId
+                        checksLeft = DIRECT_DEATH_CHECKS
+                        return@withLock
+                    }
+                    strikes++
+                    val what = traceDirectLoss(pkg, displayId, state, strikes, density)
+                    if (nativeRelaunched) {
                         Log.w(TAG, "direct projection: relaunched $pkg $what again; giving up")
                         log("direct: born-on-display relaunch did not hold ($what) pkg=$pkg display=$displayId")
+                        failProjectionLocked(context, helper, "projection")
                         return@launch
                     }
-                    relaunched = true
                     Log.w(TAG, "direct projection: $pkg $what; relaunching on display $displayId")
                     log("direct task $what; relaunching on display $displayId (pkg=$pkg)")
+                    val scaledLoss = density != 0
+                    if (scaledLoss && strikes == 1) {
+                        log("direct: dpi=$density kept for the relaunch (first loss of $pkg)")
+                    } else if (scaledLoss) {
+                        // The second loss in a row under the scale override: drop it BEFORE the
+                        // relaunch (which must run at the native density to stand a chance) and
+                        // remember it for this package.
+                        val resetOk = runCatching { helper.setDisplayDensity(displayId, 0) }
+                            .getOrNull()?.ok == true
+                        if (resetOk) directDensityApplied = 0
+                        markDensityUnsafe(context, pkg, "$what on display $displayId")
+                        Trace.event(TraceArea.SCREEN, "cluster-density-unsafe", "pkg" to pkg,
+                            "dpi" to density, "loss" to what, "reset" to resetOk)
+                        log("direct: density reset to native before relaunch ok=$resetOk; " +
+                            "$pkg marked density-unsafe (dpi=$density, $what, second loss)")
+                        density = 0
+                    }
+                    // Once true the next loss returns above, so a plain assignment is enough.
+                    nativeRelaunched = density == 0
                     // With no task left this births the app on the cluster display; with a task that
                     // fled to the main screen it moves that task back — the same operation project()
                     // performs on every star press, so a healthy machine sees nothing new here.
+                    // Same STANDARD typing as the send above (#134): the recovery must not be the
+                    // one path that still removes and recreates the navigator task.
                     val result = helper.launchFreeform(
                         pkg, displayId, bounds[0], bounds[1], bounds[2], bounds[3],
-                        HelperBinderProtocol.PANE_TYPE_RECENTS,
+                        HelperBinderProtocol.PANE_TYPE_STANDARD,
                     )
                     log("direct: recovery relaunch result=$result")
+                    // The relaunch may have made a new task: it is the placed one from now on, or a
+                    // move of it before the next check would be read against the dead task's id.
+                    if (result == FreeformLaunchResult.OK) placedTaskId = taskOnCluster(helper, pkg, displayId) ?: placedTaskId
+                    // A loss under the scale is watched for a full set again: the relaunched app may
+                    // die as well, and that second loss is the verdict. The native path keeps the
+                    // checks it has left, as before.
+                    if (scaledLoss) checksLeft = DIRECT_DEATH_CHECKS
                 }
             }
         }
     }
 
-    /**
-     * #121: content scale is inert in direct mode. There is no VirtualDisplay to size a buffer on —
-     * the app runs in a freeform window on the real cluster display — so the only lever is a wm
-     * density override on a LIVE display, which is exactly the Configuration change that kills
-     * 2GIS (see [renderPlanFor]). Direct mode therefore always renders at the native density,
-     * i.e. scale 100%. [applyDirectDensity] stays in the tree behind this gate: the density RESET
-     * it can send is still the shape crash recovery uses, and flipping this back is how a future
-     * transport that can scale safely would re-enable the slider.
-     */
-    private const val DIRECT_DENSITY_SCALE_ENABLED = false
+    /** Id of [pkg]'s task when it is on [displayId], else null (elsewhere, gone or no answer). */
+    private suspend fun taskOnCluster(helper: HelperClient, pkg: String, displayId: Int): Int? =
+        helper.getTaskState(pkg)?.takeIf { it.taskId > 0 && it.displayId == displayId }?.taskId
 
-    /** Density override for direct mode: native dpi -> reset (no override), else the plan's dpi. */
-    private suspend fun applyDirectDensity(helper: HelperClient, displayId: Int, plan: RenderPlan) {
-        val density = if (plan.densityDpi == clusterDensityDpi) 0 else plan.densityDpi
-        runCatching { helper.setDisplayDensity(displayId, density) }
+    private fun ownsDirectSession(pkg: String, displayId: Int): Boolean =
+        currentMode == ClusterMode.FULLSCREEN && projectedPackage == pkg && directDisplayId == displayId
+
+    /**
+     * The placed task itself, alive and freeform, on another display: moved, not dead. A task under
+     * another id than the one seen on the cluster is a new one (the placed task died), and a task
+     * in another mode was restarted or reset by the system — both stay strikes.
+     */
+    private fun isMovedTask(state: SplitTaskState, placedTaskId: Int): Boolean =
+        state.taskId > 0 && state.windowingMode == WINDOWING_MODE_FREEFORM &&
+            (placedTaskId <= 0 || state.taskId == placedTaskId)
+
+    /** Trace event of one loss seen by the death watch (the cluster journal keeps 30 lines only);
+     *  returns the journal wording of the loss. */
+    private fun traceDirectLoss(
+        pkg: String, displayId: Int, state: SplitTaskState, strike: Int, density: Int,
+    ): String {
+        val fled = state.taskId > 0
+        Trace.event(TraceArea.SCREEN, "cluster-loss", "pkg" to pkg, "loss" to if (fled) "fled" else "died",
+            "to" to state.displayId.takeIf { fled }, "display" to displayId, "task" to state.taskId,
+            "wm" to state.windowingMode, "strike" to strike, "dpi" to density)
+        return if (fled) "fled to display ${state.displayId}" else "died post-move"
     }
+
+    /** Same trace event for a moved task ([isMovedTask]), which is no strike; returns its wording. */
+    private fun traceMovedTask(pkg: String, displayId: Int, state: SplitTaskState, returns: Int): String {
+        Trace.event(TraceArea.SCREEN, "cluster-loss", "pkg" to pkg, "loss" to "moved",
+            "to" to state.displayId, "display" to displayId, "task" to state.taskId,
+            "wm" to state.windowingMode, "return" to returns)
+        return "moved to display ${state.displayId} (task=${state.taskId} wm=${state.windowingMode})"
+    }
+
+    /** Settle after a density change before the launch, as BYD DashCast does it. */
+    private const val DIRECT_DENSITY_SETTLE_MS = 150L
+
+    /**
+     * Content scale in direct mode. There is no VirtualDisplay to size a buffer on (the inverse
+     * buffer trick of [renderPlanFor]) — the app runs in a freeform window on the real cluster
+     * display, so a density override IS the scale: a smaller density draws smaller content, the
+     * same direction the buffer gives on the VD path. 100% -> 0 = no override, native density.
+     *
+     * #121 is about WHEN, not whether: a density change on a display that already hosts a rendered
+     * window is the Configuration change 2GIS (Qt) dies on. The rule this code keeps is therefore
+     * that the density is only ever changed while no live task of the projected package sits on
+     * that display — before a launch (with [DIRECT_DENSITY_SETTLE_MS] to settle), and never under
+     * a live window: a task already on the cluster is left alone, a resize moves bounds only and
+     * the new scale lands on the next send, and every exit path resets the override.
+     */
+    private fun directDensityFor(scalePct: Int): Int {
+        val clamped = scalePct.coerceIn(MIN_SCALE_PCT, MAX_SCALE_PCT)
+        return if (clamped == DEFAULT_SCALE_PCT) 0
+               else (clusterDensityDpi * clamped / 100).coerceAtLeast(1)
+    }
+
+    /** Journal wording for a density value: 0 is a reset to the panel's own density. */
+    private fun directDensityLabel(density: Int): String = if (density == 0) "native" else "$density"
+
+    /**
+     * #121 self-heal. The 2GIS crash was diagnosed as "dies a few seconds after launch at every
+     * dpi except the native one", i.e. a pre-launch density can kill it too — the safe ORDER is
+     * not a proof of safety. So the density is treated as a probe: [armDirectDeathWatch] already
+     * watches the task for a few seconds after the launch, and a death that followed a non-native
+     * density latches this verdict for that package. Every later send of it runs at the native
+     * density, and the scale slider silently stops applying to that one app.
+     *
+     * Learned from behaviour, never a package list: the firmware and the app both vary across the
+     * fleet, and a car where 2GIS survives keeps its scale.
+     *
+     * Death shapes count: a task gone, a new task under another id, or a task in another mode on
+     * another display (the system restarts a killed foreground app there). The placed task moved
+     * away alive and still freeform does not ([armDirectDeathWatch] returns it instead). It takes
+     * two losses in a row under the override, though: one can be the move itself (#134).
+     */
+    private fun densityUnsafe(context: Context, pkg: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        migrateDensityVerdicts(prefs)
+        return prefs.getBoolean(KEY_DENSITY_UNSAFE_PREFIX + pkg, false)
+    }
+
+    /**
+     * Brings the stored verdicts to [DENSITY_PROBE_GENERATION] and stamps it. From generation 1
+     * only the verdicts whose reason is not a death are dropped: 3.19.7/3.19.8 wrote "fled to
+     * display N" for any live task off the cluster, a moved freeform task included, so those may be
+     * false, while "died post-move" ones are real. Everything else (another generation, or the
+     * versionCode stamp of 3.19.6 and earlier) is wiped whole, as before.
+     */
+    private fun migrateDensityVerdicts(prefs: SharedPreferences) {
+        val generation = prefs.getInt(KEY_DENSITY_UNSAFE_GENERATION, -1)
+        if (generation == DENSITY_PROBE_GENERATION) return
+        val keys = prefs.all.keys.filter { it.startsWith(KEY_DENSITY_UNSAFE_PREFIX) }
+        val stale = if (generation == 1) {
+            keys.filter { it != KEY_DENSITY_UNSAFE_GENERATION && !it.startsWith(KEY_DENSITY_UNSAFE_WHY_PREFIX) }
+                .map { it.removePrefix(KEY_DENSITY_UNSAFE_PREFIX) }
+                // A mark without a reason cannot be told apart: dropped too.
+                .filterNot { prefs.getString(KEY_DENSITY_UNSAFE_WHY_PREFIX + it, null).orEmpty().startsWith("died") }
+                .flatMap { listOf(KEY_DENSITY_UNSAFE_PREFIX + it, KEY_DENSITY_UNSAFE_WHY_PREFIX + it) }
+        } else {
+            keys
+        }
+        prefs.edit()
+            .apply { stale.forEach { remove(it) } }
+            .putInt(KEY_DENSITY_UNSAFE_GENERATION, DENSITY_PROBE_GENERATION)
+            .apply()
+        if (stale.isNotEmpty()) log("direct: density verdicts of an earlier probe wiped (${stale.size} keys)")
+    }
+
+    /** [why] = the loss and the display; the time is added here. Both go to the dump. */
+    private fun markDensityUnsafe(context: Context, pkg: String, why: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        migrateDensityVerdicts(prefs)
+        val at = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+        prefs.edit()
+            .putBoolean(KEY_DENSITY_UNSAFE_PREFIX + pkg, true)
+            .putString(KEY_DENSITY_UNSAFE_WHY_PREFIX + pkg, "$why, $at")
+            .apply()
+    }
+
+    /** Why and when [pkg] was latched density-unsafe, for the diagnostic dump; null if unknown. */
+    fun densityUnsafeReason(context: Context, pkg: String): String? =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_DENSITY_UNSAFE_WHY_PREFIX + pkg, null)
+
+    /** Packages currently latched as density-unsafe, for the diagnostic dump. */
+    fun densityUnsafePackages(context: Context): List<String> =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).all
+            .filter { (k, v) -> k.startsWith(KEY_DENSITY_UNSAFE_PREFIX) && v == true }
+            .map { it.key.removePrefix(KEY_DENSITY_UNSAFE_PREFIX) }
+            .sorted()
 
     /**
      * Creates the projection VirtualDisplay, preferring PUBLIC flags: accessibility ignores
@@ -1373,20 +1967,73 @@ object ClusterProjectionManager {
         }
     }
 
+    /** One `id:"name" WxH` entry per projection surface, for the display-choice log lines. */
+    private fun projectionDisplaysDescription(displays: List<Display>): String =
+        displays.joinToString {
+            val size = Point()
+            @Suppress("DEPRECATION") it.getRealSize(size)
+            "${it.displayId}:\"${it.name}\" ${size.x}x${size.y}"
+        }
+
+    /**
+     * The cluster surface for this attempt: the app-uid lookup first, the daemon's inventory only
+     * when the app uid found nothing (#194).
+     *
+     * On every car where [resolveClusterDisplay] answers — the whole current fleet — this is that
+     * answer wrapped in a [ClusterTarget] and NOT one extra daemon call; the fallback exists for
+     * firmwares that hide the display from our uid entirely, where the alternative is today's
+     * abort. Null keeps the caller's existing abort path (with its cdiag snapshot).
+     */
+    private suspend fun resolveClusterTarget(context: Context, helper: HelperClient): ClusterTarget? {
+        val match = resolveClusterDisplay(context)
+        if (match != null) {
+            // The app uid can see the cluster: whatever transport the user picked is available,
+            // so a marker left by an older firmware (or an older app version) is dropped here.
+            setDirectForced(context, false)
+            return ClusterTarget(
+                match.displayId, match.name, clusterWidth, clusterHeight, clusterDensityDpi, match,
+            )
+        }
+        val devices = runCatching { helper.listDisplays() }.getOrNull() ?: return null
+        val preferFull = sessionPreferFull ?: isPreferFullDisplay(context)
+        val picked = pickClusterFromDaemon(devices, preferFull) ?: run {
+            log("no cluster display in the daemon inventory: " +
+                devices.joinToString { "${it.id}:\"${it.name}\"" })
+            return null
+        }
+        // From here on every writer of enable_freeform_support must keep the flag at 1: the
+        // overlay transport cannot work on this car, and the flag is read once per boot.
+        setDirectForced(context, true)
+        clusterWidth = picked.width
+        clusterHeight = picked.height
+        // A dump without a readable density (truncated / unknown wording) keeps the cluster
+        // default rather than handing 0 dpi to the render plan.
+        clusterDensityDpi = if (picked.densityDpi > 0) picked.densityDpi else DEFAULT_CLUSTER_DENSITY_DPI
+        val line = "cluster display via daemon: id=${picked.id} \"${picked.name}\" " +
+            "${clusterWidth}x$clusterHeight dpi=$clusterDensityDpi " +
+            "owner=${picked.ownerPkg ?: "?"}(${picked.ownerUid}) " +
+            "flags=[${picked.flags.joinToString(",")}] (app uid sees none)"
+        Log.i(TAG, line)
+        log(line)
+        return ClusterTarget(picked.id, picked.name, clusterWidth, clusterHeight, clusterDensityDpi, null)
+    }
+
     /**
      * App-side display lookup. The cluster's projection surfaces are virtual displays owned by
      * com.byd.containerservice, named "*XDJAScreenProjection*" (1280x480). Validated on-car
      * 2026-06-02: the panel composites the "..._1" surface in Full mode, so we pick it by name;
      * if it is absent we take the first projection surface, else fall back to id 2. Name-based
-     * selection survives containerservice reassigning display ids at boot. Updates cluster W/H/dpi.
+     * selection survives containerservice reassigning display ids at boot; [KEY_PREFER_FULL_DISPLAY]
+     * flips the pick to the full-cluster "..._0" surface. Updates cluster W/H/dpi.
      */
     private fun resolveClusterDisplay(context: Context): Display? {
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val projectionDisplays = dm.displays.filter {
             it.name.contains("XDJAScreenProjection", ignoreCase = true)
         }
-        val match = projectionDisplays.firstOrNull { it.name.endsWith("_1") }
-            ?: projectionDisplays.firstOrNull()
+        val preferFull = sessionPreferFull ?: isPreferFullDisplay(context)
+        val pickedName = pickProjectionDisplayName(projectionDisplays.map { it.name }, preferFull)
+        val match = projectionDisplays.firstOrNull { it.name == pickedName }
             ?: dm.getDisplay(DEFAULT_CLUSTER_DISPLAY_ID)
         if (match == null) {
             // Song family / DiLink 3-4 report no projection surface at all; the full list
@@ -1411,7 +2058,9 @@ object ClusterProjectionManager {
             if (shouldAbsorbDisplayDensity(directDisplayId, markerId, metrics.densityDpi)) {
                 clusterDensityDpi = metrics.densityDpi
             }
-            Log.i(TAG, "cluster display id=${match.displayId} ${clusterWidth}x$clusterHeight dpi=$clusterDensityDpi")
+            Log.i(TAG, "cluster display id=${match.displayId} \"${match.name}\" " +
+                "${clusterWidth}x$clusterHeight dpi=$clusterDensityDpi prefer_full=$preferFull " +
+                "candidates=[${projectionDisplaysDescription(projectionDisplays)}]")
         }
         return match
     }
@@ -1494,12 +2143,29 @@ object ClusterProjectionManager {
         // Always clear the member: keeps the VD path out of the direct-resize branch even when
         // the density reset fails (daemon dead).
         directDisplayId = -1
-        val resetOk = directId != -1 &&
-            runCatching { helper.setDisplayDensity(directId, 0) }.getOrDefault(false)
+        // Nothing was sent to the daemon this attempt and no crash marker is pending: there is no
+        // task of ours to reclaim, and the navigator the user has open on the main screen (maybe
+        // freeform, maybe in a split) must keep its window.
+        if (!placementAttempted && directId == -1) {
+            log("pullback: nothing was placed this attempt, leaving task untouched (pkg=$pkg)")
+            return
+        }
         val taskId = helper.getTaskId(pkg)
         var modeOk = false
         var moveOk = false
-        if (taskId != null) {
+        // Android 10 head units (DiLink 3.0 / 4.0) used to answer null here, so pullback was a
+        // silent no-op; now they report the user's live navigator task. A task already sitting
+        // fullscreen on the main display needs no restore — sending mode/move/bounds at it would
+        // shuffle a window this projection never touched.
+        val homeState = if (taskId != null) helper.getTaskState(pkg) else null
+        val alreadyHome = taskId != null && homeState != null && homeState.taskId == taskId &&
+            homeState.displayId == 0 && homeState.windowingMode == WINDOWING_MODE_FULLSCREEN
+        if (alreadyHome) {
+            modeOk = true
+            moveOk = true
+            log("pullback: task=$taskId already home (display 0, fullscreen), skipping restore (pkg=$pkg)")
+            if (focus) helper.setFocusedTask(taskId)
+        } else if (taskId != null) {
             // Restore fullscreen windowing before moving back to the main display; a freeform
             // task otherwise keeps its tiny bounds. For a VD-mode task this is a no-op in ATMS;
             // sending it unconditionally also covers the daemon-switched-but-client-FAILED window.
@@ -1514,13 +2180,38 @@ object ClusterProjectionManager {
                 log("pullback: task recreated by setMode: $taskId -> $relaunchedId (pkg=$pkg)")
                 if (focus) helper.setFocusedTask(relaunchedId)
             } else {
-                moveOk = helper.moveTaskToDisplay(taskId, 0)
+                // The daemon's light path applies mode AND display in one am start, so the task
+                // can already be home. moveTaskToDisplay into the display area a task is already
+                // in throws on AOSP 12 — a false moveOk would keep KEY_DIRECT_DISPLAY_ID set and
+                // make every service start replay this recovery against the navigator.
+                val state = if (modeOk) helper.getTaskState(pkg) else null
+                if (state != null && state.taskId == taskId && state.displayId == 0) {
+                    moveOk = true
+                    log("pullback: light path, task=$taskId already on display 0 (pkg=$pkg)")
+                } else {
+                    moveOk = helper.moveTaskToDisplay(taskId, 0)
+                }
                 helper.setTaskBounds(taskId, 0, 0, 0, 0)  // cosmetic; not gating the marker
                 if (focus) helper.setFocusedTask(taskId)
             }
         } else {
             Log.d(TAG, "pullBackToMain: projected task ($pkg) not found")
             log("pullback: task $pkg not found (already gone)")
+        }
+        // Density LAST, and only on a CONFIRMED reclaim (#121): dropping the override while the
+        // task still sits on the cluster is the live Configuration change the pre-launch order
+        // exists to avoid. A failed reclaim keeps the override and, through resetOk=false, the
+        // marker — the next service start retries both.
+        val reclaimed = taskId == null || moveOk
+        val reset = if (directId != -1 && reclaimed) {
+            runCatching { helper.setDisplayDensity(directId, 0) }.getOrNull()
+        } else null
+        val resetOk = reset?.ok == true
+        if (resetOk) directDensityApplied = 0
+        if (directId != -1) {
+            if (reclaimed) log("pullback: density reset ok=$resetOk display=$directId " +
+                "readback=[${reset?.readback.orEmpty()}]")
+            else log("pullback: density reset skipped, task still on display $directId")
         }
         // Same confirmed-only invariant as recoverStaleDirectTask: the marker survives until
         // BOTH the density reset and the task reclaim are confirmed (or the task is gone), so

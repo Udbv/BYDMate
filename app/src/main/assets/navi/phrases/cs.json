@@ -12,5 +12,6 @@
     {"code": "RIGHT", "phrases": ["odbočte vpravo", "zahněte vpravo", "doprava", "vpravo"]},
     {"code": "STRAIGHT", "phrases": ["pokračujte rovně", "jeďte rovně", "rovně"]}
   ],
+  "lanes": {"left": ["vlevo", "doleva"], "straight": ["rovně", "přímo"], "right": ["vpravo", "doprava"], "uturn": ["otočka", "otočte"]},
   "units": {"km": ["km"], "m": ["m"], "mi": [], "ft": [], "hour": ["h", "hod"], "minute": ["min"]}
 }

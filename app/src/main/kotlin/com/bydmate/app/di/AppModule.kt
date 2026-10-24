@@ -2,8 +2,10 @@ package com.bydmate.app.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.bydmate.app.data.automation.RuleInserts
 import com.bydmate.app.data.backup.BackupManager
 import com.bydmate.app.data.local.dao.BatterySnapshotDao
 import com.bydmate.app.data.local.dao.ChargeDao
@@ -14,6 +16,7 @@ import com.bydmate.app.data.local.dao.PlaceDao
 import com.bydmate.app.data.local.dao.RuleDao
 import com.bydmate.app.data.local.dao.RuleLogDao
 import com.bydmate.app.data.local.dao.SettingsDao
+import com.bydmate.app.data.local.dao.TariffPeriodDao
 import com.bydmate.app.data.local.dao.TripDao
 import com.bydmate.app.data.local.dao.TripPointDao
 import com.bydmate.app.data.local.dao.TripTombstoneDao
@@ -310,17 +313,115 @@ object AppModule {
         }
     }
 
+    internal val MIGRATION_18_19 = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE trips ADD COLUMN exterior_temp_end INTEGER")
+            db.execSQL("ALTER TABLE trip_points ADD COLUMN altitude REAL")
+        }
+    }
+
+    internal val MIGRATION_19_20 = object : Migration(19, 20) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `tariff_periods` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `start_ts` INTEGER NOT NULL,
+                    `home_rate` REAL NOT NULL,
+                    `dc_rate` REAL NOT NULL,
+                    `ac_loss_pct` REAL NOT NULL,
+                    `dc_loss_pct` REAL NOT NULL,
+                    `trip_rule` TEXT NOT NULL
+                )
+            """.trimIndent())
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_tariff_periods_start_ts` ON `tariff_periods` (`start_ts`)")
+            db.execSQL("ALTER TABLE charges ADD COLUMN meter_kwh REAL")
+            db.execSQL("ALTER TABLE charges ADD COLUMN cost_manual INTEGER NOT NULL DEFAULT 0")
+            // Seed the first period (start_ts = 0, covers the whole history) from the flat
+            // settings the user already has. Existing `cost` values stay exactly as they are;
+            // a recalculation only happens when the user adds or edits a period later.
+            // The default only wins when the stored value is blank or not a number: a tariff of
+            // 0 is legitimate (free charging at work) and must survive the upgrade. A numeric
+            // string holds at least one digit and nothing outside digits and dots.
+            db.execSQL("""
+                INSERT INTO tariff_periods (start_ts, home_rate, dc_rate, ac_loss_pct, dc_loss_pct, trip_rule)
+                SELECT 0,
+                    COALESCE((SELECT CAST(REPLACE(value, ',', '.') AS REAL) FROM settings
+                              WHERE key = 'home_tariff'
+                                AND REPLACE(value, ',', '.') GLOB '*[0-9]*'
+                                AND REPLACE(value, ',', '.') NOT GLOB '*[^0-9.]*'), 0.20),
+                    COALESCE((SELECT CAST(REPLACE(value, ',', '.') AS REAL) FROM settings
+                              WHERE key = 'dc_tariff'
+                                AND REPLACE(value, ',', '.') GLOB '*[0-9]*'
+                                AND REPLACE(value, ',', '.') NOT GLOB '*[^0-9.]*'), 0.73),
+                    10.0, 5.0,
+                    COALESCE((SELECT value FROM settings
+                              WHERE key = 'trip_cost_tariff' AND value IS NOT NULL AND value != ''), 'home')
+                WHERE NOT EXISTS (SELECT 1 FROM tariff_periods)
+            """.trimIndent())
+        }
+    }
+
+    internal val MIGRATION_20_21 = object : Migration(20, 21) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE trips ADD COLUMN odometer_start_km REAL")
+            db.execSQL("ALTER TABLE trips ADD COLUMN odometer_end_km REAL")
+        }
+    }
+
+    internal val MIGRATION_21_22 = object : Migration(21, 22) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE last_state ADD COLUMN trip_start_exterior_temp INTEGER")
+        }
+    }
+
+    /** DM-i hybrid (#184): fuel columns on trips, the open trip's start counters, counter snapshots. */
+    internal val MIGRATION_22_23 = object : Migration(22, 23) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE trips ADD COLUMN fuel_liters REAL")
+            db.execSQL("ALTER TABLE trips ADD COLUMN hev_km REAL")
+            db.execSQL("ALTER TABLE trips ADD COLUMN fuel_total_start REAL")
+            db.execSQL("ALTER TABLE trips ADD COLUMN fuel_total_end REAL")
+            db.execSQL("ALTER TABLE trips ADD COLUMN mileage_hev_start REAL")
+            db.execSQL("ALTER TABLE trips ADD COLUMN mileage_hev_end REAL")
+            db.execSQL("ALTER TABLE trips ADD COLUMN fuel_cost REAL")
+            db.execSQL("ALTER TABLE tariff_periods ADD COLUMN fuel_price_per_liter REAL")
+            db.execSQL("ALTER TABLE last_state ADD COLUMN trip_start_fuel_total REAL")
+            db.execSQL("ALTER TABLE last_state ADD COLUMN trip_start_mileage_hev REAL")
+            db.execSQL("ALTER TABLE last_state ADD COLUMN on_ts INTEGER")
+            db.execSQL("ALTER TABLE last_state ADD COLUMN on_fuel_total REAL")
+            db.execSQL("ALTER TABLE last_state ADD COLUMN on_mileage_hev REAL")
+            db.execSQL("ALTER TABLE last_state ADD COLUMN on_mileage REAL")
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS counter_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    ts INTEGER NOT NULL,
+                    fuel_total REAL,
+                    mileage_hev REAL,
+                    mileage_ev REAL,
+                    odometer REAL,
+                    reason TEXT NOT NULL
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_counter_snapshots_ts ON counter_snapshots(ts)")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
-        return Room.databaseBuilder(
-            context,
-            AppDatabase::class.java,
-            "bydmate.db"
+        return withMigrations(
+            Room.databaseBuilder(
+                context,
+                AppDatabase::class.java,
+                "bydmate.db"
+            )
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
             .build()
     }
+
+    /** Every production migration: the app database and a restored archive of an older schema share them. */
+    fun withMigrations(builder: RoomDatabase.Builder<AppDatabase>): RoomDatabase.Builder<AppDatabase> =
+        builder.addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
 
     @Provides fun provideTripDao(db: AppDatabase): TripDao = db.tripDao()
     @Provides fun provideTripPointDao(db: AppDatabase): TripPointDao = db.tripPointDao()
@@ -329,7 +430,7 @@ object AppModule {
     @Provides fun provideSettingsDao(db: AppDatabase): SettingsDao = db.settingsDao()
     @Provides fun provideIdleDrainDao(db: AppDatabase): IdleDrainDao = db.idleDrainDao()
     @Provides fun provideBatterySnapshotDao(db: AppDatabase): BatterySnapshotDao = db.batterySnapshotDao()
-    @Provides fun provideRuleDao(db: AppDatabase): RuleDao = db.ruleDao()
+    @Provides fun provideRuleDao(db: AppDatabase): RuleDao = db.ruleDao().also { RuleInserts.bind(it, db) }
     @Provides fun provideRuleLogDao(db: AppDatabase): RuleLogDao = db.ruleLogDao()
     @Provides fun providePlaceDao(db: AppDatabase): PlaceDao = db.placeDao()
     @Provides fun provideOdometerSampleDao(db: AppDatabase): OdometerSampleDao = db.odometerSampleDao()
@@ -340,7 +441,17 @@ object AppModule {
     fun provideVehicleWriteLogDao(db: AppDatabase): VehicleWriteLogDao = db.vehicleWriteLogDao()
 
     @Provides
+    fun provideEndSnapshotSource(impl: com.bydmate.app.ui.settings.RecordingEndSnapshot): com.bydmate.app.diagnostics.EndSnapshotSource = impl
+
+    @Provides
     fun provideTripTombstoneDao(db: AppDatabase): TripTombstoneDao = db.tripTombstoneDao()
+
+    @Provides
+    fun provideTariffPeriodDao(db: AppDatabase): TariffPeriodDao = db.tariffPeriodDao()
+
+    @Provides
+    fun provideCounterSnapshotDao(db: AppDatabase): com.bydmate.app.data.local.dao.CounterSnapshotDao =
+        db.counterSnapshotDao()
 
     @Provides
     @Singleton
@@ -448,18 +559,21 @@ object AppModule {
 
     @Provides
     @Singleton
+    @Suppress("LongParameterList") // one parameter per injected dependency
     fun provideTripRecorder(
         tripDao: TripDao,
         lastStateDao: LastStateDao,
         energyDataReader: EnergyDataReader,
         deadDetector: com.bydmate.app.data.local.EnergyDataDeadDetector,
         settingsRepository: SettingsRepository,
+        vehicleKindMonitor: com.bydmate.app.data.nativestack.VehicleKindMonitor,
     ): TripRecorder = TripRecorder(
         tripDao = tripDao,
         lastStateDao = lastStateDao,
         energyDataReader = energyDataReader,
         deadDetector = deadDetector,
         batteryCapacityKwh = { settingsRepository.getBatteryCapacity() },
+        kind = { vehicleKindMonitor.kind.value },
     )
 
     @Provides
@@ -520,21 +634,30 @@ object AppModule {
     fun provideBackupManager(
         @ApplicationContext ctx: Context,
         db: AppDatabase,
+        strings: com.bydmate.app.util.AppStrings,
     ): BackupManager = BackupManager(
         context = ctx,
         appDatabase = db,
-        prefsFileNames = listOf(
-            "bydmate_locale",
-            "bydmate_widget",
-            "cluster_projection",
-            "automation",
-            "update_prefs",
-            "bydmate_range_prefs",
-            // Durable user voice/agent settings (AC-03). Deliberately NOT included:
-            // energydata_sync / energydata_liveness / seat_channel / window_channel —
-            // per-device learned state that must not migrate to another car.
-            "voice",
-        )
+        strings = strings,
+        prefsFileNames = BackupManager.PREFS_FILES,
+        excludedPrefsKeys = BackupManager.EXCLUDED_PREFS_KEYS,
+    )
+
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList")
+    fun providePostRestoreCheck(
+        @ApplicationContext ctx: Context,
+        settingsRepository: SettingsRepository,
+        helperBootstrap: com.bydmate.app.data.vehicle.HelperBootstrap,
+        helperClient: com.bydmate.app.data.vehicle.HelperClient,
+        gigaAmModelManager: com.bydmate.app.voice.GigaAmModelManager,
+        ttsModelManager: com.bydmate.app.voice.TtsModelManager,
+    ): com.bydmate.app.data.backup.PostRestoreCheck = com.bydmate.app.data.backup.PostRestoreCheck(
+        state = ctx.getSharedPreferences(com.bydmate.app.data.backup.PostRestoreCheck.PREFS_NAME, Context.MODE_PRIVATE),
+        probes = com.bydmate.app.data.backup.AndroidPostRestoreProbes(
+            ctx, settingsRepository, helperBootstrap, helperClient, gigaAmModelManager, ttsModelManager,
+        ),
     )
 
     @Provides
@@ -545,6 +668,40 @@ object AppModule {
         @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
     ): com.bydmate.app.data.vehicle.HelperBootstrap =
         com.bydmate.app.data.vehicle.HelperBootstrap(adb, helper, context)
+
+    @Provides
+    @Singleton
+    fun provideAdbRestorePreferences(
+        @ApplicationContext ctx: Context,
+    ): com.bydmate.app.data.autoservice.AdbRestorePreferences =
+        com.bydmate.app.data.autoservice.AdbRestorePreferencesImpl(ctx)
+
+    /** Long-lived scope for ADB-restore retries — they must outlive the screen that started them. */
+    @Provides
+    @Singleton
+    @com.bydmate.app.data.autoservice.AdbRestoreScope
+    fun provideAdbRestoreScope(): kotlinx.coroutines.CoroutineScope =
+        kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+
+    @Provides
+    @Singleton
+    fun provideAdbRestoreSystem(
+        impl: com.bydmate.app.data.autoservice.AndroidAdbRestoreSystem,
+    ): com.bydmate.app.data.autoservice.AdbRestoreSystem = impl
+
+    @Provides
+    @Singleton
+    fun provideCloudOverWifiPreferences(
+        @ApplicationContext ctx: Context,
+    ): com.bydmate.app.data.autoservice.CloudOverWifiPreferences =
+        com.bydmate.app.data.autoservice.CloudOverWifiPreferencesImpl(ctx)
+
+    @Provides
+    @Singleton
+    fun provideCloudOverWifiSystem(
+        impl: com.bydmate.app.data.autoservice.AndroidCloudOverWifiSystem,
+    ): com.bydmate.app.data.autoservice.CloudOverWifiSystem = impl
 
     @Provides
     @Singleton

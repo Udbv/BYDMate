@@ -1,5 +1,6 @@
 package com.bydmate.app.hud
 
+import com.bydmate.app.diagnostics.TraceRecorder
 import com.bydmate.app.navdata.NavGuidance
 import com.bydmate.app.navdata.NavGuidanceHub
 import org.junit.Assert.assertArrayEquals
@@ -8,6 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -26,6 +28,8 @@ class HudPushLoopTest {
             return nextRc
         }
     }
+
+    @get:Rule val trace = TraceRecorder()
 
     @Before fun reset() = NavGuidanceHub.reset()
 
@@ -221,5 +225,75 @@ class HudPushLoopTest {
         assertEquals(2L, loop.framesSent)
         assertEquals(-5, loop.lastRc)
         assertEquals(1L, loop.nonZeroRcCount)
+    }
+
+    @Test fun `an idle loop records why nothing is going out`() {
+        // A whole drive once produced not one line from this loop: an inactive hub returned
+        // silently, so afterwards "we never pushed" and "we pushed then stopped" were
+        // indistinguishable. The idle branch must speak, on a cadence, with a reason.
+        val recorded = mutableListOf<String>()
+        val context: android.content.Context =
+            androidx.test.core.app.ApplicationProvider.getApplicationContext()
+        com.bydmate.app.diagnostics.TripDebugLog.setEnabled(context, true)
+        try {
+            val sink = FakeSink()
+            val loop = HudPushLoop(sink, nowMsProvider = { 1000L })
+
+            // First idle tick speaks; the ones right behind it stay quiet.
+            assertFalse(loop.tick(wasActive = false))
+            repeat(20) { assertFalse(loop.tick(wasActive = false)) }
+            com.bydmate.app.diagnostics.TripDebugLog.drain()
+            val text = com.bydmate.app.diagnostics.TripDebugLog.files(context)
+                .firstOrNull()?.readText().orEmpty()
+            recorded += text.lines().filter { it.contains("idle:") }
+
+            assertEquals("exactly one idle line per cadence window", 1, recorded.size)
+            assertTrue(
+                "the line must name a reason, not just say idle: ${recorded.first()}",
+                recorded.first().length > "HUD idle: ".length + 10,
+            )
+            assertTrue(sink.events.isEmpty())
+        } finally {
+            com.bydmate.app.diagnostics.TripDebugLog.endTrip("test")
+            com.bydmate.app.diagnostics.TripDebugLog.setEnabled(context, false)
+            com.bydmate.app.diagnostics.TripDebugLog.files(context).forEach { it.delete() }
+        }
+    }
+
+    @Test fun `the idle reason names the missing piece`() {
+        // NavA11yFeed disabled is the state a HUD-off car is in; the text must say so rather
+        // than leave the reader guessing which of four things went wrong.
+        com.bydmate.app.navdata.NavA11yFeed.enabled = false
+        assertTrue(
+            com.bydmate.app.navdata.NavA11yFeed.idleReason(1000L).contains("disabled"),
+        )
+    }
+
+    // --- trace audit: frames into the route summary, the street's script on change ---
+
+    @Test fun `frames and their rc go to the route summary`() {
+        activeHub(nowMs = 1000L)
+        val sink = FakeSink()
+        val loop = HudPushLoop(sink, nowMsProvider = { 1000L })
+        loop.tick(wasActive = false)
+        sink.nextRc = -5
+        loop.tick(wasActive = true)
+        assertTrue(NavGuidanceHub.routeSummary(nowMs = 1000L).contains(" frames=2 rc={-5:1,0:1} "))
+    }
+
+    @Test fun `the frame street's script class is traced when it changes, never the street`() {
+        val loop = HudPushLoop(FakeSink(), nowMsProvider = { 1000L })
+        fun street(road: String) {
+            NavGuidanceHub.update(NavGuidance(maneuverGaode = 2, distanceMeters = 250, road = road), NavGuidanceHub.Source.A11Y, nowMs = 1000L)
+            loop.tick(wasActive = true)
+        }
+        street("ул. Ленина")
+        street("ул. Ленина")
+        street("пр. Победителей")                      // same class: no line
+        street("长安街")
+        val roads = trace.events().filter { it.contains(" road ") }
+        assertEquals(2, roads.size)
+        assertTrue(roads[0], roads[0].contains("road chan=someip script=cyrillic len=10"))
+        assertTrue(roads[1], roads[1].contains("road chan=someip script=other len=3"))
     }
 }

@@ -16,11 +16,10 @@ data class SeatCommand(val group: SeatGroup, val level: Int)
  * Crowd validation strategy: actions not present here OR not in WriteAllowlist will
  * fail-soft at dispatch(). User files issue → we add the mapping in a follow-up.
  *
- * Window aggregates (车窗全开/关闭/半开/通风, 前排/后排车窗全开/关闭) and individual rear
- * windows (后左/后右打开{n}) fan out to the validated per-door % fids — see the
- * [composite] map. The competitor "aggregate" fids all target the driver
- * short-form fid (1125122104) and the rear short-form fids are no-ops on
- * Leopard 3, so the % path is the only reliable channel.
+ * Window aggregates (车窗全开/关闭/半开/通风, 前排/后排车窗全开/关闭/半开/通风) fan out per door —
+ * see the [composite] map — because the competitor "aggregate" fids all target the
+ * driver short-form fid (1125122104). Full open / full close use the per-door
+ * open/close fids; half, vent and explicit percentages use the per-door % fids.
  *
  * Interior/cabin light (打开/关闭车内灯), ambient light (氛围灯打开/关闭), DRL
  * (打开/关闭日行灯) and mirror heat = rear-window defrost (后视镜加热/关闭后视镜加热)
@@ -28,12 +27,12 @@ data class SeatCommand(val group: SeatGroup, val level: Int)
  * BYDAutoSettingDevice. dev=1023/1004 are carved out per-fid in WriteAllowlist.
  * All four groups validated on Leopard 3 2026-05-29 (write+readback snap).
  *
- * DROPPED: commands whose action_name either has no allowlist entry or targets
- * a banned dev namespace —
- *   ECO模式                                — drive mode write targets dev=1006 (BANNED).
- *                                            Default rule "Эко при низком заряде" is
- *                                            shipped disabled; if user enables it the
- *                                            dispatch fails-soft via AllowlistMiss.
+ * Drive modes (ECO模式 = the old D+ string, 普通模式, 运动模式, 雪地模式 …) write the
+ * dev=1023 SETTING_PRESELECTED_DRIVING_MODE_SET carve-out, not the banned dev=1006 energy
+ * fid (accepted and ignored on Leopard 3). VehicleApiImpl routes them through
+ * DriveModeChannel (support flag, flotation refusal, target readback); the >15 km/h gate
+ * for terrain modes lives in ActionDispatcher. The starter rule «Эко при низком заряде»
+ * ships again with ECO模式 (#253).
  *
  * Values for competitor-sourced entries verified against competitor-actions.json
  * (app/src/main/assets/competitor-actions.json). See value comments below.
@@ -42,15 +41,20 @@ object CommandTranslator {
     data class Resolved(val actionName: String, val value: Int)
 
     private val table: Map<String, Resolved> = mapOf(
-        // ── Windows (individual %, 0..100) ── LIVE_VALIDATED ──────────────────
-        "主驾打开100" to Resolved("window_driver_pos",      100),
-        "主驾打开0"   to Resolved("window_driver_pos",        0),
-        "副驾打开100" to Resolved("window_passenger_pos",   100),
-        "副驾打开0"   to Resolved("window_passenger_pos",     0),
-        "后左打开100" to Resolved("window_rear_left_pos",   100),
-        "后左打开0"   to Resolved("window_rear_left_pos",     0),
-        "后右打开100" to Resolved("window_rear_right_pos",  100),
-        "后右打开0"   to Resolved("window_rear_right_pos",    0),
+        // ── Windows (full open / full close) ── dedicated open/close fids ─────
+        // "Open" and "close" are their own commands on the car, not the positions
+        // 100% and 0%: the percent family is accepted (status=1) but moves nothing on
+        // DiLink 3.0 (Yuan Plus / Song PRO, issue #64), while the open/close fids are
+        // the family both generations share. Any OTHER aperture (vent, half, an
+        // explicit percentage) still goes out on the percent path below.
+        "主驾打开100" to Resolved("window_driver_open",      1),
+        "主驾打开0"   to Resolved("window_driver_close",     2),
+        "副驾打开100" to Resolved("window_passenger_open",   1),
+        "副驾打开0"   to Resolved("window_passenger_close",  2),
+        "后左打开100" to Resolved("window_rear_left_open",   1),
+        "后左打开0"   to Resolved("window_rear_left_close",  2),
+        "后右打开100" to Resolved("window_rear_right_open",  1),
+        "后右打开0"   to Resolved("window_rear_right_close", 2),
 
         // ── Windows (vent, individual) ── crack one window to VENT_PCT via the
         // validated % path. The all-window vent (车窗通风) is a composite fan-out
@@ -61,10 +65,17 @@ object CommandTranslator {
         "后左通风" to Resolved("window_rear_left_pos",  VENT_PCT),
         "后右通风" to Resolved("window_rear_right_pos", VENT_PCT),
 
+        // ── Windows (half, individual) ── the 50 % detent on the same validated %
+        // path as vent. Only 全开/关闭 use the dedicated open/close fids above. ───
+        "主驾半开" to Resolved("window_driver_pos",     HALF_PCT),
+        "副驾半开" to Resolved("window_passenger_pos",  HALF_PCT),
+        "后左半开" to Resolved("window_rear_left_pos",  HALF_PCT),
+        "后右半开" to Resolved("window_rear_right_pos", HALF_PCT),
+
         // ── Climate ── LIVE_VALIDATED (ac_on/ac_off/ac_cycle_*/ac_auto_*) ──────
         // ac_power fid 501219364: 0=off, 1=on (LIVE 2026-07-03, both directions
         // physically confirmed in-car). 设置温度<N> resolves dynamically over
-        // 16..30 in resolve(), so there are no per-temperature entries here (the
+        // 16..33 in resolve(), so there are no per-temperature entries here (the
         // old 18/20/22/25-only table missed every other value).
         "自动空调"    to Resolved("ac_on",         1),  // LIVE 2026-07-03: ac_power fid, 1=on
         "关闭空调"    to Resolved("ac_off",        0),  // LIVE 2026-07-03: ac_power fid, 0=off
@@ -78,6 +89,15 @@ object CommandTranslator {
         "打开空调通风" to Resolved("ac_flow_only_on",   1),  // competitor val=1
         "吹前挡"      to Resolved("defrost_front_on",  1),  // competitor val=1
         "关闭吹前挡"  to Resolved("defrost_front_off", 0),  // competitor val=0
+
+        // ── Climate ── blow direction (ac_wind_mode, dev=1000) ────────────────
+        // Labels taken verbatim from D+ (空调出风模式 enum, indices 1..5); 除霜 is
+        // deliberately distinct from 吹前挡 above, which drives a different fid.
+        "吹面"     to Resolved("ac_wind_mode", 1),
+        "吹面吹脚" to Resolved("ac_wind_mode", 2),
+        "吹脚"     to Resolved("ac_wind_mode", 3),
+        "吹脚除霜" to Resolved("ac_wind_mode", 4),
+        "除霜"     to Resolved("ac_wind_mode", 5),
 
         // ── Locks ── LIVE_VALIDATED ───────────────────────────────────────────
         "车门上锁"  to Resolved("doors_lock",   2),
@@ -98,7 +118,7 @@ object CommandTranslator {
 
         // ── Sunroof ── LIVE_VALIDATED ─────────────────────────────────────────
         "天窗打开100" to Resolved("sunroof_open",  1),  // full open
-        "天窗打开50"  to Resolved("sunroof_tilt",  3),  // tilt/half — LIVE val=3
+        "天窗打开50"  to Resolved("sunroof_tilt",  3),  // half-open slide — LIVE val=3 (not a tilt, 2026-07-30; tilt is 天窗通风 = 5)
         "天窗打开0"   to Resolved("sunroof_close", 2),
 
         // ── Sunroof extra positions ── allowlist sunroof_stop/updip/comfort vals 4/5/6
@@ -130,6 +150,36 @@ object CommandTranslator {
         // ── Mirror heat = rear-window defrost ── LIVE_VALIDATED (dev=1000) ────
         "后视镜加热"   to Resolved("defrost_rear_on",  1),
         "关闭后视镜加热" to Resolved("defrost_rear_off", 0),
+
+        // ── Steering wheel heat ── CANDIDATE (dev=1023 carve-out, 2=on / 1=off) ──
+        // VehicleApiImpl routes both through SteeringHeatChannel (state readback +
+        // dev=1000 fallback) instead of a bare write.
+        "方向盘加热"   to Resolved("steering_heat_on",  2),
+        "关闭方向盘加热" to Resolved("steering_heat_off", 1),
+
+        // ── HUD master switch (#292) ── CANDIDATE (dev=1023 carve-out, 1=on / 2=off) ──
+        // VehicleApiImpl routes both through HudSwitchChannel (HUD presence check + status readback).
+        "打开抬头显示" to Resolved("hud_on",  1),
+        "关闭抬头显示" to Resolved("hud_off", 2),
+
+        // ── Battery warm-up (#311) ── CANDIDATE (dev=1009 carve-out, 1=on / 2=off) ──
+        // VehicleApiImpl routes both through BatteryPreheatChannel (the stock toggle's checks +
+        // status readback).
+        "打开电池预热" to Resolved("battery_preheat_on",  1),
+        "关闭电池预热" to Resolved("battery_preheat_off", 2),
+
+        // ── Drive mode ── dev=1023 carve-out, value = SETTING_PRESELECTED_DRIVING_MODE_SET ──
+        // Names follow BYD's voice assistant (切换<name>成功); ECO模式 is the D+ string older
+        // installs still carry in their rules.
+        "ECO模式"  to Resolved("drive_mode_eco",      2),
+        "普通模式" to Resolved("drive_mode_normal",   1),
+        "运动模式" to Resolved("drive_mode_sport",    3),
+        "雪地模式" to Resolved("drive_mode_snow",     4),
+        "沙地模式" to Resolved("drive_mode_sand",     5),
+        "泥地模式" to Resolved("drive_mode_mud",      6),
+        "山地模式" to Resolved("drive_mode_mountain", 7),
+        "岩石模式" to Resolved("drive_mode_rock",     8),
+        "智能模式" to Resolved("drive_mode_smart",    21),
     )
 
     /** Fridge temperature presets fan out to [fridge_mode, fridge_temp_*]. Cooling raw
@@ -143,23 +193,31 @@ object CommandTranslator {
      * Composite commands fan out to several validated per-door % writes. All four
      * window fids (driver/passenger/rear-left/rear-right *_pos) are LIVE_VALIDATED.
      */
-    private fun allWindows(pct: Int): List<Resolved> = listOf(
-        Resolved("window_driver_pos", pct),
-        Resolved("window_passenger_pos", pct),
-        Resolved("window_rear_left_pos", pct),
-        Resolved("window_rear_right_pos", pct),
-    )
+    private fun windowsPct(pct: Int, vararg doors: String): List<Resolved> =
+        doors.map { Resolved("window_${it}_pos", pct) }
+    private fun allWindows(pct: Int): List<Resolved> =
+        windowsPct(pct, "driver", "passenger", "rear_left", "rear_right")
+
+    /** Full open / full close of a door set — the dedicated open/close fids, not 100%/0%. */
+    private fun windowsOpen(vararg doors: String): List<Resolved> =
+        doors.map { Resolved("window_${it}_open", 1) }
+    private fun windowsClose(vararg doors: String): List<Resolved> =
+        doors.map { Resolved("window_${it}_close", 2) }
 
     private val composite: Map<String, List<Resolved>> = buildMap {
-        // ── Windows ── fan out to validated per-door % fids ───────────────────
-        put("车窗全开", allWindows(100))
-        put("车窗关闭", allWindows(0))
-        put("车窗半开", allWindows(50))
+        // ── Windows ── fan out per door: open/close fids for 全开/关闭, % fids otherwise ─
+        put("车窗全开", windowsOpen("driver", "passenger", "rear_left", "rear_right"))
+        put("车窗关闭", windowsClose("driver", "passenger", "rear_left", "rear_right"))
+        put("车窗半开", allWindows(HALF_PCT))
         put("车窗通风", allWindows(VENT_PCT))
-        put("前排车窗全开", listOf(Resolved("window_driver_pos", 100), Resolved("window_passenger_pos", 100)))
-        put("前排车窗关闭", listOf(Resolved("window_driver_pos", 0), Resolved("window_passenger_pos", 0)))
-        put("后排车窗全开", listOf(Resolved("window_rear_left_pos", 100), Resolved("window_rear_right_pos", 100)))
-        put("后排车窗关闭", listOf(Resolved("window_rear_left_pos", 0), Resolved("window_rear_right_pos", 0)))
+        put("前排车窗全开", windowsOpen("driver", "passenger"))
+        put("前排车窗关闭", windowsClose("driver", "passenger"))
+        put("后排车窗全开", windowsOpen("rear_left", "rear_right"))
+        put("后排车窗关闭", windowsClose("rear_left", "rear_right"))
+        put("前排车窗半开", windowsPct(HALF_PCT, "driver", "passenger"))
+        put("前排车窗通风", windowsPct(VENT_PCT, "driver", "passenger"))
+        put("后排车窗半开", windowsPct(HALF_PCT, "rear_left", "rear_right"))
+        put("后排车窗通风", windowsPct(VENT_PCT, "rear_left", "rear_right"))
         // ── Fridge temperature presets ── mode + setpoint (dev=1023) ──────────
         put("冰箱制冷-6度", fridgeCool(-6))
         put("冰箱制冷-3度", fridgeCool(-3))
@@ -183,7 +241,8 @@ object CommandTranslator {
         composite[stripped]?.let { return it }
         table[stripped]?.let { return listOf(it) }
         // Dynamic temperature: 设置温度<N> → ac_temp_main, clamped to the validated
-        // 16..30 window (allowlist range-gates it anyway; clamping is friendlier).
+        // 16..33 window (allowlist range-gates it anyway; clamping is friendlier).
+        // 16 is Leopard 3's minimum; 33 is the Seagull maximum (2026-10-06).
         TEMP_REGEX.matchEntire(stripped)?.let { m ->
             val celsius = m.groupValues[1].toInt().coerceIn(TEMP_MIN, TEMP_MAX)
             return listOf(Resolved("ac_temp_main", celsius))
@@ -196,9 +255,21 @@ object CommandTranslator {
             val c = m.groupValues[1].toIntOrNull() ?: return emptyList()
             return fridgeCool(c.coerceIn(FRIDGE_COOL_MIN, FRIDGE_COOL_MAX))
         }
+        // Dynamic fan speed: 风量<N> → ac_wind_level, clamped to 1..7 (#201).
+        FAN_REGEX.matchEntire(stripped)?.let { m ->
+            val level = m.groupValues[1].toInt().coerceIn(FAN_MIN, FAN_MAX)
+            return listOf(Resolved("ac_wind_level", level))
+        }
         FRIDGE_HEAT_REGEX.matchEntire(stripped)?.let { m ->
             val c = m.groupValues[1].toIntOrNull() ?: return emptyList()
             return fridgeHeat(c.coerceIn(FRIDGE_HEAT_MIN, FRIDGE_HEAT_MAX))
+        }
+        // Dynamic window position: <door>打开<N> → window_<door>_pos for the canonical 1..99 only
+        // (the automation level row, step 10). 打开0 / 打开100 are the table's dedicated close /
+        // open fids. No clamp: 打开150 or 打开0100 stay unknown, because the speed gate
+        // (ActionDispatcher.isWindowOpenCommand) does not take them for an open either.
+        WINDOW_POS_REGEX.matchEntire(stripped)?.let { m ->
+            return windowsPct(m.groupValues[2].toInt(), WINDOW_DOORS.getValue(m.groupValues[1]))
         }
         return emptyList()
     }
@@ -206,7 +277,12 @@ object CommandTranslator {
     // Dynamic temperature command: 设置温度<N> (e.g. 设置温度24). Range-clamped in resolve().
     private val TEMP_REGEX = Regex("""设置温度(\d+)""")
     private const val TEMP_MIN = 16
-    private const val TEMP_MAX = 30
+    private const val TEMP_MAX = 33
+
+    // Dynamic fan speed command: 风量<N> (e.g. 风量3). Range-clamped in resolve().
+    private val FAN_REGEX = Regex("""风量(\d+)""")
+    private const val FAN_MIN = 1
+    private const val FAN_MAX = 7
 
     // Dynamic fridge commands: 冰箱制冷<N>度 (cool, C in -6..6) / 冰箱制热<N>度 (heat, 35..50).
     private val FRIDGE_COOL_REGEX = Regex("""冰箱制冷(-?\d+)度""")
@@ -216,12 +292,20 @@ object CommandTranslator {
     private const val FRIDGE_HEAT_MIN = 35
     private const val FRIDGE_HEAT_MAX = 50
 
+    // Dynamic per-door window position: 主驾打开30 (door prefix + percent 1..99, no leading zero).
+    private val WINDOW_POS_REGEX = Regex("""(主驾|副驾|后左|后右)打开([1-9]\d?)""")
+    private val WINDOW_DOORS = mapOf("主驾" to "driver", "副驾" to "passenger", "后左" to "rear_left", "后右" to "rear_right")
+
     // Vent = crack windows to this aperture % (validated per-door % path). Small
     // opening for fresh air; tune from user feedback. Stays under the >80 km/h gate.
     private const val VENT_PCT = 10
 
+    // Half = the 50 % detent, the only aperture between vent and full open that
+    // voice and the agent expose (arbitrary percentages are not offered).
+    private const val HALF_PCT = 50
+
     /** Action names produced only by dynamic resolution (absent from [table]). */
-    private val DYNAMIC_ACTIONS = setOf("ac_temp_main")
+    private val DYNAMIC_ACTIONS = setOf("ac_temp_main", "ac_wind_level")
 
     /** Set of all action_names referenced by this translator. Used by invariant test. */
     fun allActions(): Set<String> =

@@ -9,6 +9,7 @@ enum class BlindSpotSide { NONE, LEFT, RIGHT }
  * [blink] is the raw turn-signal mask (fid 950009900, live Leopard 3 2026-07-31):
  * 1=off, 2=left, 4=right, 6=hazard; null when the read failed.
  * [telemetryAgeMs] is the age of the last snapshot where all three signals read cleanly.
+ * [nativeCameraForeground] is true while the BYD camera surface (com.byd.avc) holds the screen.
  */
 data class BlindSpotInput(
     val blink: Int?,
@@ -16,19 +17,22 @@ data class BlindSpotInput(
     val gearIsReverse: Boolean,
     val thresholdKmh: Int,
     val telemetryAgeMs: Long,
+    val nativeCameraForeground: Boolean,
 )
 
 data class BlindSpotDecision(
     val show: BlindSpotSide,
-    /** Keep the AVM camera open (previews bound, windows at alpha 0) so a show is instant. */
+    /** A turn signal asks for a view: open the AVM camera (or keep it open). The camera is opened
+     *  on demand, never ahead of a signal; once this goes false the controller closes it after
+     *  its cool-down, so a blinker pulled again inside it reuses the open camera. */
     val cameraWarm: Boolean,
 )
 
 /** Beyond this the telemetry is not trusted and both windows go down. */
 const val BLIND_SPOT_WATCHDOG_MS = 750L
 
-/** The camera stays warm this far below the show threshold, so slowing down does not
- *  flap the open/close of the vendor stack. */
+/** The fast loop is armed this far below the show threshold, so slowing down does not
+ *  flap the loop on and off. */
 const val BLIND_SPOT_WARM_HYSTERESIS_KMH = 5
 
 /**
@@ -36,22 +40,38 @@ const val BLIND_SPOT_WARM_HYSTERESIS_KMH = 5
  * the screens there, so the pipeline fully closes. Stale telemetry only hides the window —
  * cooling the camera down is the controller's job (it holds the 10 s timer), and doing it here
  * would tear the stack down on a single missed read.
+ *
+ * The factory 360 view owns the screen while it is up (it pops up on its own below 15 km/h and
+ * goes away above 30 km/h on some cars), so our windows would only overlap it: they go down for
+ * as long as it is in the foreground, and the camera goes cold with them. A warm camera under it
+ * kept two previews streaming and the 360 stuttered until BYDMate was killed (tester dump
+ * 2026-10-03); once the 360 is gone a held blinker opens the camera again, as after reverse.
+ *
+ * The camera is wanted only while a single-side turn signal is on at speed: holding it open
+ * ahead of time at every speed above the threshold loaded the head unit (a tester's lagged with
+ * our camera running alongside other video). Stale telemetry does not cool it — that is the
+ * watchdog's job in the controller.
  */
 fun decideBlindSpot(input: BlindSpotInput): BlindSpotDecision {
     val speed = input.speedKmh
-    val warm = !input.gearIsReverse && speed != null &&
-        speed >= input.thresholdKmh - BLIND_SPOT_WARM_HYSTERESIS_KMH
+    val warm = !input.gearIsReverse && !input.nativeCameraForeground && speed != null &&
+        speed >= input.thresholdKmh && blindSpotSignalSide(input.blink) != BlindSpotSide.NONE
     val show = when {
         input.gearIsReverse -> BlindSpotSide.NONE
         input.telemetryAgeMs > BLIND_SPOT_WATCHDOG_MS -> BlindSpotSide.NONE
+        input.nativeCameraForeground -> BlindSpotSide.NONE
         speed == null || speed < input.thresholdKmh -> BlindSpotSide.NONE
-        // Anything outside the two single-side masks (off, hazard, the transient 9 seen on
-        // the push channel) means "no blind-spot view".
-        input.blink == BLINK_LEFT -> BlindSpotSide.LEFT
-        input.blink == BLINK_RIGHT -> BlindSpotSide.RIGHT
-        else -> BlindSpotSide.NONE
+        else -> blindSpotSignalSide(input.blink)
     }
     return BlindSpotDecision(show, warm)
+}
+
+/** The side a turn-signal mask asks for. Anything outside the two single-side masks (off,
+ *  hazard, the transient 9 seen on the push channel) means "no blind-spot view". */
+fun blindSpotSignalSide(blink: Int?): BlindSpotSide = when (blink) {
+    BLINK_LEFT -> BlindSpotSide.LEFT
+    BLINK_RIGHT -> BlindSpotSide.RIGHT
+    else -> BlindSpotSide.NONE
 }
 
 private const val BLINK_LEFT = 2
@@ -68,6 +88,19 @@ const val BLIND_SPOT_GEAR_REVERSE = 2
 fun blindSpotArmed(enabled: Boolean, gear: Int?, speedKmh: Int?, thresholdKmh: Int): Boolean =
     enabled && gear != BLIND_SPOT_GEAR_REVERSE && speedKmh != null &&
         speedKmh >= thresholdKmh - BLIND_SPOT_WARM_HYSTERESIS_KMH
+
+/**
+ * Human-readable reason [blindSpotArmed] is false, for the dump: which of the three gates
+ * (switch, gear, speed) is holding the pipeline down, or "ok" once armed.
+ */
+fun blindSpotArmedReason(enabled: Boolean, gear: Int?, speedKmh: Int?, thresholdKmh: Int): String = when {
+    !enabled -> "disabled"
+    gear == BLIND_SPOT_GEAR_REVERSE -> "reverse"
+    speedKmh == null -> "no speed"
+    speedKmh < thresholdKmh - BLIND_SPOT_WARM_HYSTERESIS_KMH ->
+        "speed $speedKmh < ${thresholdKmh - BLIND_SPOT_WARM_HYSTERESIS_KMH}"
+    else -> "ok"
+}
 
 /** A shown window whose vendor stream has been silent this long is frozen, not idle. */
 const val BLIND_SPOT_STALL_MS = 1_500L
@@ -118,7 +151,10 @@ const val BLIND_SPOT_MAX_READ_FAILURES = 2
 class BlindSpotTelemetryGate {
     private var lastValidAt = 0L
     private var armedAt = 0L
-    private var readFailures = 0
+
+    /** Batch reads that failed in a row; read by the controller for the loss log line. */
+    var readFailures = 0
+        private set
     private var lastValid: BlindSpotSample? = null
 
     /** Called when the loop starts, so the lost-telemetry timer counts from the arming point. */
@@ -148,10 +184,47 @@ class BlindSpotTelemetryGate {
     }
 }
 
+/** Screen a blind-spot camera window goes to. */
+enum class BlindSpotScreen { MAIN, CLUSTER }
+
 /**
- * Where the left camera goes: a mirrored window on the main screen next to the right PiP, or the
- * cluster panel. Cars without a projection display have no choice; [bothOnMain] is the user opt-in
- * (#183) for the drivers whose cluster is better left alone.
+ * Where [side]'s camera goes. With a cluster panel the default is left on the cluster (that is
+ * where the driver looks before a left lane change) and right on the main screen; [bothOnMain]
+ * (#183) keeps both on the main screen for the drivers whose cluster is better left alone,
+ * [bothOnCluster] (#240) puts both on the cluster and leaves the main screen free. The settings
+ * card keeps the two opt-ins exclusive; should both be set anyway, [bothOnMain] wins, since it
+ * never touches the cluster compositor. Cars without a projection display have no choice.
  */
-fun blindSpotUsesMirror(bothOnMain: Boolean, hasClusterDisplay: Boolean): Boolean =
-    bothOnMain || !hasClusterDisplay
+fun blindSpotScreen(
+    side: BlindSpotSide,
+    bothOnMain: Boolean,
+    bothOnCluster: Boolean,
+    hasClusterDisplay: Boolean,
+): BlindSpotScreen = when {
+    !hasClusterDisplay || bothOnMain -> BlindSpotScreen.MAIN
+    bothOnCluster || side == BlindSpotSide.LEFT -> BlindSpotScreen.CLUSTER
+    else -> BlindSpotScreen.MAIN
+}
+
+/** The rule [blindSpotScreen] routed by, for the log. */
+fun blindSpotRoutingReason(bothOnMain: Boolean, bothOnCluster: Boolean, hasClusterDisplay: Boolean): String =
+    when {
+        !hasClusterDisplay -> "no_cluster_display"
+        bothOnMain -> "both_on_main"
+        bothOnCluster -> "both_on_cluster"
+        else -> "default"
+    }
+
+/**
+ * Whether the shown window covers the main screen, where the floating widget lives: each side
+ * only while its window sits there ([blindSpotScreen]) rather than on the cluster panel.
+ */
+fun blindSpotCoversMainScreen(
+    side: BlindSpotSide,
+    leftOnMainScreen: Boolean,
+    rightOnMainScreen: Boolean,
+): Boolean = when (side) {
+    BlindSpotSide.LEFT -> leftOnMainScreen
+    BlindSpotSide.RIGHT -> rightOnMainScreen
+    BlindSpotSide.NONE -> false
+}

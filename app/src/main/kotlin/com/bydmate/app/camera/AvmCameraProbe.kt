@@ -1,51 +1,149 @@
 package com.bydmate.app.camera
 
+import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
+import com.bydmate.app.diagnostics.Trace
+import com.bydmate.app.diagnostics.TraceArea
+import dalvik.system.PathClassLoader
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.io.File
 import java.lang.reflect.Proxy
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/** Separators a firmware packs several camera tags into one string with. */
+private val TAG_SEPARATORS = Regex("[,;|\\s]+")
+
+/** Decoration around a tag in such a string: "[pano_h, front]" is a list, not a tag named "[pano_h". */
+private const val TAG_TRIM_CHARS = "[]{}()\"'"
+
+/**
+ * Camera tags as the firmware reports them, in whatever shape getValidCameraTag answers with:
+ * a separated string, an array, a collection or a single value. Distinct, order preserved.
+ */
+internal fun parseCameraTags(raw: Any?): List<String> {
+    val parts = when (raw) {
+        null -> emptyList()
+        is String -> raw.split(TAG_SEPARATORS)
+        is Array<*> -> raw.mapNotNull { it?.toString() }
+        is Collection<*> -> raw.mapNotNull { it?.toString() }
+        else -> listOf(raw.toString())
+    }
+    return parts.map { part -> part.trim { it.isWhitespace() || it in TAG_TRIM_CHARS } }
+        .filter { it.isNotBlank() }
+        .distinct()
+}
 
 /**
  * Reflection access to the hidden android.hardware.AVMCamera stack.
  * Sequence ported from the donor repo; every call is logged verbatim under the CameraProbe tag.
+ * The trace gets the camera's lifetime (open, close and why) and the vendor events in between,
+ * so the time our process held the camera can be laid against what the car reported.
  */
-class AvmCameraProbe {
+class AvmCameraProbe(
+    private val clock: () -> Long = System::currentTimeMillis,
+    /** Class lookup; a null loader means the app's own class path. */
+    private val classLookup: (String, ClassLoader?) -> Class<*> = { name, loader ->
+        if (loader == null) Class.forName(name) else Class.forName(name, true, loader)
+    },
+    private val jarExists: (String) -> Boolean = { File(it).exists() },
+    /** Public API, no optimized dir to provide; the app loader as parent keeps our own classes. */
+    private val jarLoader: (String) -> ClassLoader = { PathClassLoader(it, AvmCameraProbe::class.java.classLoader) },
+) {
     private val _log = MutableStateFlow<List<String>>(emptyList())
     val log: StateFlow<List<String>> = _log.asStateFlow()
+    private val stamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
 
     private var camera: Any? = null
     /** Preview index → surface currently bound to the open camera; close() unbinds every entry. */
     private val bound = linkedMapOf<Int, Surface>()
     var cameraId: Int = -1; private set
 
+    /** Loader of the vendor jar the camera classes came from; null when they are on the class path. */
+    private var cameraLoader: ClassLoader? = null
+
+    /** The jar loader once created: a second one for the same jar would fail to load its native
+     *  libraries (ART binds a library to one loader) and initialise the vendor classes anew. */
+    private var jarClassLoader: ClassLoader? = null
+
+    /** Trace of the vendor events of the open session. */
+    private val events = AvmEventTrace()
+
+    /** Lines the LAST [discover] run wrote, for the dump; empty until one has run. */
+    var discoverJournal: List<String> = emptyList(); private set
+
+    /** elapsedRealtime of the last [discover] run — the same clock the fast loop measures its
+     *  re-discover cool-down on; 0 until one has run. */
+    var lastDiscoverAt: Long = 0L; private set
+
+    /**
+     * Looks the camera up, first under the tags this fleet is known to use, then under the tags
+     * the firmware itself reports: the known ones come from Leopard 3 / Sea Lion, and the other
+     * DiLink generations name their cameras differently (Song DiLink 4.0, 2026-09-18: none of the
+     * four answered). The known tags stay first so the cars that already work keep their path.
+     */
     fun discover(): Boolean {
-        return try {
-            val info = Class.forName("android.hardware.BmmCameraInfo")
-            val count = info.getMethod("getCameraNumbers").invoke(null)
-            append("getCameraNumbers=$count")
-            runCatching {
-                append("getValidCameraTag=${info.getMethod("getValidCameraTag").invoke(null)}")
-            }.onFailure { append("getValidCameraTag failed: $it") }
-            for (tag in CAMERA_TAGS) {
-                val id = (info.getMethod("getCameraId", String::class.java)
-                    .invoke(null, tag) as Number).toInt()
-                append("getCameraId($tag)=$id")
-                if (id >= 0 && cameraId < 0) {
-                    cameraId = id
-                    runCatching {
-                        val w = info.getMethod("getDefaultPreviewWidth", Int::class.java).invoke(null, id)
-                        val h = info.getMethod("getDefaultPreviewHeight", Int::class.java).invoke(null, id)
-                        append("defaultPreview=${w}x$h")
-                    }
-                }
+        val journal = mutableListOf<String>()
+        val note: (String) -> Unit = { line -> journal += line; append(line) }
+        lastDiscoverAt = SystemClock.elapsedRealtime()
+        try {
+            val info = try {
+                classLookup(BMM_CAMERA_INFO, null).also { cameraLoader = null }
+            } catch (e: ClassNotFoundException) {
+                val reused = jarClassLoader
+                val loaderOnce: (String) -> ClassLoader = { reused ?: jarLoader(it).also { l -> jarClassLoader = l } }
+                val (jarInfo, loader) =
+                    cameraInfoFromJar(classLookup, jarExists, loaderOnce, reused != null, note) ?: throw e
+                cameraLoader = loader
+                jarInfo
             }
-            cameraId >= 0
+            val count = info.getMethod("getCameraNumbers").invoke(null)
+            note("getCameraNumbers=$count")
+            // Tags this firmware names its own cameras with; none when it will not say.
+            var firmwareTags = emptyList<String>()
+            runCatching {
+                val raw = info.getMethod("getValidCameraTag").invoke(null)
+                note("getValidCameraTag=$raw")
+                firmwareTags = parseCameraTags(raw)
+            }.onFailure { note("getValidCameraTag failed: $it") }
+            for (tag in CAMERA_TAGS) claimTag(info, tag, "", note)
+            if (cameraId < 0) sweepFirmwareTags(info, firmwareTags, note)
         } catch (e: Throwable) {
-            append("discover failed: ${e.javaClass.simpleName}: ${e.message}")
-            false
+            note("discover failed: ${e.javaClass.simpleName}: ${e.message}")
+        } finally {
+            discoverJournal = journal.toList()
         }
+        return cameraId >= 0
+    }
+
+    /** Second pass, for the cars the known tags do not cover; the first tag that answers wins. */
+    private fun sweepFirmwareTags(info: Class<*>, tags: List<String>, note: (String) -> Unit) {
+        for (tag in tags.filterNot { it in CAMERA_TAGS }) {
+            // One unknown tag the vendor stack refuses must not hide the ones after it.
+            val claimed = runCatching { claimTag(info, tag, " via firmware tag", note) }
+                .onFailure { note("getCameraId($tag) failed: $it") }
+                .getOrDefault(false)
+            if (claimed) break
+        }
+    }
+
+    /** Reads the id behind one tag; adopts it, with its default preview size, if it is the first. */
+    private fun claimTag(info: Class<*>, tag: String, suffix: String, note: (String) -> Unit): Boolean {
+        val id = (info.getMethod("getCameraId", String::class.java)
+            .invoke(null, tag) as Number).toInt()
+        note("getCameraId($tag)=$id$suffix")
+        if (id < 0 || cameraId >= 0) return false
+        cameraId = id
+        runCatching {
+            val w = info.getMethod("getDefaultPreviewWidth", Int::class.java).invoke(null, id)
+            val h = info.getMethod("getDefaultPreviewHeight", Int::class.java).invoke(null, id)
+            note("defaultPreview=${w}x$h")
+        }
+        return true
     }
 
     fun open(previewIndex: Int, surface: Surface): Boolean = openBound(mapOf(previewIndex to surface))
@@ -61,15 +159,19 @@ class AvmCameraProbe {
     private fun openBound(surfaces: Map<Int, Surface>): Boolean {
         if (cameraId < 0) {
             append("open: no camera id (run discover)")
+            traceOpen(cameraId, surfaces.keys, "no camera id")
             return false
         }
         if (surfaces.isEmpty()) {
             append("open: no surfaces to bind")
+            traceOpen(cameraId, surfaces.keys, "no surfaces")
             return false
         }
-        if (camera != null) close()
+        if (camera != null) close("reopen")
+        // A late event after the last close must not count as a repeat in this session.
+        events.end()
         return try {
-            val avm = Class.forName("android.hardware.AVMCamera")
+            val avm = classLookup("android.hardware.AVMCamera", cameraLoader)
             var opened = avm.getMethod("open", Int::class.java).invoke(null, cameraId)
             if (opened == null) {
                 append("static open returned null, trying constructor fallback")
@@ -83,7 +185,7 @@ class AvmCameraProbe {
             bound.clear()
             bound.putAll(surfaces)
 
-            val cbType = Class.forName("android.hardware.AVMCamera\$IEventCallback")
+            val cbType = classLookup("android.hardware.AVMCamera\$IEventCallback", cameraLoader)
             val proxy = Proxy.newProxyInstance(cbType.classLoader, arrayOf(cbType)) { p, m, args ->
                 // Vendor thread: nothing may escape into the framework.
                 try {
@@ -95,7 +197,11 @@ class AvmCameraProbe {
                             else -> null
                         }
                         m.name == "onEvent" && args != null && args.size >= 4 -> {
-                            append("avm event type=${args[1]} arg1=${args[2]} arg2=${args[3]}")
+                            // Dropped before any work: it comes once per frame on the vendor thread.
+                            if ((args[1] as? Number)?.toInt() != AVM_EVENT_FRAME) {
+                                append("avm event type=${args[1]} arg1=${args[2]} arg2=${args[3]}")
+                                events.onEvent(args[1], args[2], args[3])
+                            }
                             null
                         }
                         else -> {
@@ -126,14 +232,17 @@ class AvmCameraProbe {
             // will ever arrive on the surfaces, so close it instead of reporting a warm camera.
             if (!allBound || started == false) {
                 append("open rejected by the vendor stack; closing")
-                close()
+                traceOpen(cameraId, surfaces.keys, "rejected by the vendor stack")
+                close("open rejected")
                 false
             } else {
+                traceOpen(cameraId, surfaces.keys, null)
                 true
             }
         } catch (e: Throwable) {
             append("open failed: ${e.javaClass.simpleName}: ${rootMessage(e)}")
-            close()
+            traceOpen(cameraId, surfaces.keys, rootMessage(e))
+            close("open failed")
             false
         }
     }
@@ -143,9 +252,10 @@ class AvmCameraProbe {
      * a throwing stopPreview must not leave the surfaces bound or the handle open — and the
      * whole sequence is retried once if anything threw. Callers may release the surfaces only
      * after this returns, successfully or not: until then the vendor may still be writing.
+     * [reason] (the caller's teardown reason) goes to the trace with the result.
      */
     @Synchronized
-    fun close() {
+    fun close(reason: String) {
         val cam = camera ?: return
         val avm = cam.javaClass
         var firstError: Throwable? = null
@@ -172,17 +282,20 @@ class AvmCameraProbe {
         camera = null
         bound.clear()
         val err = firstError
-        append(when {
-            err == null -> "closed cleanly"
-            failed -> "close error after retry: ${rootMessage(err)}"
-            else -> "closed after retry (first error: ${rootMessage(err)})"
-        })
+        val (line, result) = when {
+            err == null -> "closed cleanly" to "clean"
+            failed -> "close error after retry: ${rootMessage(err)}" to "error"
+            else -> "closed after retry (first error: ${rootMessage(err)})" to "retry"
+        }
+        append(line)
+        events.end()
+        Trace.event(TraceArea.CAMERA, "close", "reason" to reason, "result" to result, "error" to err?.let { rootMessage(it) })
     }
 
     @Synchronized
     fun append(line: String) {
         Log.i(TAG, line)
-        _log.value = (_log.value + "${System.currentTimeMillis() % 100_000} $line").takeLast(300)
+        _log.value = (_log.value + "${stamp.format(Date(clock()))} $line").takeLast(300)
     }
 
     private fun openWithConstructor(avm: Class<*>): Any? {
@@ -203,3 +316,88 @@ class AvmCameraProbe {
         private const val TAG = "CameraProbe"
     }
 }
+
+private const val BMM_CAMERA_INFO = "android.hardware.BmmCameraInfo"
+
+/** Where firmwares without the camera classes on the class path keep them. */
+private val CAMERA_JARS = listOf("/system/framework/bmmcamera.jar")
+
+/**
+ * BmmCameraInfo from a vendor jar, for the firmwares that keep the camera classes off the class
+ * path (Yuan Up, DiLink 3.0, #299), with the loader it came from; null when no jar gives it.
+ */
+private fun cameraInfoFromJar(
+    lookup: (String, ClassLoader?) -> Class<*>,
+    jarExists: (String) -> Boolean,
+    jarLoader: (String) -> ClassLoader,
+    reused: Boolean,
+    note: (String) -> Unit,
+): Pair<Class<*>, ClassLoader>? {
+    val jar = CAMERA_JARS.firstOrNull(jarExists)
+    if (jar == null) {
+        note("bmmcamera.jar: not found")
+        return null
+    }
+    return runCatching { jarLoader(jar).let { lookup(BMM_CAMERA_INFO, it) to it } }
+        .onSuccess { note(if (reused) "bmmcamera.jar: reused" else "bmmcamera.jar: loaded") }
+        .onFailure { note("bmmcamera.jar: load failed: $it") }
+        .getOrNull()
+}
+
+/** One trace line per open attempt; [error] is null when the camera is warm. */
+private fun traceOpen(cameraId: Int, indexes: Collection<Int>, error: String?) {
+    Trace.event(
+        TraceArea.CAMERA, "open", "ok" to (error == null), "id" to cameraId,
+        "indexes" to indexes.joinToString(","), "error" to error,
+    )
+}
+
+/**
+ * The vendor events of one open session, for the trace: the per-frame one is left out, and a run
+ * of the same type is one line plus a count — a stack in trouble can repeat one event many times
+ * a second, and the trace holds 2000 lines. Events come on a vendor thread, [end] from close().
+ */
+private class AvmEventTrace {
+    private var type: Int? = null
+    private var repeats = 0
+
+    @Synchronized
+    fun onEvent(type: Any?, arg1: Any?, arg2: Any?) {
+        val code = (type as? Number)?.toInt() ?: return
+        if (code == AVM_EVENT_FRAME) return
+        if (code == this.type) {
+            repeats++
+            return
+        }
+        end()
+        this.type = code
+        Trace.event(TraceArea.CAMERA, "avm-event", "type" to code, "name" to AVM_EVENT_NAMES[code], "arg1" to arg1, "arg2" to arg2)
+    }
+
+    /** Closes the running type with the number of times it came again, if it did. */
+    @Synchronized
+    fun end() {
+        val code = type ?: return
+        if (repeats > 0) {
+            Trace.event(TraceArea.CAMERA, "avm-repeat", "type" to code, "name" to AVM_EVENT_NAMES[code], "n" to repeats)
+        }
+        type = null
+        repeats = 0
+    }
+}
+
+/** The vendor event for every delivered frame: far too many for the camera log and the trace. */
+private const val AVM_EVENT_FRAME = 1001
+
+/** Trace names of the vendor event types we know; any other is traced by its number. */
+private val AVM_EVENT_NAMES = mapOf(
+    1000 to "error",
+    1002 to "server-died",
+    1003 to "first-frame",
+    1005 to "gralloc-bad-buffer",
+    1006 to "no-camera-permission",
+    1007 to "dequeue-input-fail",
+    1008 to "preempted",
+    1009 to "device-free",
+    1010 to "hal-died",
+)

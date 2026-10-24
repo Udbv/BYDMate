@@ -10,7 +10,12 @@ import com.bydmate.app.data.local.dao.ChargeSummary
 import com.bydmate.app.data.local.entity.ChargeEntity
 import com.bydmate.app.data.repository.ChargeRepository
 import com.bydmate.app.data.repository.SettingsRepository
+import com.bydmate.app.domain.cost.CostCalculator
+import com.bydmate.app.domain.cost.TariffSchedule
+import com.bydmate.app.data.repository.equivalentFullCycles
+import com.bydmate.app.data.repository.fullCycleKwh
 import com.bydmate.app.domain.battery.BatteryStateRepository
+import com.bydmate.app.util.CalendarPeriods
 import com.bydmate.app.util.appLocalizedContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -64,10 +69,12 @@ data class ChargesUiState(
     val lifetimeAcKwh: Double = 0.0,
     val lifetimeDcKwh: Double = 0.0,
     val lifetimeTotalKwh: Double = 0.0,
-    val equivCycles: Double = 0.0,
     val nominalCapacityKwh: Double = 72.9,
     // BMS-reported SOH as a 0..1 factor; 1.0 when unavailable or implausible (#28)
     val sohFactor: Double = 1.0,
+    // Raw BMS SoH for the full-cycle divisor, as «Техника» passes it; fullCycleCapacityKwh
+    // alone decides whether it is usable (#224)
+    val sohPercent: Float? = null,
     val sohSeries: List<Float> = emptyList(),
     val capacitySeries: List<Float> = emptyList(),
     // BMS lifetime from autoservice — distinct from sum across our charge rows
@@ -79,11 +86,27 @@ data class ChargesUiState(
     val selectedChargeForAction: ChargeEntity? = null,
     val editingCharge: ChargeEntity? = null,
     val deleteConfirmCharge: ChargeEntity? = null,
-    val homeTariff: Double = 0.20,
-    val dcTariff: Double = 0.73,
+    /** Tariff periods, so the edit dialog prices a backdated session by the right rate. */
+    val tariffSchedule: TariffSchedule = TariffSchedule(emptyList()),
 ) {
     /** SOC→kWh conversions use the aged capacity, not the nominal one (#28). */
     val effectiveCapacityKwh: Double get() = nominalCapacityKwh * sohFactor
+
+    /**
+     * Full pack cycles, from the BMS lifetime counter when the car reports one and from our own
+     * charging sum otherwise — the same source the «Техника» screen divides, so the two screens
+     * cannot disagree. Derived rather than stored: the BMS read and the database sum land in
+     * this state from two independent coroutines, and whichever arrives last must be counted.
+     */
+    val equivCycles: Double
+        get() = fullCycleKwh(bmsLifetimeKwh, lifetimeTotalKwh)
+            ?.let {
+                equivalentFullCycles(
+                    it, nominalCapacityKwh,
+                    sohPercent = sohPercent,
+                    lifetimeSource = bmsLifetimeKwh != null && bmsLifetimeKwh > 0.0,
+                )
+            } ?: 0.0
 }
 
 @HiltViewModel
@@ -92,7 +115,8 @@ class ChargesViewModel @Inject constructor(
     private val chargeRepository: ChargeRepository,
     private val batterySnapshotDao: BatterySnapshotDao,
     private val settingsRepository: SettingsRepository,
-    private val batteryStateRepository: BatteryStateRepository
+    private val batteryStateRepository: BatteryStateRepository,
+    private val costCalculator: CostCalculator
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChargesUiState())
@@ -104,14 +128,12 @@ class ChargesViewModel @Inject constructor(
         viewModelScope.launch {
             val symbol = settingsRepository.getCurrencySymbol()
             val nominal = settingsRepository.getBatteryCapacity()
-            val home = settingsRepository.getHomeTariff()
-            val dc = settingsRepository.getDcTariff()
+            val schedule = costCalculator.schedule()
             _uiState.update {
                 it.copy(
                     currencySymbol = symbol,
                     nominalCapacityKwh = nominal,
-                    homeTariff = home,
-                    dcTariff = dc,
+                    tariffSchedule = schedule,
                 )
             }
         }
@@ -301,6 +323,7 @@ class ChargesViewModel @Inject constructor(
                     sohFactor = state.sohPercent?.toDouble()
                         ?.takeIf { soh -> soh in AutoserviceChargingDetector.SOH_SANITY_MIN..100.0 }
                         ?.div(100.0) ?: 1.0,
+                    sohPercent = state.sohPercent?.toFloat(),
                 )
             }
         }
@@ -310,14 +333,11 @@ class ChargesViewModel @Inject constructor(
         viewModelScope.launch {
             val stats = runCatching { chargeRepository.getLifetimeStats() }.getOrNull()
                 ?: return@launch
-            val nominal = _uiState.value.nominalCapacityKwh
-            val equiv = if (nominal > 0) stats.totalKwhAdded / nominal else 0.0
             _uiState.update {
                 it.copy(
                     lifetimeAcKwh = stats.acKwh,
                     lifetimeDcKwh = stats.dcKwh,
                     lifetimeTotalKwh = stats.totalKwhAdded,
-                    equivCycles = equiv
                 )
             }
         }
@@ -350,24 +370,9 @@ class ChargesViewModel @Inject constructor(
                 cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
                 cal.timeInMillis to now
             }
-            ChargesPeriod.WEEK -> {
-                cal.add(Calendar.DAY_OF_YEAR, -7)
-                cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0)
-                cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
-                cal.timeInMillis to now
-            }
-            ChargesPeriod.MONTH -> {
-                cal.set(Calendar.DAY_OF_MONTH, 1)
-                cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0)
-                cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
-                cal.timeInMillis to now
-            }
-            ChargesPeriod.YEAR -> {
-                cal.set(Calendar.DAY_OF_YEAR, 1)
-                cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0)
-                cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
-                cal.timeInMillis to now
-            }
+            ChargesPeriod.WEEK -> CalendarPeriods.startOfWeek(now) to now
+            ChargesPeriod.MONTH -> CalendarPeriods.startOfMonth(now) to now
+            ChargesPeriod.YEAR -> CalendarPeriods.startOfYear(now) to now
             ChargesPeriod.ALL -> 0L to now
         }
     }
@@ -403,11 +408,17 @@ class ChargesViewModel @Inject constructor(
 
     fun onSaveEdit(updated: ChargeEntity) {
         viewModelScope.launch {
+            // Moving a session to another date changes the pack price on both sides of the
+            // move, so the re-pricing has to start at the earlier of the two dates.
+            val previousStart = chargeRepository.getChargeById(updated.id)?.startTs
             if (updated.id == 0L) {
                 chargeRepository.insertCharge(updated)
             } else {
                 chargeRepository.updateCharge(updated)
             }
+            // A meter reading changes what a kWh in the pack cost, so every trip after this
+            // session has to be re-priced when the `charges` rule is in force.
+            costCalculator.recalculate(minOf(updated.startTs, previousStart ?: updated.startTs), Long.MAX_VALUE)
             _uiState.update { it.copy(editingCharge = null) }
             loadAll()
             loadLifetimeStats()

@@ -25,13 +25,22 @@ class NavA11yFeedTest {
         assertFalse(NavA11yFeed.shouldProcess("ru.yandex.yandexnavi", clicked, nowMs = 1000, lastMs = 0))
     }
 
+    /** 200 ms, openbyd's window. Waze emits the arrow and the distance as separate events tens of
+     *  milliseconds apart, and the old 500 ms floor swallowed one of the pair every time. */
     @Test fun `debounce blocks rapid events`() {
-        assertFalse(NavA11yFeed.shouldProcess("ru.yandex.yandexnavi", contentChanged, nowMs = 1400, lastMs = 1000))
-        assertTrue(NavA11yFeed.shouldProcess("ru.yandex.yandexnavi", contentChanged, nowMs = 1500, lastMs = 1000))
+        assertFalse(NavA11yFeed.shouldProcess("ru.yandex.yandexnavi", contentChanged, nowMs = 1150, lastMs = 1000))
+        assertTrue(NavA11yFeed.shouldProcess("ru.yandex.yandexnavi", contentChanged, nowMs = 1200, lastMs = 1000))
     }
 
     @Test fun `maps packages pass`() {
         assertTrue(NavA11yFeed.shouldProcess("ru.yandex.yandexmaps", contentChanged, nowMs = 1000, lastMs = 0))
         assertTrue(NavA11yFeed.shouldProcess("ru.yandex.yandexmaps.rustore", stateChanged, nowMs = 1000, lastMs = 0))
+    }
+
+    @Test fun `timer reads only with the feed on, a route guided and no read for 5 s`() {
+        assertTrue(NavA11yFeed.shouldTimerRead(enabled = true, guidanceActive = true, nowMs = 6000, lastMs = 1000))
+        assertFalse(NavA11yFeed.shouldTimerRead(enabled = true, guidanceActive = true, nowMs = 5999, lastMs = 1000))
+        assertFalse(NavA11yFeed.shouldTimerRead(enabled = false, guidanceActive = true, nowMs = 6000, lastMs = 1000))
+        assertFalse(NavA11yFeed.shouldTimerRead(enabled = true, guidanceActive = false, nowMs = 6000, lastMs = 1000))
     }
 }

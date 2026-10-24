@@ -1,3 +1,4 @@
+import java.io.File
 import java.io.FileInputStream
 import java.util.Properties
 
@@ -8,6 +9,8 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.gradle.test-retry")
+    id("org.jetbrains.kotlinx.kover")
+    id("io.gitlab.arturbosch.detekt")
 }
 
 // Release signing is loaded from keystore.properties (gitignored, never in VCS).
@@ -28,8 +31,8 @@ android {
         // on DiLink Android 12 (requestLegacyExternalStorage works).
         // targetSdk 30+ would break listFiles() on /storage/emulated/0/energydata/
         targetSdk = 29
-        versionCode = 444
-        versionName = "3.15.0"   // first stable of the Waze fork; cut after the real-car test
+        versionCode = 509
+        versionName = "4.0.1-dev.1"   // development pre-release; stable X.Y.Z only after a real-car test
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -66,9 +69,24 @@ android {
     }
 
     signingConfigs {
-        if (keystorePropsFile.exists()) {
+        // Resolve with java.io.File, never Gradle's file(): file() reads a Windows path such as
+        // "D:/BYD/keys/bydmate-waze.jks" as a URL with scheme "D" and aborts the whole
+        // configuration phase on Linux -- including tasks that sign nothing, so even
+        // :app:testWazeDebugUnitTest cannot run under WSL or on a Linux checkout.
+        val storeFileOrNull = keystoreProps.getProperty("storeFile")
+            ?.let { File(it) }
+            ?.takeIf { it.isFile }
+        if (keystorePropsFile.exists() && storeFileOrNull == null) {
+            // Loud on purpose: a release that quietly comes out unsigned will not install over
+            // the copy already on the car, and the failure would only show up there.
+            logger.warn(
+                "keystore.properties points at ${keystoreProps.getProperty("storeFile")}, " +
+                    "which is not a file here - release builds will be UNSIGNED"
+            )
+        }
+        if (storeFileOrNull != null) {
             create("release") {
-                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storeFile = storeFileOrNull
                 storePassword = keystoreProps.getProperty("storePassword")
                 keyAlias = keystoreProps.getProperty("keyAlias")
                 keyPassword = keystoreProps.getProperty("keyPassword")
@@ -155,6 +173,20 @@ android {
         compose = true
         buildConfig = true
     }
+
+    packaging {
+        resources {
+            // The BouncyCastle jars (and their transitive jspecify) each ship their own copy
+            // of these entries; the packager refuses to merge duplicates and none of them are
+            // of any use inside the APK. Everything under META-INF/versions is JPMS/OSGi
+            // metadata that Android ignores outright.
+            excludes += setOf(
+                "META-INF/LICENSE.md",
+                "META-INF/NOTICE.md",
+                "META-INF/versions/**",
+            )
+        }
+    }
 }
 
 // AC-12: a publishable release APK must be signed. Debug and CI builds are
@@ -174,6 +206,14 @@ ksp {
 }
 
 dependencies {
+    // Hidden BYD framework classes the push listeners subclass. compileOnly: the head unit
+    // provides the real ones, and nothing from the stubs module may land in the APK.
+    compileOnly(project(":bydauto-stubs"))
+
+    // The push listener classes must load in unit tests; on the head unit the framework provides
+    // them, so this is a test-runtime substitute, not a packaged dependency.
+    testImplementation(project(":bydauto-stubs"))
+
     // Compose
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.material3:material3")
@@ -222,6 +262,11 @@ dependencies {
     // AppCompat (required for AppCompatDelegate.setApplicationLocales per-app language support)
     implementation("androidx.appcompat:appcompat:1.6.1")
 
+    // X.509 self-signed certificate for the ADB TLS (STLS) handshake — the platform's
+    // stripped com.android.org.bouncycastle has no certificate builder. The provider is
+    // passed explicitly to the builders, never registered globally.
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.85")
+
     // Hidden-API bypass: allows in-process ServiceManager.getService() on Android 9+
     // to reach the helper binder without UnsatisfiedLinkError / NoSuchMethodError.
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:4.3")
@@ -238,6 +283,7 @@ dependencies {
     testImplementation("androidx.arch.core:core-testing:2.2.0")
     testImplementation("app.cash.turbine:turbine:1.0.0")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("io.kotest:kotest-property-jvm:6.2.5")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.1")
     androidTestImplementation("androidx.room:room-testing:2.6.1")
@@ -253,4 +299,39 @@ dependencies {
     implementation(files("libs/sherpa-onnx-static-link-onnxruntime-1.13.3.aar"))
     // tar.bz2 unpack for downloaded piper voice archives
     implementation("org.apache.commons:commons-compress:1.27.1")
+}
+
+// Coverage report only — no verification rule, nothing fails on a low number.
+// Report: ./gradlew :app:koverHtmlReportDebug
+kover {
+    reports {
+        filters {
+            excludes {
+                classes(
+                    // Hilt / Dagger generated
+                    "*_Factory", "*_Factory\$*",
+                    "*_HiltModules*",
+                    "Hilt_*",
+                    "*_MembersInjector",
+                    "dagger.hilt.*",
+                    "*_GeneratedInjector",
+                    "*ComposableSingletons*",
+                    // Room generated
+                    "*_Impl",
+                    "*BuildConfig*",
+                )
+                // Compose screens are not the coverage target
+                packages("com.bydmate.app.ui")
+            }
+        }
+    }
+}
+
+// Static analysis, report-only for existing code: everything currently flagged
+// is frozen in config/detekt/baseline.xml, only NEW findings fail the build.
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom("$rootDir/config/detekt/detekt.yml")
+    baseline = file("$rootDir/config/detekt/baseline.xml")
+    autoCorrect = false
 }

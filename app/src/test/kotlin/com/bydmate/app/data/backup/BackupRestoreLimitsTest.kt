@@ -1,12 +1,24 @@
 package com.bydmate.app.data.backup
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import com.bydmate.app.util.AppStrings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [29])
 class BackupRestoreLimitsTest {
+
+    private val context: Context = ApplicationProvider.getApplicationContext()
+    private val strings = AppStrings(context)
 
     /**
      * Builds raw ZIP bytes that allow duplicate entry names.
@@ -97,7 +109,7 @@ class BackupRestoreLimitsTest {
 
     @Test
     fun `reads valid backup`() {
-        val entries = BackupManager.readBackupEntries(ByteArrayInputStream(zipOf(*validEntries())))
+        val entries = BackupManager.readBackupEntries(ByteArrayInputStream(zipOf(*validEntries())), strings)
         assertEquals(100, entries.dbBytes.size)
         assertEquals("{}", entries.prefsJson)
         assertEquals("""{"dbSchemaVersion":18}""", entries.manifestJson)
@@ -111,14 +123,46 @@ class BackupRestoreLimitsTest {
             "manifest.json" to "{}".toByteArray(),
         )
         assertThrows(IllegalStateException::class.java) {
-            BackupManager.readBackupEntries(ByteArrayInputStream(zip), maxEntryBytes = 1_000)
+            BackupManager.readBackupEntries(ByteArrayInputStream(zip), strings, maxEntryBytes = 1_000)
+        }
+    }
+
+    @Test
+    fun `oversized partial database entry fails fast`() {
+        val zip = zipOf(
+            "bydmate.part.db" to ByteArray(10_000),
+            "prefs.json" to "{}".toByteArray(),
+            "manifest.json" to "{}".toByteArray(),
+        )
+        assertThrows(IllegalStateException::class.java) {
+            BackupManager.readBackupEntries(ByteArrayInputStream(zip), strings, maxEntryBytes = 1_000)
+        }
+    }
+
+    @Test
+    fun `partial database entry is read and marked partial`() {
+        val zip = zipOf(
+            "bydmate.part.db" to ByteArray(100),
+            "prefs.json" to "{}".toByteArray(),
+            "manifest.json" to """{"dbSchemaVersion":20,"parts":["tables"]}""".toByteArray(),
+        )
+        val entries = BackupManager.readBackupEntries(ByteArrayInputStream(zip), strings)
+        assertEquals(100, entries.dbBytes.size)
+        assertTrue(entries.partial)
+    }
+
+    @Test
+    fun `full and partial database entries together fail`() {
+        val zip = zipOf("bydmate.part.db" to ByteArray(10), *validEntries())
+        assertThrows(IllegalStateException::class.java) {
+            BackupManager.readBackupEntries(ByteArrayInputStream(zip), strings)
         }
     }
 
     @Test
     fun `total size cap fails`() {
         assertThrows(IllegalStateException::class.java) {
-            BackupManager.readBackupEntries(ByteArrayInputStream(zipOf(*validEntries())), maxTotalBytes = 50)
+            BackupManager.readBackupEntries(ByteArrayInputStream(zipOf(*validEntries())), strings, maxTotalBytes = 50)
         }
     }
 
@@ -126,7 +170,7 @@ class BackupRestoreLimitsTest {
     fun `duplicate expected entry fails`() {
         val zip = zipOf("bydmate.db" to ByteArray(10), *validEntries())
         assertThrows(IllegalStateException::class.java) {
-            BackupManager.readBackupEntries(ByteArrayInputStream(zip))
+            BackupManager.readBackupEntries(ByteArrayInputStream(zip), strings)
         }
     }
 
@@ -134,7 +178,7 @@ class BackupRestoreLimitsTest {
     fun `missing entry fails`() {
         val zip = zipOf("bydmate.db" to ByteArray(10))
         assertThrows(IllegalStateException::class.java) {
-            BackupManager.readBackupEntries(ByteArrayInputStream(zip))
+            BackupManager.readBackupEntries(ByteArrayInputStream(zip), strings)
         }
     }
 
@@ -142,7 +186,7 @@ class BackupRestoreLimitsTest {
     fun `unknown entries are skipped without reading into memory`() {
         // evil.bin is larger than maxEntryBytes but must be skipped, not loaded.
         val zip = zipOf("evil.bin" to ByteArray(10_000), *validEntries())
-        val entries = BackupManager.readBackupEntries(ByteArrayInputStream(zip), maxEntryBytes = 1_000)
+        val entries = BackupManager.readBackupEntries(ByteArrayInputStream(zip), strings, maxEntryBytes = 1_000)
         assertEquals(100, entries.dbBytes.size)
     }
 
@@ -151,7 +195,7 @@ class BackupRestoreLimitsTest {
         val junk = Array(20) { i -> "junk$i" to ByteArray(1) }
         val zip = zipOf(*junk, *validEntries())
         assertThrows(IllegalStateException::class.java) {
-            BackupManager.readBackupEntries(ByteArrayInputStream(zip))
+            BackupManager.readBackupEntries(ByteArrayInputStream(zip), strings)
         }
     }
 }

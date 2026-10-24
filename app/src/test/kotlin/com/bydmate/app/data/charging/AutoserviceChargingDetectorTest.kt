@@ -70,6 +70,9 @@ class AutoserviceChargingDetectorTest {
             inserted.removeAll { it.kwhCharged == null || (it.kwhCharged ?: 0.0) < 0.05 }
             return before - inserted.size
         }
+        override suspend fun getInRangeAsc(from: Long, to: Long): List<ChargeEntity> = emptyList()
+        override suspend fun getCompletedForPricing(until: Long): List<ChargeEntity> = emptyList()
+        override suspend fun getWithMeterReading(): List<ChargeEntity> = emptyList()
         override suspend fun deletePhantomAutoserviceRows(): Int {
             val before = inserted.size
             inserted.removeAll { ch ->
@@ -97,6 +100,8 @@ class AutoserviceChargingDetectorTest {
         com.bydmate.app.data.local.dao.SettingsDao {
         private val map = mutableMapOf<String, String>().also { it.putAll(initial) }
         override suspend fun get(key: String): String? = map[key]
+        override suspend fun getMany(keys: List<String>): List<com.bydmate.app.data.local.entity.SettingEntity> =
+            keys.mapNotNull { k -> map[k]?.let { com.bydmate.app.data.local.entity.SettingEntity(k, it) } }
         override fun observe(key: String): Flow<String?> = flowOf(map[key])
         override suspend fun set(entity: com.bydmate.app.data.local.entity.SettingEntity) {
             map[entity.key] = entity.value ?: ""
@@ -192,6 +197,7 @@ class AutoserviceChargingDetectorTest {
             stateStore = stateStore,
             classifier = classifier,
             settings = settings,
+            costCalculator = mockk(relaxed = true),
             parsReader = FakeParsReader(diParsData),
             journal = journal
         )
@@ -248,6 +254,32 @@ class AutoserviceChargingDetectorTest {
         bmsState = bmsState,
         readAtMs = 1000L
     )
+
+    /** One sample of the on-car plug recording (see the fixture's own header). */
+    private data class PlugSample(
+        val event: String,
+        val gun: Int,
+        val charger: Int,
+        val indicator: Int,
+    )
+
+    private fun plugFixture(): List<PlugSample> {
+        val json = requireNotNull(
+            javaClass.classLoader
+                ?.getResourceAsStream("native-stack-fixtures/plug-running-car-20260916.json")
+        ) { "plug-running-car-20260916.json fixture not found in test resources" }
+            .bufferedReader().use { it.readText() }
+        val samples = org.json.JSONObject(json).getJSONArray("samples")
+        return (0 until samples.length()).map { i ->
+            val o = samples.getJSONObject(i)
+            PlugSample(
+                event = o.getString("event"),
+                gun = o.getInt("chargeGunState"),
+                charger = o.getInt("chargerConnectState"),
+                indicator = o.getInt("chargeConnectIndicator"),
+            )
+        }
+    }
 
     // === Test cases ===
 
@@ -1032,6 +1064,7 @@ class AutoserviceChargingDetectorTest {
         assertEquals(2, lines.size)
         assertTrue(lines[0].contains("SESSION_CREATED"))
         assertTrue(lines[0].contains("soc=80->91"))
+        assertTrue(lines[0].contains("km=") && lines[0].contains("plug="))
         assertTrue(lines[1].contains("NO_DELTA soc=91 prev=91"))
     }
 
@@ -1391,5 +1424,69 @@ class AutoserviceChargingDetectorTest {
         setup.auto.battery = battery(soc = 85f, mileage = 2100f)
         assertEquals(CatchUpOutcome.SESSION_CREATED, setup.detector.runCatchUp(now = 3000L).outcome)
         assertEquals(1, setup.chargeDao.inserted.size)
+    }
+
+    @Test
+    fun `plug in on a running car defers catch-up even though the gun fid says NONE`() = runTest {
+        // Regression for the 2026-09-16 recording: engine running, plug inserted, the gun fid
+        // never leaves 1=NONE. Before the plug fids were consulted, catch-up walked straight
+        // through the STILL_CHARGING gate, advanced the anchor and swallowed the AC session.
+        val plugged = plugFixture().first { it.event == "plug in" }
+        val setup = build(
+            battery = battery(soc = 70f),
+            charging = ChargingReading(
+                gunConnectState = plugged.gun,
+                chargingType = 1, chargeBatteryVoltV = 0, batteryType = 1,
+                chargingCapacityKwh = 25.0f, bmsState = null, readAtMs = 1000L,
+                chargerConnectState = plugged.charger,
+                chargeConnectIndicator = plugged.indicator,
+            ),
+            prevSoc = 30,
+            prevCapacityKwh = 0.0f,
+        )
+
+        val result = setup.detector.runCatchUp(now = 1500L)
+
+        assertEquals(CatchUpOutcome.STILL_CHARGING, result.outcome)
+        assertEquals(0, setup.chargeDao.inserted.size)
+        // Anchor untouched: the live disconnect edge still owns the session.
+        assertEquals(30, setup.stateStore.load().socPercent)
+    }
+
+    @Test
+    fun `plug out on a running car lets catch-up reconstruct the session`() = runTest {
+        // Same recording, the samples on either side of the insertion: charger=0 / indicator=2
+        // must NOT read as "plugged", otherwise no charge could ever be logged again.
+        plugFixture().filter { it.event == "plug out" }.forEach { sample ->
+            val setup = build(
+                battery = battery(soc = 70f),
+                charging = ChargingReading(
+                    gunConnectState = sample.gun,
+                    chargingType = 1, chargeBatteryVoltV = 0, batteryType = 1,
+                    chargingCapacityKwh = 25.0f, bmsState = null, readAtMs = 1000L,
+                    chargerConnectState = sample.charger,
+                    chargeConnectIndicator = sample.indicator,
+                ),
+                prevSoc = 30,
+                prevCapacityKwh = 0.0f,
+            )
+
+            val result = setup.detector.runCatchUp(now = 1500L)
+
+            assertEquals(CatchUpOutcome.SESSION_CREATED, result.outcome)
+            assertEquals(1, setup.chargeDao.inserted.size)
+        }
+    }
+
+    @Test
+    fun `parked anchor holds while only the charger fid reports the plug`() = runTest {
+        // recordParkedAnchor reads the same plug signals: with the plug in it must keep the
+        // pre-charge anchor instead of rolling it forward onto the rising SOC.
+        val setup = build(battery = battery(soc = 40f), prevSoc = 40)
+        val sample = parkedSample(soc = 60, gun = 1)
+            .copy(chargerConnectState = 1, chargeConnectIndicator = 1)
+
+        assertFalse(setup.detector.recordParkedAnchor(sample, now = 2000L))
+        assertEquals(40, setup.stateStore.load().socPercent)
     }
 }

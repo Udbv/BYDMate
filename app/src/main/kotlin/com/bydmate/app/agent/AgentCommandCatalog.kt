@@ -27,6 +27,10 @@ object AgentCommandCatalog {
         Cmd("windows_close_front", "закрыть передние окна", { "前排车窗关闭" }),
         Cmd("windows_open_rear", "открыть задние окна", { "后排车窗全开" }),
         Cmd("windows_close_rear", "закрыть задние окна", { "后排车窗关闭" }),
+        Cmd("windows_half_front", "передние окна наполовину", { "前排车窗半开" }),
+        Cmd("windows_vent_front", "передние окна на проветривание", { "前排车窗通风" }),
+        Cmd("windows_half_rear", "задние окна наполовину", { "后排车窗半开" }),
+        Cmd("windows_vent_rear", "задние окна на проветривание", { "后排车窗通风" }),
         // Windows — individual (open=100 / close=0)
         Cmd("window_driver_open", "открыть окно водителя", { "主驾打开100" }),
         Cmd("window_driver_close", "закрыть окно водителя", { "主驾打开0" }),
@@ -41,11 +45,22 @@ object AgentCommandCatalog {
         Cmd("window_passenger_vent", "проветривание окна переднего пассажира", { "副驾通风" }),
         Cmd("window_rear_left_vent", "проветривание заднего левого окна", { "后左通风" }),
         Cmd("window_rear_right_vent", "проветривание заднего правого окна", { "后右通风" }),
+        // Windows — individual half (the 50 % detent)
+        Cmd("window_driver_half", "окно водителя наполовину", { "主驾半开" }),
+        Cmd("window_passenger_half", "окно переднего пассажира наполовину", { "副驾半开" }),
+        Cmd("window_rear_left_half", "заднее левое окно наполовину", { "后左半开" }),
+        Cmd("window_rear_right_half", "заднее правое окно наполовину", { "后右半开" }),
         // Climate
         Cmd("ac_on", "включить климат-контроль (авто)", { "自动空调" }),
         Cmd("ac_off", "выключить климат-контроль", { "关闭空调" }),
         Cmd("ac_flow_on", "включить вентиляцию климата (обдув без охлаждения)", { "打开空调通风" }),
-        Cmd("ac_set_temp", "температура климата N°C", { n -> "设置温度$n" }, 16..30),
+        Cmd("ac_set_temp", "температура климата N°C", { n -> "设置温度$n" }, 16..33),
+        Cmd("ac_fan_level", "скорость вентилятора N (1..7)", { n -> "风量$n" }, 1..7),
+        Cmd("ac_wind_face", "обдув в лицо", { "吹面" }),
+        Cmd("ac_wind_face_feet", "обдув в лицо и ноги", { "吹面吹脚" }),
+        Cmd("ac_wind_feet", "обдув в ноги", { "吹脚" }),
+        Cmd("ac_wind_feet_windshield", "обдув в ноги и на стекло", { "吹脚除霜" }),
+        Cmd("ac_wind_windshield", "обдув на стекло", { "除霜" }),
         Cmd("ac_recirc_inner", "внутренняя рециркуляция воздуха", { "内循环" }),
         Cmd("ac_recirc_outer", "внешняя циркуляция воздуха", { "外循环" }),
         Cmd("defrost_front_on", "включить обдув лобового стекла", { "吹前挡" }),
@@ -81,6 +96,9 @@ object AgentCommandCatalog {
         // Mirrors
         Cmd("mirror_heat_on", "включить обогрев зеркал и заднего стекла", { "后视镜加热" }),
         Cmd("mirror_heat_off", "выключить обогрев зеркал и заднего стекла", { "关闭后视镜加热" }),
+        // Steering wheel
+        Cmd("steering_heat_on", "включить подогрев руля", { "方向盘加热" }),
+        Cmd("steering_heat_off", "выключить подогрев руля", { "关闭方向盘加热" }),
         // Lights
         Cmd("light_ambient_on", "включить атмосферную подсветку салона (амбиент)", { "氛围灯打开" }),
         Cmd("light_ambient_off", "выключить атмосферную подсветку салона (амбиент)", { "氛围灯关闭" }),
@@ -90,6 +108,12 @@ object AgentCommandCatalog {
         Cmd("hazard_off", "выключить аварийку", { "双闪关闭" }),
         Cmd("light_interior_on", "включить плафон света в салоне", { "打开车内灯" }),
         Cmd("light_interior_off", "выключить плафон света в салоне", { "关闭车内灯" }),
+        // HUD (projection on the windshield; the cluster projection is set_cluster_projection)
+        Cmd("hud_on", "включить HUD (проекцию на лобовом стекле)", { "打开抬头显示" }),
+        Cmd("hud_off", "выключить HUD (проекцию на лобовом стекле)", { "关闭抬头显示" }),
+        // Battery warm-up (the car itself refuses it on a warm battery or with a charge gun connected)
+        Cmd("battery_preheat_on", "включить подогрев тяговой батареи (перед быстрой зарядкой в холод)", { "打开电池预热" }),
+        Cmd("battery_preheat_off", "выключить подогрев тяговой батареи", { "关闭电池预热" }),
         // Locks
         Cmd("doors_lock", "запереть двери", { "车门上锁" }),
         Cmd("doors_unlock", "отпереть двери", { "车门解锁" }),
@@ -112,6 +136,16 @@ object AgentCommandCatalog {
         Cmd("fridge_cool", "холодильник: охлаждение до N градусов", { n -> "冰箱制冷${n}度" }, -6..6),
         Cmd("fridge_heat", "холодильник: подогрев до N градусов", { n -> "冰箱制热${n}度" }, 35..50),
         Cmd("fridge_off", "выключить холодильник", { "冰箱关闭" }),
+        // Drive mode (the car checks it has the mode; all but eco/normal/sport only up to 15 km/h)
+        Cmd("drive_mode_eco", "режим движения ЭКО", { "ECO模式" }),
+        Cmd("drive_mode_normal", "режим движения Норма (обычный)", { "普通模式" }),
+        Cmd("drive_mode_sport", "режим движения Спорт", { "运动模式" }),
+        Cmd("drive_mode_snow", "режим движения Снег (до 15 км/ч)", { "雪地模式" }),
+        Cmd("drive_mode_sand", "режим движения Песок (до 15 км/ч)", { "沙地模式" }),
+        Cmd("drive_mode_mud", "режим движения Грязь (до 15 км/ч)", { "泥地模式" }),
+        Cmd("drive_mode_mountain", "режим движения Горы (до 15 км/ч)", { "山地模式" }),
+        Cmd("drive_mode_rock", "режим движения Камни (до 15 км/ч)", { "岩石模式" }),
+        Cmd("drive_mode_smart", "умный режим движения (до 15 км/ч)", { "智能模式" }),
     )
 
     private val byId = ALL.associateBy { it.id }

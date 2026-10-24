@@ -40,15 +40,12 @@ class AutomationI18nNewTranslationsTest {
         assertEquals("Закрыта", get("ru", R.string.auto_enum_closed_f)); assertEquals("Closed", get("en", R.string.auto_enum_closed_f)); assertEquals("关闭", get("zh", R.string.auto_enum_closed_f))
         assertEquals("Закрыт", get("ru", R.string.auto_enum_closed_m)); assertEquals("Closed", get("en", R.string.auto_enum_closed_m)); assertEquals("关闭", get("zh", R.string.auto_enum_closed_m))
         assertEquals("D", get("ru", R.string.auto_enum_code_d)); assertEquals("D", get("en", R.string.auto_enum_code_d)); assertEquals("D", get("zh", R.string.auto_enum_code_d))
-        assertEquals("DRIVE", get("ru", R.string.auto_enum_code_drive)); assertEquals("DRIVE", get("en", R.string.auto_enum_code_drive)); assertEquals("DRIVE", get("zh", R.string.auto_enum_code_drive))
         assertEquals("ECO", get("ru", R.string.auto_enum_code_eco)); assertEquals("ECO", get("en", R.string.auto_enum_code_eco)); assertEquals("ECO", get("zh", R.string.auto_enum_code_eco))
         assertEquals("N", get("ru", R.string.auto_enum_code_n)); assertEquals("N", get("en", R.string.auto_enum_code_n)); assertEquals("N", get("zh", R.string.auto_enum_code_n))
         assertEquals("NORMAL", get("ru", R.string.auto_enum_code_normal)); assertEquals("NORMAL", get("en", R.string.auto_enum_code_normal)); assertEquals("NORMAL", get("zh", R.string.auto_enum_code_normal))
-        assertEquals("OFF", get("ru", R.string.auto_enum_code_off)); assertEquals("OFF", get("en", R.string.auto_enum_code_off)); assertEquals("OFF", get("zh", R.string.auto_enum_code_off))
-        assertEquals("ON", get("ru", R.string.auto_enum_code_on)); assertEquals("ON", get("en", R.string.auto_enum_code_on)); assertEquals("ON", get("zh", R.string.auto_enum_code_on))
         assertEquals("P", get("ru", R.string.auto_enum_code_p)); assertEquals("P", get("en", R.string.auto_enum_code_p)); assertEquals("P", get("zh", R.string.auto_enum_code_p))
         assertEquals("R", get("ru", R.string.auto_enum_code_r)); assertEquals("R", get("en", R.string.auto_enum_code_r)); assertEquals("R", get("zh", R.string.auto_enum_code_r))
-        assertEquals("SNOW", get("ru", R.string.auto_enum_code_snow)); assertEquals("SNOW", get("en", R.string.auto_enum_code_snow)); assertEquals("SNOW", get("zh", R.string.auto_enum_code_snow))
+        assertEquals("Снег", get("ru", R.string.auto_enum_code_snow)); assertEquals("SNOW", get("en", R.string.auto_enum_code_snow)); assertEquals("雪地", get("zh", R.string.auto_enum_code_snow))
         assertEquals("SPORT", get("ru", R.string.auto_enum_code_sport)); assertEquals("SPORT", get("en", R.string.auto_enum_code_sport)); assertEquals("SPORT", get("zh", R.string.auto_enum_code_sport))
         assertEquals("Подключён", get("ru", R.string.auto_enum_connected)); assertEquals("Connected", get("en", R.string.auto_enum_connected)); assertEquals("已连接", get("zh", R.string.auto_enum_connected))
         assertEquals("Пристёгнут", get("ru", R.string.auto_enum_fastened)); assertEquals("Fastened", get("en", R.string.auto_enum_fastened)); assertEquals("已系", get("zh", R.string.auto_enum_fastened))
@@ -103,8 +100,12 @@ class AutomationI18nNewTranslationsTest {
             }
         }
         for (a in ACTION_COMMANDS) {
-            assertEquals("action name ${a.command}", lc.getString(a.nameRes), a.localizedName(ctx))
-            assertEquals("action category ${a.command}", lc.getString(a.categoryRes), a.localizedCategory(ctx))
+            val id = a.toggleTarget ?: a.command
+            // A toggle entry reads as «<цель>: переключить», so its name goes through the wrapper.
+            val name = a.toggleTarget?.let { lc.getString(R.string.auto_act_toggle_catalog, lc.getString(a.nameRes)) }
+                ?: lc.getString(a.nameRes)
+            assertEquals("action name $id", name, a.localizedName(ctx))
+            assertEquals("action category $id", lc.getString(a.categoryRes), a.localizedCategory(ctx))
         }
         // Real pt text per type (fallback would yield the ru string instead).
         assertEquals("Clima", lc.getString(R.string.auto_cat_climate))

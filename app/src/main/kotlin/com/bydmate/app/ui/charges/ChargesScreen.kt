@@ -21,7 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import com.bydmate.app.ui.components.AppAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -183,7 +183,7 @@ fun ChargesScreen(
                 currencySymbol = state.currencySymbol,
                 bmsLifetimeKm = state.bmsLifetimeKm,
                 bmsLifetimeKwh = state.bmsLifetimeKwh,
-                nominalCapacityKwh = state.nominalCapacityKwh,
+                equivCycles = state.equivCycles,
                 sohSeries = state.sohSeries,
                 cellDeltaSeries = state.cellDeltaSeries,
                 batTempSeries = state.batTempSeries,
@@ -202,8 +202,7 @@ fun ChargesScreen(
         state.editingCharge?.let { charge ->
             ChargeEditDialog(
                 charge = charge,
-                homeTariff = state.homeTariff,
-                dcTariff = state.dcTariff,
+                schedule = state.tariffSchedule,
                 batteryCapacityKwh = state.effectiveCapacityKwh,
                 currencySymbol = state.currencySymbol,
                 onDismiss = { viewModel.onDismissEdit() },
@@ -211,7 +210,7 @@ fun ChargesScreen(
             )
         }
         state.deleteConfirmCharge?.let { charge ->
-            AlertDialog(
+            AppAlertDialog(
                 onDismissRequest = { viewModel.onDismissDeleteConfirm() },
                 title = { Text(stringResource(R.string.charges_delete_dialog_title)) },
                 text = {
@@ -247,29 +246,31 @@ private fun ChargeActionSheet(
         sheetState = sheetState,
         containerColor = CardSurface,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                "${charge.type ?: "—"} • ${charge.kwhCharged?.let { "%.1f".format(it) } ?: "—"} кВт·ч",
-                color = TextSecondary, fontSize = 12.sp
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onEdit).padding(vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+        ScaledDialogContent {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(stringResource(R.string.charges_action_edit), color = TextPrimary, fontSize = 16.sp)
+                Text(
+                    "${charge.type ?: "—"} • ${charge.kwhCharged?.let { "%.1f".format(it) } ?: "—"} кВт·ч",
+                    color = TextSecondary, fontSize = 12.sp
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable(onClick = onEdit).padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(stringResource(R.string.charges_action_edit), color = TextPrimary, fontSize = 16.sp)
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable(onClick = onDeletePrompt).padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(stringResource(R.string.charges_action_delete), color = SocRed, fontSize = 16.sp)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onDeletePrompt).padding(vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(stringResource(R.string.charges_action_delete), color = SocRed, fontSize = 16.sp)
-            }
-            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
@@ -528,7 +529,7 @@ private fun ChargesStatsPanel(
     currencySymbol: String,
     bmsLifetimeKm: Double?,
     bmsLifetimeKwh: Double?,
-    nominalCapacityKwh: Double,
+    equivCycles: Double,
     sohSeries: List<Float>,
     cellDeltaSeries: List<Float>,
     batTempSeries: List<Float>,
@@ -557,7 +558,6 @@ private fun ChargesStatsPanel(
 
         SectionLabel(stringResource(R.string.charges_stats_lifetime_label))
         if (bmsLifetimeKwh != null) {
-            val equiv = if (nominalCapacityKwh > 0) bmsLifetimeKwh / nominalCapacityKwh else 0.0
             val avgPer100 = if (bmsLifetimeKm != null && bmsLifetimeKm > 0)
                 bmsLifetimeKwh / bmsLifetimeKm * 100.0 else null
             Column(
@@ -569,7 +569,7 @@ private fun ChargesStatsPanel(
             ) {
                 StatRow(stringResource(R.string.charges_stats_pumped_total), stringResource(R.string.charges_kwh_value, bmsLifetimeKwh), AccentGreen)
                 Spacer(modifier = Modifier.height(4.dp))
-                StatRow(stringResource(R.string.charges_stats_equiv_cycles), "%.1f".format(equiv), TextPrimary)
+                StatRow(stringResource(R.string.charges_stats_equiv_cycles), "%.1f".format(equivCycles), TextPrimary)
                 Spacer(modifier = Modifier.height(4.dp))
                 StatRow(
                     stringResource(R.string.charges_stats_bms_mileage),

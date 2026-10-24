@@ -1,8 +1,14 @@
 package com.bydmate.app.data.repository
 
+import com.bydmate.app.data.backup.AutoBackupPeriod
+import com.bydmate.app.data.backup.BackupPart
+import com.bydmate.app.data.backup.TgBackupConfig
+import com.bydmate.app.data.charging.ChargeConnector
+import com.bydmate.app.data.telegram.ReportField
 import com.bydmate.app.data.local.LocalePreferences
 import com.bydmate.app.data.local.dao.SettingsDao
 import com.bydmate.app.data.local.entity.SettingEntity
+import com.bydmate.app.data.trips.TripAutoResetMode
 import com.bydmate.app.data.trips.TripResetState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -29,6 +35,8 @@ open class SettingsRepository @Inject constructor(
         const val KEY_DC_TARIFF = "dc_tariff"
         const val KEY_UNITS = "units" // "km" or "miles"
         const val KEY_CURRENCY = "currency" // "BYN", "RUB", "USD", "EUR", "CNY"
+        /** The car's charging connector the voice agent filters stations by (ChargeConnector.key). */
+        const val KEY_CHARGE_CONNECTOR = "charge_connector"
         const val KEY_TRIP_COST_TARIFF = "trip_cost_tariff" // "home", "dc", or numeric
         const val KEY_CONSUMPTION_GOOD = "consumption_good_threshold"
         const val KEY_CONSUMPTION_BAD = "consumption_bad_threshold"
@@ -43,8 +51,15 @@ open class SettingsRepository @Inject constructor(
         const val KEY_IDLE_DRAIN_CLEANUP_DONE = "idle_drain_cleanup_done"
         const val KEY_CONSUMPTION_RECALC_DONE = "consumption_recalc_done"
         const val KEY_IDLE_DRAIN_V2_CLEANUP = "idle_drain_v2_cleanup"
+        /** One-time repair of trips holding an impossible energydata kWh value. */
+        const val KEY_ENERGY_KWH_SANITY_DONE = "energydata_kwh_sanity_v1_done"
         /** DriveMode trigger value "0" (old "NORMAL") rewritten to the real NORMAL code "3". */
         const val KEY_DRIVEMODE_RULE_MIGRATION = "drivemode_rule_migration_v2"
+        const val KEY_DEFAULT_RULES_SEEDED = "default_rules_seeded_v1"
+        /** Trunk trigger value "0" (old "closed") rewritten to the real closed code "2". */
+        const val KEY_TRUNK_RULE_MIGRATION = "trunk_rule_migration_v1"
+        /** PowerState conditions rewritten to the BYDMate start or gear D, rules needing the car off removed. */
+        const val KEY_POWERSTATE_RULE_MIGRATION = "powerstate_rule_migration_v1"
         const val KEY_OPENROUTER_API_KEY = "openrouter_api_key"
         const val KEY_OPENROUTER_MODEL = "openrouter_model"
         /** Exa (api.exa.ai) BYOK for the web_search tool. Blank = openrouter:web_search server tool
@@ -74,7 +89,11 @@ open class SettingsRepository @Inject constructor(
         const val KEY_ABRP_USER_TOKEN = "abrp_user_token"
         /** Необязательный код модели автомобиля из библиотеки ABRP. */
         const val KEY_ABRP_CAR_MODEL = "abrp_car_model"
-        /** Отправлять GPS-координаты и курс в телеметрию ABRP (opt-in, по умолчанию выкл). */
+        /**
+         * Отправлять GPS-координаты и курс в телеметрию ABRP (opt-in, по умолчанию выкл).
+         * Узкий случай: следить за машиной в ABRP с телефона, когда ABRP на головном устройстве
+         * не запущен. Если он запущен, он сам читает GPS, и с двумя источниками метка прыгает.
+         */
         const val KEY_ABRP_SEND_LOCATION = "abrp_send_location"
         /** Слать тот же JSON телеметрии POST-запросом на свой URL. Работает независимо от ABRP. */
         const val KEY_WEBHOOK_ENABLED = "webhook_enabled"
@@ -84,11 +103,41 @@ open class SettingsRepository @Inject constructor(
         const val KEY_WEBHOOK_SECRET = "webhook_secret"
         /** Отправлять GPS-координаты и курс на вебхук (opt-in, по умолчанию выкл). */
         const val KEY_WEBHOOK_SEND_LOCATION = "webhook_send_location"
+        // Automatic backup (#237). Period = AutoBackupPeriod.key; last_ts = 0 until the first export.
+        const val KEY_AUTO_BACKUP_PERIOD = "auto_backup_period"
+        const val KEY_AUTO_BACKUP_LAST_TS = "auto_backup_last_ts"
+        /** Short Russian text for the Settings status line («отправлен в Telegram», …). */
+        const val KEY_AUTO_BACKUP_LAST_RESULT = "auto_backup_last_result"
+        /** Absolute path of an exported backup not yet delivered to Telegram; empty = none. */
+        const val KEY_AUTO_BACKUP_PENDING_UPLOAD = "auto_backup_pending_upload"
+        /** Parts (#238) the automatic and the manual save export: BackupPart ids, comma separated. */
+        const val KEY_AUTO_BACKUP_PARTS = "auto_backup_parts"
+        const val KEY_MANUAL_BACKUP_PARTS = "manual_backup_parts"
+        /** Telegram bot the backups go to: token (secret), private chat id, bot username. */
+        const val KEY_TG_BACKUP_TOKEN = "tg_backup_token"
+        const val KEY_TG_BACKUP_CHAT_ID = "tg_backup_chat_id"
+        const val KEY_TG_BACKUP_BOT_NAME = "tg_backup_bot_name"
+        const val KEY_TG_BACKUP_CHAT_NAME = "tg_backup_chat_name"
+        /** Power-off Telegram report (3.19): "true" = on, and its ReportField ids, comma separated. */
+        const val KEY_TG_REPORT_OFF_ENABLED = "tg_report_off_enabled"
+        const val KEY_TG_REPORT_OFF_FIELDS = "tg_report_off_fields"
+        /** One-shot flag: the odometer was added to a power-off choice saved before it existed. */
+        const val KEY_TG_REPORT_ODOMETER_ADDED = "tg_report_odometer_added"
+        /** Telegram reports waiting for the network: a JSON array, see TelegramReporter. */
+        const val KEY_TG_REPORT_OUTBOX = "tg_report_outbox"
+        /** "true" = a finished log recording goes to the bot by itself (#324). */
+        const val KEY_TG_LOG_AUTO_SEND = "tg_log_auto_send"
         const val KEY_DATA_SOURCE = "data_source"
         const val KEY_MAP_TILE_SOURCE = "map_tile_source"
         const val KEY_AUTOSERVICE_ENABLED = "autoservice_enabled"
         /** "true" hides the native BYD voice assistant (pm disable-user); default "false". */
         const val KEY_DISABLE_NATIVE_ASSISTANT = "disable_native_assistant"
+        /** Confirmed car type (VehicleKindMonitor): "EV" or "HYBRID"; absent until confirmed. */
+        const val KEY_VEHICLE_KIND = "vehicle_kind"
+        /** The raw words that confirmed it: "hev=…;ev=…;fuel=…". */
+        const val KEY_VEHICLE_KIND_EVIDENCE = "vehicle_kind_evidence"
+        /** Epoch ms of the confirmation. */
+        const val KEY_VEHICLE_KIND_CONFIRMED_AT = "vehicle_kind_confirmed_at"
         const val KEY_LAST_MILEAGE_KM = "last_mileage_km"
         const val KEY_LAST_CAPACITY_KWH = "last_capacity_kwh"
         const val KEY_LAST_STATE_TS = "last_state_ts"
@@ -106,6 +155,12 @@ open class SettingsRepository @Inject constructor(
         // Included in the diagnostic dump — logcat rotates out the startup
         // window within minutes on DiLink, so field reports need this.
         const val KEY_CATCHUP_JOURNAL = "catchup_journal"
+        /** Comma-separated TechCard ids in the order the driver dragged them into. */
+        const val KEY_TECH_CARD_ORDER = "tech_card_order"
+        /** "true" once a card has actually been dragged — hides the reorder hint. */
+        const val KEY_TECH_ORDER_HINT_SEEN = "tech_card_order_hint_seen"
+        /** Comma-separated automation rule ids in the order the driver dragged them into (#249). */
+        const val KEY_AUTOMATION_RULE_ORDER = "automation_rule_order"
         const val KEY_MIGRATION_V2_4_17 = "migration_v2_4_17_done"
         const val KEY_INSIGHT_CACHE_V2_MIGRATION_DONE = "insight_cache_v2_migration_done"
         // One-shot migration flag: v2.8.1 — clear stale "DIPLUS" data_source value
@@ -116,8 +171,9 @@ open class SettingsRepository @Inject constructor(
         // Voice feature keys (also mirrored into SharedPreferences("voice") for SteeringWheelKeyService)
         const val KEY_VOICE_ENABLED = "voice_enabled"
         /** "" = follow app language; "RU" or "EN" to override */
-        const val KEY_VOICE_LANG = "voice_lang"
         const val KEY_VOICE_KEYCODE = "voice_keycode"
+        /** Other keycodes one press of the voice button sends, comma-separated; "" when none. */
+        const val KEY_VOICE_COMPANIONS = "voice_keycode_companions"
         /** Offline TTS for agent replies; also mirrored into SharedPreferences("voice") for VoiceGate. */
         const val KEY_TTS_ENABLED = "tts_enabled"
         // Wave N: online TTS backends (provider selection is wired in a later task)
@@ -158,11 +214,13 @@ open class SettingsRepository @Inject constructor(
             Currency("RUB", "₽"),
             Currency("UAH", "₴"),
             Currency("KZT", "₸"),
+            Currency("AMD", "֏"),
             Currency("USD", "$"),
             Currency("EUR", "€"),
             Currency("PLN", "zł"),
             Currency("CNY", "¥"),
             Currency("UZS", "UZS"),
+            Currency("KGS", "сом"),
         )
     }
 
@@ -220,6 +278,18 @@ open class SettingsRepository @Inject constructor(
 
     suspend fun getTripCostTariffKey(): String =
         getString(KEY_TRIP_COST_TARIFF, "home")
+
+    /**
+     * Mirrors the period in force today into the three flat tariff keys. Nothing reads a
+     * period directly except [com.bydmate.app.domain.cost.CostCalculator]; the Welcome
+     * Wizard and every pre-period reader keep working off these keys.
+     */
+    suspend fun mirrorCurrentTariffPeriod(homeRate: Double, dcRate: Double, tripRule: String) =
+        setStrings(mapOf(
+            KEY_HOME_TARIFF to homeRate.toString(),
+            KEY_DC_TARIFF to dcRate.toString(),
+            KEY_TRIP_COST_TARIFF to tripRule,
+        ))
 
     suspend fun getConsumptionGoodThreshold(): Double =
         getString(KEY_CONSUMPTION_GOOD, DEFAULT_CONSUMPTION_GOOD).parseNumericSetting() ?: 20.0
@@ -321,6 +391,12 @@ open class SettingsRepository @Inject constructor(
     suspend fun setConsumptionRecalcDone() =
         setString(KEY_CONSUMPTION_RECALC_DONE, "true")
 
+    suspend fun isEnergyKwhSanityDone(): Boolean =
+        getString(KEY_ENERGY_KWH_SANITY_DONE, "false") == "true"
+
+    suspend fun setEnergyKwhSanityDone() =
+        setString(KEY_ENERGY_KWH_SANITY_DONE, "true")
+
     suspend fun getMapTileSource(): String =
         getString(KEY_MAP_TILE_SOURCE, DEFAULT_MAP_TILE_SOURCE)
 
@@ -333,11 +409,29 @@ open class SettingsRepository @Inject constructor(
     suspend fun setIdleDrainV2CleanupDone() =
         setString(KEY_IDLE_DRAIN_V2_CLEANUP, "true")
 
+    suspend fun isDefaultRulesSeeded(): Boolean =
+        getString(KEY_DEFAULT_RULES_SEEDED, "false") == "true"
+
+    suspend fun setDefaultRulesSeeded() =
+        setString(KEY_DEFAULT_RULES_SEEDED, "true")
+
     suspend fun isDriveModeRuleMigrationDone(): Boolean =
         getString(KEY_DRIVEMODE_RULE_MIGRATION, "false") == "true"
 
     suspend fun setDriveModeRuleMigrationDone() =
         setString(KEY_DRIVEMODE_RULE_MIGRATION, "true")
+
+    suspend fun isTrunkRuleMigrationDone(): Boolean =
+        getString(KEY_TRUNK_RULE_MIGRATION, "false") == "true"
+
+    suspend fun setTrunkRuleMigrationDone() =
+        setString(KEY_TRUNK_RULE_MIGRATION, "true")
+
+    suspend fun isPowerStateRuleMigrationDone(): Boolean =
+        getString(KEY_POWERSTATE_RULE_MIGRATION, "false") == "true"
+
+    suspend fun setPowerStateRuleMigrationDone() =
+        setString(KEY_POWERSTATE_RULE_MIGRATION, "true")
 
     suspend fun getDataSource(): DataSource = DataSource.ENERGYDATA
 
@@ -392,6 +486,157 @@ open class SettingsRepository @Inject constructor(
         "trip${n}_corr_excl" to if (state.excludeStraddling) "1" else "0",
     ))
 
+    /** Trip 1/2 auto-reset after charging (#235); unknown or absent value = OFF. */
+    suspend fun getTripAutoResetMode(n: Int): TripAutoResetMode =
+        TripAutoResetMode.fromKey(settingsDao.get("trip${n}_auto_reset"))
+
+    suspend fun setTripAutoResetMode(n: Int, mode: TripAutoResetMode) =
+        setString("trip${n}_auto_reset", mode.key)
+
+    fun observeTripAutoResetMode(n: Int): Flow<TripAutoResetMode> =
+        observeString("trip${n}_auto_reset").map { TripAutoResetMode.fromKey(it) }
+
+    /** «Разъём для зарядки»; unknown or absent value = GB/T. */
+    suspend fun getChargeConnector(): ChargeConnector =
+        ChargeConnector.fromKey(settingsDao.get(KEY_CHARGE_CONNECTOR))
+
+    suspend fun setChargeConnector(connector: ChargeConnector) =
+        setString(KEY_CHARGE_CONNECTOR, connector.key)
+
+    // --- Automatic backup (#237) ---
+
+    suspend fun getAutoBackupPeriod(): AutoBackupPeriod =
+        AutoBackupPeriod.fromKey(settingsDao.get(KEY_AUTO_BACKUP_PERIOD))
+
+    suspend fun setAutoBackupPeriod(period: AutoBackupPeriod) =
+        setString(KEY_AUTO_BACKUP_PERIOD, period.key)
+
+    fun observeAutoBackupPeriod(): Flow<AutoBackupPeriod> =
+        observeString(KEY_AUTO_BACKUP_PERIOD).map { AutoBackupPeriod.fromKey(it) }
+
+    suspend fun getAutoBackupLastTs(): Long =
+        getString(KEY_AUTO_BACKUP_LAST_TS, "0").toLongOrNull() ?: 0L
+
+    suspend fun setAutoBackupLastTs(ts: Long) =
+        setString(KEY_AUTO_BACKUP_LAST_TS, ts.toString())
+
+    fun observeAutoBackupLastTs(): Flow<Long> =
+        observeString(KEY_AUTO_BACKUP_LAST_TS).map { it?.toLongOrNull() ?: 0L }
+
+    suspend fun getAutoBackupLastResult(): String =
+        getString(KEY_AUTO_BACKUP_LAST_RESULT, "")
+
+    suspend fun setAutoBackupLastResult(result: String) =
+        setString(KEY_AUTO_BACKUP_LAST_RESULT, result)
+
+    fun observeAutoBackupLastResult(): Flow<String> =
+        observeString(KEY_AUTO_BACKUP_LAST_RESULT).map { it.orEmpty() }
+
+    suspend fun getAutoBackupPendingUpload(): String =
+        getString(KEY_AUTO_BACKUP_PENDING_UPLOAD, "")
+
+    suspend fun setAutoBackupPendingUpload(path: String) =
+        setString(KEY_AUTO_BACKUP_PENDING_UPLOAD, path)
+
+    suspend fun getAutoBackupParts(): Set<BackupPart> =
+        BackupPart.parseCsv(settingsDao.get(KEY_AUTO_BACKUP_PARTS))
+
+    suspend fun setAutoBackupParts(parts: Set<BackupPart>) =
+        setString(KEY_AUTO_BACKUP_PARTS, BackupPart.toCsv(parts))
+
+    fun observeAutoBackupParts(): Flow<Set<BackupPart>> =
+        observeString(KEY_AUTO_BACKUP_PARTS).map { BackupPart.parseCsv(it) }
+
+    suspend fun getManualBackupParts(): Set<BackupPart> =
+        BackupPart.parseCsv(settingsDao.get(KEY_MANUAL_BACKUP_PARTS))
+
+    suspend fun setManualBackupParts(parts: Set<BackupPart>) =
+        setString(KEY_MANUAL_BACKUP_PARTS, BackupPart.toCsv(parts))
+
+    suspend fun getTgBackupToken(): String =
+        getString(KEY_TG_BACKUP_TOKEN, "")
+
+    suspend fun getTgBackupChatId(): Long? =
+        getString(KEY_TG_BACKUP_CHAT_ID, "").toLongOrNull()
+
+    suspend fun getTgBackupBotName(): String =
+        getString(KEY_TG_BACKUP_BOT_NAME, "")
+
+    /** Token, chat and names read in one query, so a run never pairs a new token with an old chat. */
+    suspend fun getTgBackupConfig(): TgBackupConfig {
+        val keys = listOf(KEY_TG_BACKUP_TOKEN, KEY_TG_BACKUP_CHAT_ID, KEY_TG_BACKUP_BOT_NAME, KEY_TG_BACKUP_CHAT_NAME)
+        val values = settingsDao.getMany(keys).associate { it.key to it.value.orEmpty() }
+        return TgBackupConfig(
+            token = values[KEY_TG_BACKUP_TOKEN].orEmpty(),
+            chatId = values[KEY_TG_BACKUP_CHAT_ID]?.toLongOrNull(),
+            botName = values[KEY_TG_BACKUP_BOT_NAME].orEmpty(),
+            chatName = values[KEY_TG_BACKUP_CHAT_NAME].orEmpty(),
+        )
+    }
+
+    /** A checked bot in one transaction, so a half-checked token never pairs with an old chat. */
+    suspend fun saveTgBackup(token: String, botName: String, chatId: Long?, chatName: String) = setStrings(mapOf(
+        KEY_TG_BACKUP_TOKEN to token,
+        KEY_TG_BACKUP_BOT_NAME to botName,
+        KEY_TG_BACKUP_CHAT_ID to (chatId?.toString() ?: ""),
+        KEY_TG_BACKUP_CHAT_NAME to chatName,
+    ))
+
+    /** «Отключить»: forgets the bot in one transaction. */
+    suspend fun clearTgBackup() = saveTgBackup("", "", null, "")
+
+    suspend fun isTgReportOffEnabled(): Boolean = getString(KEY_TG_REPORT_OFF_ENABLED, "false") == "true"
+
+    suspend fun setTgReportOffEnabled(enabled: Boolean) = setString(KEY_TG_REPORT_OFF_ENABLED, enabled.toString())
+
+    fun observeTgReportOffEnabled(): Flow<Boolean> = observeString(KEY_TG_REPORT_OFF_ENABLED).map { it == "true" }
+
+    suspend fun getTgReportOffFields(): Set<ReportField> = ReportField.parseCsv(settingsDao.get(KEY_TG_REPORT_OFF_FIELDS))
+
+    suspend fun setTgReportOffFields(fields: Set<ReportField>) =
+        setString(KEY_TG_REPORT_OFF_FIELDS, ReportField.toCsv(fields))
+
+    fun observeTgReportOffFields(): Flow<Set<ReportField>> =
+        observeString(KEY_TG_REPORT_OFF_FIELDS).map { ReportField.parseCsv(it) }
+
+    /**
+     * One-shot (3.19.1): a power-off choice saved before the odometer existed gets it once; an
+     * install with no saved choice already has it through [ReportField.DEFAULT]. Rules keep theirs.
+     */
+    suspend fun addTgReportOdometerOnce() {
+        if (getString(KEY_TG_REPORT_ODOMETER_ADDED, "false") == "true") return
+        settingsDao.get(KEY_TG_REPORT_OFF_FIELDS)?.let { setTgReportOffFields(ReportField.parseCsv(it) + ReportField.ODOMETER) }
+        setString(KEY_TG_REPORT_ODOMETER_ADDED, "true")
+    }
+
+    suspend fun getTgReportOutbox(): String = getString(KEY_TG_REPORT_OUTBOX, "")
+
+    suspend fun setTgReportOutbox(json: String) = setString(KEY_TG_REPORT_OUTBOX, json)
+
+    suspend fun isTgLogAutoSendEnabled(): Boolean = getString(KEY_TG_LOG_AUTO_SEND, "false") == "true"
+
+    suspend fun setTgLogAutoSendEnabled(enabled: Boolean) = setString(KEY_TG_LOG_AUTO_SEND, enabled.toString())
+
+    fun observeTgLogAutoSendEnabled(): Flow<Boolean> = observeString(KEY_TG_LOG_AUTO_SEND).map { it == "true" }
+
+    suspend fun getTechCardOrder(): String =
+        getString(KEY_TECH_CARD_ORDER, "")
+
+    suspend fun setTechCardOrder(ids: String) =
+        setString(KEY_TECH_CARD_ORDER, ids)
+
+    suspend fun isTechOrderHintSeen(): Boolean =
+        getString(KEY_TECH_ORDER_HINT_SEEN, "false") == "true"
+
+    suspend fun setTechOrderHintSeen() =
+        setString(KEY_TECH_ORDER_HINT_SEEN, "true")
+
+    suspend fun getAutomationRuleOrder(): String =
+        getString(KEY_AUTOMATION_RULE_ORDER, "")
+
+    suspend fun setAutomationRuleOrder(ids: String) =
+        setString(KEY_AUTOMATION_RULE_ORDER, ids)
+
     suspend fun isMigrationV2_4_17Done(): Boolean =
         getString(KEY_MIGRATION_V2_4_17, "false") == "true"
 
@@ -411,12 +656,6 @@ open class SettingsRepository @Inject constructor(
 
     suspend fun setVoiceEnabled(enabled: Boolean) =
         setString(KEY_VOICE_ENABLED, enabled.toString())
-
-    suspend fun getVoiceLang(): String =
-        getString(KEY_VOICE_LANG, "")
-
-    suspend fun setVoiceLang(lang: String) =
-        setString(KEY_VOICE_LANG, lang)
 
     suspend fun getVoiceKeycode(): Int =
         getString(KEY_VOICE_KEYCODE, "").toIntOrNull() ?: 0

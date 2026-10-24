@@ -1,6 +1,14 @@
 package com.bydmate.app.ui.tech
 
+import com.bydmate.app.data.repository.equivalentFullCycles
+import com.bydmate.app.data.repository.fullCycleCapacityKwh
+import com.bydmate.app.data.repository.fullCycleKwh
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
+import java.text.NumberFormat
+import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Scale and threshold maths behind the small graphics on the «Техника» screen, kept out of the
@@ -40,6 +48,37 @@ internal object TechPanelVisuals {
      * Marks the tyres whose pressure is more than 10% off the average of the reported ones.
      * With fewer than two readings there is nothing to compare against, so nothing is flagged.
      */
+    /** Ready-to-draw parts of the «Полных циклов» row: «87» plus «6 340 кВт·ч ÷ 72,9». */
+    data class FullCycles(val value: String, val totalKwh: String, val capacity: String)
+
+    /**
+     * Full charge cycles of the pack, off the BMS lifetime counter when the car reports one and
+     * off the app's own charging sum otherwise ([fullCycleKwh]) — the same choice the «Зарядки»
+     * screen makes. The divisor is corrected for SoH ([fullCycleCapacityKwh]) and the caption
+     * shows that divisor, not the nominal. Null while neither source has anything to divide; a
+     * «0» would read as a measured value. Grouping and the decimal separator follow the device
+     * locale, like every other number on this screen.
+     */
+    fun fullCycles(
+        bmsLifetimeKwh: Double?,
+        chargedKwh: Double?,
+        nominalCapacityKwh: Double,
+        sohPercent: Float?,
+        locale: Locale = Locale.getDefault(),
+    ): FullCycles? {
+        val totalKwh = fullCycleKwh(bmsLifetimeKwh, chargedKwh) ?: return null
+        if (nominalCapacityKwh <= 0.0) return null
+        val lifetimeSource = bmsLifetimeKwh != null && bmsLifetimeKwh > 0.0
+        val cycles = equivalentFullCycles(totalKwh, nominalCapacityKwh, sohPercent, lifetimeSource)
+        val kwh = NumberFormat.getIntegerInstance(locale)
+        val capacity = DecimalFormat("0.0", DecimalFormatSymbols.getInstance(locale))
+        return FullCycles(
+            value = cycles.roundToInt().toString(),
+            totalKwh = kwh.format(totalKwh),
+            capacity = capacity.format(fullCycleCapacityKwh(nominalCapacityKwh, sohPercent, lifetimeSource)),
+        )
+    }
+
     fun tyreDeviates(pressures: List<Int?>): List<Boolean> {
         val known = pressures.filterNotNull()
         if (known.size < 2) return List(pressures.size) { false }

@@ -1,6 +1,7 @@
 package com.bydmate.app.data.autoservice
 
 import androidx.test.core.app.ApplicationProvider
+import com.bydmate.app.helper.HelperBinderProtocol
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
@@ -34,7 +35,8 @@ class AdbOnDeviceClientTest {
         // success (what a real redirected shell command returns) so dispatch-only tests don't
         // need to enumerate the exact dynamic command string. Set to null to simulate a
         // dead-socket exec failure (AdbProtocolClient.exec returns null on any transport error).
-        var execResult: String? = ""
+        var execResult: String? = "",
+        override var lastConnectFailure: AdbConnectFailure? = null,
     ) : AdbProtocol {
         var connectCalls = 0
         var disconnectCalls = 0
@@ -72,11 +74,66 @@ class AdbOnDeviceClientTest {
     }
 
     @Test
+    fun `exec lets the cloud-over-wifi commands through and nothing around them`() = runTest {
+        val fake = FakeProtocol()
+        val client = newClient(fake)
+        client.connect()
+        val allowed = listOf(
+            "getprop persist.sys.byd.apn_type",
+            "getprop gsm.sim.operator.iso-country",
+            "service call cloudmanager 7",
+            "service call cloudmanager 1 i32 4",
+            "service call cloudmanager 1 i32 -5",
+            "am broadcast --user 0 -a com.byd.action.RADIO_CONFIG -p com.android.phone -f 0x01000000 " +
+                "--es opt_name set_default_data --es apn_type triple_apn",
+        )
+        allowed.forEach { client.exec(it) }
+        assertEquals(allowed, fake.execCalls)
+
+        val refused = listOf(
+            "getprop persist.sys.byd.apn_type; reboot",
+            "getprop ro.serialno",
+            "service call cloudmanager 1 i32 3",
+            "service call cloudmanager 2",
+            "am broadcast --user 0 -a com.byd.action.RADIO_CONFIG -p com.android.phone -f 0x01000000 " +
+                "--es opt_name set_default_data --es apn_type triple_apn; reboot",
+        )
+        refused.forEach { cmd ->
+            try {
+                client.exec(cmd)
+                fail("Expected the write barrier to refuse: $cmd")
+            } catch (e: IllegalArgumentException) {
+                assertTrue(e.message!!.contains("write barrier"))
+            }
+        }
+        assertEquals(allowed, fake.execCalls)
+    }
+
+    @Test
     fun `exec disconnected returns null`() = runTest {
         val client = newClient(FakeProtocol(connectResult = false))
         // Note: not calling connect() — protocol field stays null.
         val result = client.exec("service call autoservice 5 i32 1014 i32 1145045032")
         assertNull(result)
+    }
+
+    @Test
+    fun `lastConnectFailure is null before any connect`() {
+        val client = newClient(FakeProtocol(lastConnectFailure = AdbConnectFailure.UNREACHABLE))
+        // No connect yet: the protocol is not even created, so there is nothing to forward.
+        assertNull(client.lastConnectFailure())
+    }
+
+    @Test
+    fun `lastConnectFailure forwards the protocol's classification`() = runTest {
+        val fake = FakeProtocol(connectResult = false)
+        val client = newClient(fake)
+        client.connect()
+
+        fake.lastConnectFailure = AdbConnectFailure.AUTH_REJECTED
+        assertEquals(AdbConnectFailure.AUTH_REJECTED, client.lastConnectFailure())
+        fake.lastConnectFailure = null
+        assertNull(client.lastConnectFailure())
     }
 
     @Test
@@ -148,10 +205,13 @@ class AdbOnDeviceClientTest {
         assertTrue("must contain setsid", cmd.contains("setsid"))
         assertTrue("must contain CLASSPATH=", cmd.contains("CLASSPATH="))
         assertTrue("must contain app_process", cmd.contains("app_process"))
-        assertTrue("must contain --nice-name=bydmate_helper", cmd.contains("--nice-name=bydmate_helper"))
+        // Flavour-dependent: the waze build spawns "bydmate_waze", the plain build "bydmate_helper".
+        val procName = com.bydmate.app.helper.HelperBinderProtocol.PROCESS_NAME
+        assertTrue("must contain --nice-name=$procName", cmd.contains("--nice-name=$procName"))
         assertTrue("must contain HelperDaemon class", cmd.contains("com.bydmate.app.helper.HelperDaemon"))
         assertTrue("must contain caller uid", cmd.contains(android.os.Process.myUid().toString()))
-        assertTrue("must redirect to bydmate_helper.log", cmd.contains("bydmate_helper.log"))
+        val logName = "${com.bydmate.app.helper.HelperBinderProtocol.SERVICE_NAME}.log"
+        assertTrue("must redirect to $logName", cmd.contains(logName))
 
         // SIGHUP-race fix: the spawning shell must stay alive (poll-loop on the
         // service registry) until the detached app_process has booted and called
@@ -193,8 +253,8 @@ class AdbOnDeviceClientTest {
         // Must select via ps + exact NAME (comm) equality — the discipline helperHeartbeat uses.
         assertTrue("must select via ps -A -o PID,NAME", cmd.contains("ps -A -o PID,NAME"))
         assertTrue(
-            "must match the process NAME exactly (== \"bydmate_helper\")",
-            cmd.contains("\$2==\"bydmate_helper\"")
+            "must match the process NAME exactly (== the flavour's nice-name)",
+            cmd.contains("\$2==\"" + com.bydmate.app.helper.HelperBinderProtocol.PROCESS_NAME + "\"")
         )
         assertTrue("must kill -9 the selected pids", cmd.contains("kill -9"))
     }
@@ -238,6 +298,41 @@ class AdbOnDeviceClientTest {
             } catch (_: IllegalArgumentException) { /* expected */ }
         }
         assertEquals("a refused token must never reach the shell", 0, fake.execCalls.size)
+    }
+
+    @Test
+    fun `helperHeartbeat connects lazily when the process has no protocol yet`() = runTest {
+        // A process recreated while the daemon runs never called connect(); reporting "no daemon"
+        // there sent HelperBootstrap into kill+respawn on a healthy daemon (#64/#148).
+        val fake = FakeProtocol(
+            connectResult = true,
+            execResponses = mapOf("ps -A -o NAME" to "init\n${HelperBinderProtocol.PROCESS_NAME}\nzygote"),
+        )
+        val client = newClient(fake)
+
+        assertTrue("a live daemon must be reported even without a prior connect", client.helperHeartbeat())
+        assertEquals("the protocol must be connected lazily", 1, fake.connectCalls)
+    }
+
+    @Test
+    fun `helperHeartbeat stays false when the lazy connect fails`() = runTest {
+        val fake = FakeProtocol(connectResult = false)
+        val client = newClient(fake)
+
+        assertFalse("no channel means no honest answer about the daemon", client.helperHeartbeat())
+        assertEquals("nothing may be executed over a refused connection", 0, fake.execCalls.size)
+    }
+
+    @Test
+    fun `readHelperLog connects lazily too`() = runTest {
+        val fake = FakeProtocol(
+            connectResult = true,
+            execResponses = mapOf("cat ${HelperBinderProtocol.LOG_PATH}" to "READY via=broadcast"),
+        )
+        val client = newClient(fake)
+
+        assertEquals("READY via=broadcast", client.readHelperLog())
+        assertEquals(1, fake.connectCalls)
     }
 
     private companion object {

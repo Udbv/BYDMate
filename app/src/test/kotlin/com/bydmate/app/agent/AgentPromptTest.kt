@@ -19,6 +19,13 @@ class AgentPromptTest {
         assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("seat_heat_driver_3"))
     }
 
+    // #254: a Song Plus log showed the model picking seat level 3 for "включи подогрев водителя";
+    // that car only takes levels 1-2, so a level-less request must default to 1 like the offline voice.
+    @Test fun prompt_defaults_unnamed_seat_level_to_one() {
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("без названного уровня"))
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("ставь 1 уровень"))
+    }
+
     @Test fun prompt_explains_exact_time_trigger() {
         assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("time_range"))
     }
@@ -37,6 +44,31 @@ class AgentPromptTest {
         assertFalse(AgentOrchestrator.SYSTEM_PROMPT.contains("Никогда не называй машину гибридом"))
     }
 
+    // On-car log 25.09: the model named the time, villages and a "never asked" from thin air.
+    @Test fun prompt_takes_time_only_from_the_tag() {
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("(${AgentOrchestrator.TIME_TAG_PREFIX} ЧЧ:ММ)"))
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("другого источника времени у тебя нет"))
+    }
+
+    @Test fun prompt_names_places_only_from_where_am_i() {
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("where_am_i"))
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("не угадывай и не ищи координаты через web_search"))
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("скажи, что не знаешь, где мы"))
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("не говори, что мы в населённом пункте"))
+    }
+
+    // Review of 2c994429: a live fix's hedge must not depend on current speed - zero speed does
+    // not prove the car has been parked since the fix.
+    @Test fun prompt_hedges_stale_fix_regardless_of_current_speed() {
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("fix_note"))
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("даже если машина сейчас стоит"))
+    }
+
+    @Test fun prompt_admits_forgetting_instead_of_denying() {
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("скажи, что не помню"))
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("не утверждай, что такого не было"))
+    }
+
     @Test fun prompt_explains_pending_confirmation_status() {
         assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("ожидает подтверждения на экране"))
     }
@@ -45,8 +77,31 @@ class AgentPromptTest {
         assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("клавиша руля"))
     }
 
+    // Wave 4: an automation built on a guessed threshold is worse than a question.
+    @Test fun prompt_forbids_guessing_automation_details() {
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("Не додумывай ни порог"))
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("уточняющий вопрос и только потом создавай"))
+    }
+
+    @Test fun prompt_tells_the_model_to_read_the_created_rule_back() {
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("возвращает поле rule"))
+    }
+
+    @Test fun prompt_applies_stored_comfort_preferences() {
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("привычка по комфорту"))
+    }
+
     @Test fun prompt_mentions_driver_memory_tools() {
         assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("remember_fact"))
         assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("forget_fact"))
+    }
+
+    // Live charger status: the model must not claim a free connector the source does not know,
+    // must say "по прямой" and must route to the pick by its coordinates.
+    @Test fun prompt_explains_charger_answers() {
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("find_chargers"))
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("status_known=false"))
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("\"по прямой\""))
+        assertTrue(AgentOrchestrator.SYSTEM_PROMPT.contains("navigate_to с её lat и lon"))
     }
 }
