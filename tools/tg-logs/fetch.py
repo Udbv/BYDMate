@@ -17,6 +17,7 @@ import json
 import os
 import ssl
 import sys
+import time
 import urllib.parse
 import urllib.request
 
@@ -67,6 +68,12 @@ def main():
     seen = set()
     while True:
         pinned = call(token, "getChat", chat_id=chat_id).get("pinned_message")
+        # Right after an unpin getChat may still report that message for a moment.
+        for _ in range(5):
+            if not pinned or pinned["message_id"] not in seen:
+                break
+            time.sleep(1)
+            pinned = call(token, "getChat", chat_id=chat_id).get("pinned_message")
         document = (pinned or {}).get("document")
         if not document or pinned["message_id"] in seen:
             break
