@@ -2989,13 +2989,38 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
         },
     )
     if (tripDebug) {
+        val tripLogCount = com.bydmate.app.diagnostics.TripDebugLog.files(tripLogContext).size
         SettingHint(
             text = stringResource(
                 R.string.settings_trip_debug_files,
-                com.bydmate.app.diagnostics.TripDebugLog.files(tripLogContext).size,
+                tripLogCount,
                 com.bydmate.app.diagnostics.TripDebugLog.MAX_FILES,
             ),
         )
+        // The newest trip to the user's own bot, on a tap only: the log holds street names.
+        if (state.tgBackupBinding != null) {
+            var tripAuto by remember {
+                mutableStateOf(com.bydmate.app.diagnostics.TripDebugLog.isAutoSendEnabled(tripLogContext))
+            }
+            SettingToggleRow(
+                title = stringResource(R.string.settings_trip_debug_auto_title),
+                description = stringResource(R.string.settings_trip_debug_auto_desc),
+                checked = tripAuto,
+                onCheckedChange = {
+                    tripAuto = it
+                    com.bydmate.app.diagnostics.TripDebugLog.setAutoSendEnabled(tripLogContext, it)
+                },
+            )
+        }
+        if (state.tgBackupBinding != null && tripLogCount > 0) {
+            SettingActionRow(
+                title = stringResource(R.string.settings_trip_debug_send_title),
+                buttonLabel = stringResource(R.string.settings_log_tg_send),
+                onClick = { viewModel.sendTripLogToTelegram() },
+                enabled = !state.logSending,
+            )
+            if (state.tripLogStatus != null) SettingHint(text = state.tripLogStatus!!)
+        }
     }
     SettingDivider()
     SettingActionRow(
@@ -3021,7 +3046,7 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
             text = state.logSaveStatus!!,
         )
     }
-    // Diagnostic fid recorder (-test/debug builds only): the daemon owns the run, this row
+    // Diagnostic fid recorder (-test/-dev/debug builds only): the daemon owns the run, this row
     // only reflects and toggles it, so a reopened screen still shows a recording in force.
     if (state.fidRecorderVisible) {
         SettingDivider()
@@ -3043,6 +3068,7 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
                 text = stringResource(R.string.settings_fid_recorder_file, state.fidRecorderFile!!),
             )
         }
+        if (state.fidRecorderSendStatus != null) SettingHint(text = state.fidRecorderSendStatus!!)
     }
     SettingDivider()
     SettingActionRow(

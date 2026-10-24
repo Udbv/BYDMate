@@ -19,8 +19,9 @@ import java.util.concurrent.ConcurrentLinkedQueue
  *
  * On the development channel it runs unless switched off; on the stable channel it is off until
  * switched on. It records what the navigator showed on screen -- street names, and with them, by
- * implication, where the car went -- so it is worth knowing about. Nothing is sent anywhere: the
- * files stay on the car until the owner copies them off, newest [MAX_FILES] kept.
+ * implication, where the car went -- so it is worth knowing about. Nothing is sent anywhere unless
+ * the owner asks: a tap sends the newest trip to their own bot, and with [KEY_TG_AUTO] on the
+ * previous trip goes there by itself when the next one starts. Newest [MAX_FILES] kept.
  *
  * One file per trip. Writes are buffered and flushed on a background drain so the 300 ms push
  * loop never touches storage.
@@ -29,6 +30,10 @@ object TripDebugLog {
     private const val TAG = "TripDebugLog"
     const val PREFS_NAME = "diagnostics"
     const val KEY_ENABLED = "trip_debug_log"
+    /** Send the finished trip to the owner's bot when the next trip starts. */
+    const val KEY_TG_AUTO = "trip_log_tg_auto"
+    /** Name of the last trip file that went to the bot, so a restart does not send it twice. */
+    private const val KEY_TG_SENT = "trip_log_tg_sent"
 
     /** Rolling window of trips kept on the car. */
     const val MAX_FILES = 12
@@ -77,6 +82,23 @@ object TripDebugLog {
         // which is how a drive was lost.
         if (on) startTrip(context, "switch on") else endTrip("switch off")
     }
+
+    fun isAutoSendEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_TG_AUTO, false)
+
+    fun setAutoSendEnabled(context: Context, on: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean(KEY_TG_AUTO, on).apply()
+    }
+
+    fun lastSent(context: Context): String? =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_TG_SENT, null)
+
+    fun markSent(context: Context, name: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_TG_SENT, name).apply()
+    }
+
+    /** The trip being written now; null between trips. */
+    val currentFile: File? get() = file
 
     /** True while a trip file is open; cheap enough to guard every call site. */
     val active: Boolean get() = enabled && file != null

@@ -95,3 +95,11 @@ class FidRecorderReceiver : BroadcastReceiver() {
 /** The recorder answers on `-test` builds and on local debug builds; a public APK ignores it. */
 internal fun fidRecorderEnabled(versionName: String, debug: Boolean): Boolean =
     versionName.endsWith("-test") || debug
+
+/**
+ * The Settings switch also shows on development pre-releases (`4.0.1-dev.2`): finding the fid of a
+ * button on a car the developer does not have (massage on the Tang L) needs the owner to record
+ * one. The broadcast entry point stays on [fidRecorderEnabled]: the receiver is exported.
+ */
+internal fun fidRecorderSwitchVisible(versionName: String, debug: Boolean): Boolean =
+    fidRecorderEnabled(versionName, debug) || versionName.contains("-dev.")

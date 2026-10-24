@@ -869,6 +869,7 @@
     <string name="settings_log_tg_failed">Не удалось отправить: %1$s</string>
     <string name="settings_log_tg_too_big">Файл слишком большой для Telegram. Он лежит в папке Download.</string>
     <string name="settings_log_tg_missing">Файл не найден. Возможно, его удалили из папки Download.</string>
+    <string name="settings_log_tg_busy">Уже отправляю другой файл, повторите через минуту</string>
     <string name="settings_tg_log_auto_title">Отправлять записанный лог в Telegram</string>
     <string name="settings_tg_log_auto_hint">Когда запись лога закончится, файл сам придёт в ваш бот.</string>
     <string name="settings_update_check_in_progress">Проверка...</string>
@@ -1555,8 +1556,11 @@
     <string name="settings_trip_debug_title">Режим отладки: журнал поездок</string>
     <string name="settings_trip_debug_desc">Машина сама пишет журнал ведения по каждой поездке: что показал навигатор, что ушло на приборную панель и что она приняла. Файлы остаются в машине, папка %1$s. Записывает названия улиц с экрана навигатора.</string>
     <string name="settings_trip_debug_files">Журналов в машине: %1$d (хранится последних %2$d)</string>
+    <string name="settings_trip_debug_send_title">Журнал последней поездки</string>
+    <string name="settings_trip_debug_auto_title">Отправлять журнал поездки в Telegram</string>
+    <string name="settings_trip_debug_auto_desc">Когда начнётся следующая поездка, журнал прошлой сам придёт в ваш бот.</string>
     <string name="settings_fid_recorder_title">Регистратор датчиков</string>
-    <string name="settings_fid_recorder_desc">Пишет все изменения датчиков машины в файл в Загрузках, для разбора</string>
+    <string name="settings_fid_recorder_desc">Пишет все изменения датчиков машины в файл в Загрузках, для разбора. С привязанным ботом после остановки файл уходит в него</string>
     <string name="settings_fid_recorder_file">Файл: %1$s</string>
     <string name="settings_fid_recorder_error">Не записывает: %1$s</string>
     <string name="settings_quiet_notification_title">Тихое уведомление в шторке</string>

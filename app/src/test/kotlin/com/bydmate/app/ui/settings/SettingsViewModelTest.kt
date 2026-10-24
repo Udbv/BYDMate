@@ -2341,14 +2341,14 @@ class SettingsViewModelTest {
     fun `sending a saved log uploads it once with the file name as caption`() = runTest {
         val log = savedLog()
         val sink = tgSinkFake()
-        coEvery { sink.sendDocument(any(), any(), any(), any()) } returns Result.success(Unit)
+        coEvery { sink.sendDocument(any(), any(), any(), any(), true) } returns Result.success(Unit)
         val vm = vmWithStoppedLog(log)
 
         vm.sendLogToTelegram()
         vm.sendLogToTelegram()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 1) { sink.sendDocument("123:abc", 777L, log, log.name) }
+        coVerify(exactly = 1) { sink.sendDocument("123:abc", 777L, log, log.name, true) }
         assertFalse(vm.uiState.value.logSending)
         assertEquals(
             ctxForTg.getString(com.bydmate.app.R.string.settings_log_tg_sent),
@@ -2360,7 +2360,7 @@ class SettingsViewModelTest {
     fun `a failed log upload names the reason`() = runTest {
         val log = savedLog()
         val sink = tgSinkFake()
-        coEvery { sink.sendDocument(any(), any(), any(), any()) } returns Result.failure(
+        coEvery { sink.sendDocument(any(), any(), any(), any(), true) } returns Result.failure(
             com.bydmate.app.data.backup.TelegramSinkException(com.bydmate.app.data.backup.TelegramError.NO_NETWORK)
         )
         val vm = vmWithStoppedLog(log)
@@ -2385,7 +2385,7 @@ class SettingsViewModelTest {
         vm.sendLogToTelegram()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 0) { sink.sendDocument(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { sink.sendDocument(any(), any(), any(), any(), true) }
         assertEquals(
             ctxForTg.getString(com.bydmate.app.R.string.settings_log_tg_too_big),
             vm.uiState.value.logSaveStatus,
@@ -2396,7 +2396,7 @@ class SettingsViewModelTest {
     fun `an automatic log upload shows its result under the log row`() = runTest {
         val log = savedLog()
         val sink = tgSinkFake()
-        coEvery { sink.sendDocument(any(), any(), any(), any()) } returns Result.success(Unit)
+        coEvery { sink.sendDocument(any(), any(), any(), any(), true) } returns Result.success(Unit)
         val vm = vmWithStoppedLog(log)
 
         logTelegramSender.send(log)
