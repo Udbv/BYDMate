@@ -95,6 +95,8 @@ class TelegramBackupSink internal constructor(
         const val NO_LINK_PREVIEW = """{"is_disabled":true}"""
         private val ZIP_MEDIA = "application/zip".toMediaType()
         private val TEXT_MEDIA = "text/plain".toMediaType()
+        /** The FID dump is .txt, a trip log .log. */
+        private val TEXT_EXTENSIONS = setOf("txt", "log")
     }
 
     // Uploads of a multi-MB zip over a car modem need far more than the shared 15 s write timeout.
@@ -158,14 +160,32 @@ class TelegramBackupSink internal constructor(
         return call(token, "sendLocation", body) { }
     }
 
-    suspend fun sendDocument(token: String, chatId: Long, file: File, caption: String): Result<Unit> {
+    /**
+     * [pin] = a diagnostic file (FID dump, log): pinned silently once sent. A bot cannot list what
+     * it sent, but getChat shows a chat's latest pinned message with its file, so a pinned file can
+     * be fetched with the bot's token alone and unpinned once taken (tools/tg-logs). A failed pin
+     * leaves the file sent: the upload is what the user asked for. Backups are never pinned.
+     */
+    suspend fun sendDocument(token: String, chatId: Long, file: File, caption: String, pin: Boolean = false): Result<Unit> {
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("chat_id", chatId.toString())
             .addFormDataPart("caption", caption)
-            .addFormDataPart("document", file.name, file.asRequestBody(if (file.extension == "txt") TEXT_MEDIA else ZIP_MEDIA))
+            .addFormDataPart("document", file.name, file.asRequestBody(if (file.extension in TEXT_EXTENSIONS) TEXT_MEDIA else ZIP_MEDIA))
             .build()
-        return call(token, "sendDocument", body) { }
+        val sent = call(token, "sendDocument", body) { it.getJSONObject("result").optLong("message_id") }
+        val messageId = sent.getOrNull()
+        if (pin && messageId != null) {
+            val pinBody = FormBody.Builder()
+                .add("chat_id", chatId.toString())
+                .add("message_id", messageId.toString())
+                .add("disable_notification", "true")
+                .build()
+            call(token, "pinChatMessage", pinBody) { }.onFailure {
+                Log.w(TAG, "telegram pin failed: ${(it as? TelegramSinkException)?.key ?: it.javaClass.simpleName}")
+            }
+        }
+        return sent.map { }
     }
 
     /** A group by its title; a private chat as "Имя @username", either part may be missing. */

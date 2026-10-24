@@ -64,3 +64,7 @@ docs/superpowers/**/handoff-*
 # Owner's private notes, kept out of the public repo.
 PHILOSOPHY.md
 CONTEXT.md
+
+# Python bytecode (tools/)
+__pycache__/
+*.pyc

@@ -715,6 +715,7 @@
     <string name="settings_log_tg_failed">Não foi possível enviar: %1$s</string>
     <string name="settings_log_tg_too_big">O arquivo é grande demais para o Telegram. Ele está na pasta Download.</string>
     <string name="settings_log_tg_missing">Arquivo não encontrado. Talvez tenha sido apagado da pasta Download.</string>
+    <string name="settings_log_tg_busy">Já estou a enviar outro ficheiro, tente daqui a um minuto</string>
     <string name="settings_tg_log_auto_title">Enviar o log gravado ao Telegram</string>
     <string name="settings_tg_log_auto_hint">Quando a gravação do log terminar, o arquivo chega sozinho ao seu bot.</string>
     <string name="settings_update_check_in_progress">Verificando...</string>
@@ -1326,8 +1327,11 @@
     <string name="settings_trip_debug_title">Modo de depuração: registos de viagem</string>
     <string name="settings_trip_debug_desc">O carro guarda o seu próprio registo de orientação em cada viagem: o que a navegação mostrou, o que foi escrito no painel e o que este aceitou. Os ficheiros ficam no carro, em %1$s. Regista nomes de ruas do ecrã de navegação.</string>
     <string name="settings_trip_debug_files">Registos no carro: %1$d (mantidos os %2$d mais recentes)</string>
+    <string name="settings_trip_debug_send_title">Registo da última viagem</string>
+    <string name="settings_trip_debug_auto_title">Enviar registos de viagem para o Telegram</string>
+    <string name="settings_trip_debug_auto_desc">Quando a próxima viagem começar, o registo da anterior vai sozinho para o seu bot.</string>
     <string name="settings_fid_recorder_title">Registrador de sensores</string>
-    <string name="settings_fid_recorder_desc">Grava cada mudança dos sensores do carro num arquivo em Downloads, para análise</string>
+    <string name="settings_fid_recorder_desc">Grava cada mudança dos sensores do carro num arquivo em Downloads, para análise. Com um bot vinculado, o arquivo vai para ele ao parar</string>
     <string name="settings_fid_recorder_file">Arquivo: %1$s</string>
     <string name="settings_fid_recorder_error">Não está gravando: %1$s</string>
     <string name="settings_quiet_notification_title">Notificação silenciosa</string>

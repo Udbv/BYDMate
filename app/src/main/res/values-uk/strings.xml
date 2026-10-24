@@ -1199,6 +1199,9 @@
     <string name="settings_trip_debug_title">Режим налагодження: журнал поїздок</string>
     <string name="settings_trip_debug_desc">Машина сама пише журнал ведення для кожної поїздки: що показав навігатор, що пішло на приладову панель і що вона прийняла. Файли лишаються в машині, тека %1$s. Записує назви вулиць з екрана навігатора.</string>
     <string name="settings_trip_debug_files">Журналів у машині: %1$d (зберігається останніх %2$d)</string>
+    <string name="settings_trip_debug_send_title">Журнал останньої поїздки</string>
+    <string name="settings_trip_debug_auto_title">Надсилати журнал поїздки в Telegram</string>
+    <string name="settings_trip_debug_auto_desc">Коли почнеться наступна поїздка, журнал попередньої сам прийде у ваш бот.</string>
     <string name="settings_config_restore_desc">Поточні дані та налаштування буде повністю замінено вмістом бекапу</string>
     <string name="settings_autostart_header">Автозапуск</string>
     <string name="settings_autostart_desc">BYDMate стартує разом з машиною. Якщо після оновлення прошивки автозапуск злетів, увімкніть його в системному налаштуванні</string>
@@ -1614,6 +1617,7 @@
     <string name="settings_log_tg_failed">Не вдалося надіслати: %1$s</string>
     <string name="settings_log_tg_too_big">Файл завеликий для Telegram. Він лежить у папці Download.</string>
     <string name="settings_log_tg_missing">Файл не знайдено. Можливо, його видалили з папки Download.</string>
+    <string name="settings_log_tg_busy">Уже надсилаю інший файл, повторіть за хвилину</string>
     <string name="settings_tg_log_auto_title">Надсилати записаний лог у Telegram</string>
     <string name="settings_tg_log_auto_hint">Коли запис логу закінчиться, файл сам прийде у ваш бот.</string>
     <string name="settings_config_restore_pick_title">Виберіть файл бекапу</string>
@@ -1814,7 +1818,7 @@
     <string name="settings_route_navigator_hint">Який застосунок відкривати для маршрутів і пошуку на карті</string>
     <string name="settings_agent_memory_forget_one">Забути</string>
     <string name="settings_fid_recorder_title">Реєстратор датчиків</string>
-    <string name="settings_fid_recorder_desc">Записує всі зміни датчиків машини у файл у Завантаженнях, для розбору</string>
+    <string name="settings_fid_recorder_desc">Записує всі зміни датчиків машини у файл у Завантаженнях, для розбору. Із прив\'язаним ботом після зупинки файл іде в нього</string>
     <string name="settings_fid_recorder_file">Файл: %1$s</string>
     <string name="settings_fid_recorder_error">Не записує: %1$s</string>
     <string name="donate_card_label">Карткою · ЮMoney</string>

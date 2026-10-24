@@ -43,7 +43,8 @@ class LogTelegramSenderTest {
     @Before fun setUp() {
         coEvery { settings.isTgLogAutoSendEnabled() } answers { autoSend }
         coEvery { settings.getTgBackupConfig() } answers { config }
-        coEvery { sink.sendDocument(any(), any(), any(), any()) } returns Result.success(Unit)
+        coEvery { sink.sendDocument(any(), any(), any(), any(), true) } returns Result.success(Unit)
+        TripDebugLog.setAutoSendEnabled(ctx, false)
         sender = LogTelegramSender(recorder, settings, sink, AppStrings(ctx))
     }
 
@@ -70,7 +71,7 @@ class LogTelegramSenderTest {
         stop(file)
         runCurrent()
 
-        coVerify(exactly = 1) { sink.sendDocument("123:abc", 777L, file, file.name) }
+        coVerify(exactly = 1) { sink.sendDocument("123:abc", 777L, file, file.name, true) }
     }
 
     @Test fun `the same stopped file emitted again is not sent again`() = runTest {
@@ -85,7 +86,7 @@ class LogTelegramSenderTest {
         backgroundScope.launch { sender.run() }
         runCurrent()
 
-        coVerify(exactly = 1) { sink.sendDocument(any(), any(), any(), any()) }
+        coVerify(exactly = 1) { sink.sendDocument(any(), any(), any(), any(), true) }
     }
 
     @Test fun `the setting off sends nothing`() = runTest {
@@ -94,7 +95,7 @@ class LogTelegramSenderTest {
         stop(log())
         runCurrent()
 
-        coVerify(exactly = 0) { sink.sendDocument(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { sink.sendDocument(any(), any(), any(), any(), true) }
     }
 
     @Test fun `no bound bot sends nothing`() = runTest {
@@ -103,7 +104,7 @@ class LogTelegramSenderTest {
         stop(log())
         runCurrent()
 
-        coVerify(exactly = 0) { sink.sendDocument(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { sink.sendDocument(any(), any(), any(), any(), true) }
     }
 
     @Test fun `a file over the Telegram limit is not sent`() = runTest {
@@ -111,7 +112,7 @@ class LogTelegramSenderTest {
         stop(log(TelegramBackupSink.MAX_UPLOAD_BYTES + 1))
         runCurrent()
 
-        coVerify(exactly = 0) { sink.sendDocument(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { sink.sendDocument(any(), any(), any(), any(), true) }
     }
 
     @Test fun `a recording that will resume is not sent until it really ends`() = runTest {
@@ -123,11 +124,11 @@ class LogTelegramSenderTest {
         // Logcat died on its own; the pending record stays for the next resume.
         stop(file, finished = false)
         runCurrent()
-        coVerify(exactly = 0) { sink.sendDocument(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { sink.sendDocument(any(), any(), any(), any(), true) }
 
         stop(file, sizeKb = 1)
         runCurrent()
-        coVerify(exactly = 1) { sink.sendDocument(any(), any(), any(), any()) }
+        coVerify(exactly = 1) { sink.sendDocument(any(), any(), any(), any(), true) }
     }
 
     @Test fun `a manual send works with the setting off and reports the result`() = runTest {
@@ -140,8 +141,87 @@ class LogTelegramSenderTest {
         sender.send(file)
         runCurrent()
 
-        coVerify(exactly = 1) { sink.sendDocument("123:abc", 777L, file, file.name) }
+        coVerify(exactly = 1) { sink.sendDocument("123:abc", 777L, file, file.name, true) }
         assertEquals(AppStrings(ctx).get(com.bydmate.app.R.string.settings_log_tg_sent), results.last())
         assertEquals(false, sender.sending.value)
+    }
+
+    @Test fun `a quiet send returns its status and reports nothing to the log row`() = runTest {
+        val file = log()
+        val results = mutableListOf<String>()
+        backgroundScope.launch { sender.results.collect { results += it } }
+        runCurrent()
+
+        val status = sender.sendQuietly(file)
+        runCurrent()
+
+        coVerify(exactly = 1) { sink.sendDocument("123:abc", 777L, file, file.name, true) }
+        assertEquals(AppStrings(ctx).get(com.bydmate.app.R.string.settings_log_tg_sent), status)
+        assertEquals(emptyList<String>(), results)
+        assertEquals(false, sender.sending.value)
+    }
+
+    @Test fun `a quiet send while another upload runs does nothing`() = runTest {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        coEvery { sink.sendDocument(any(), any(), any(), any(), true) } coAnswers { gate.await(); Result.success(Unit) }
+        val first = log()
+        backgroundScope.launch { sender.send(first) }
+        runCurrent()
+
+        assertEquals(null, sender.sendQuietly(log()))
+        gate.complete(Unit)
+        runCurrent()
+        coVerify(exactly = 1) { sink.sendDocument(any(), any(), any(), any(), true) }
+    }
+
+    // --- the previous trip at the next start ---
+
+    private fun tripDir(): File =
+        File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "BYDMate-trips")
+            .apply { mkdirs(); listFiles()?.forEach { it.delete() } }
+
+    private fun trip(dir: File, name: String, ageMs: Long): File =
+        File(dir, name).apply { writeText("TRIP"); setLastModified(System.currentTimeMillis() - ageMs) }
+
+    @Test fun `the finished trip goes to the bot once when auto-send is on`() = runTest {
+        val dir = tripDir()
+        val finished = trip(dir, "trip-20261024-070000.log", ageMs = 60_000)
+        TripDebugLog.setAutoSendEnabled(ctx, true)
+
+        sender.sendFinishedTripLog(ctx)
+        sender.sendFinishedTripLog(ctx)
+
+        coVerify(exactly = 1) { sink.sendDocument("123:abc", 777L, finished, finished.name, true) }
+        assertEquals(finished.name, TripDebugLog.lastSent(ctx))
+    }
+
+    @Test fun `auto-send off or no bot sends no trip`() = runTest {
+        trip(tripDir(), "trip-20261024-070000.log", ageMs = 60_000)
+        TripDebugLog.setAutoSendEnabled(ctx, false)
+        sender.sendFinishedTripLog(ctx)
+
+        TripDebugLog.setAutoSendEnabled(ctx, true)
+        config = config.copy(chatId = null)
+        sender.sendFinishedTripLog(ctx)
+
+        coVerify(exactly = 0) { sink.sendDocument(any(), any(), any(), any(), true) }
+    }
+
+    @Test fun `no network is tried again, a permanent refusal is not`() = runTest {
+        val finished = trip(tripDir(), "trip-20261024-070000.log", ageMs = 60_000)
+        TripDebugLog.setAutoSendEnabled(ctx, true)
+        coEvery { sink.sendDocument(any(), any(), any(), any(), true) } returnsMany listOf(
+            Result.failure(com.bydmate.app.data.backup.TelegramSinkException(com.bydmate.app.data.backup.TelegramError.NO_NETWORK)),
+            Result.success(Unit),
+        )
+        sender.sendFinishedTripLog(ctx)
+        coVerify(exactly = 2) { sink.sendDocument(any(), any(), finished, any(), true) }
+        assertEquals(finished.name, TripDebugLog.lastSent(ctx))
+
+        trip(tripDir(), "trip-20261024-080000.log", ageMs = 30_000)
+        coEvery { sink.sendDocument(any(), any(), any(), any(), true) } returns
+            Result.failure(com.bydmate.app.data.backup.TelegramSinkException(com.bydmate.app.data.backup.TelegramError.BAD_TOKEN))
+        sender.sendFinishedTripLog(ctx)
+        coVerify(exactly = 3) { sink.sendDocument(any(), any(), any(), any(), true) }
     }
 }

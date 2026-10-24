@@ -15,4 +15,12 @@ class FidRecorderReceiverGateTest {
         assertTrue(fidRecorderEnabled("3.15.5-test", debug = false))
         assertTrue(fidRecorderEnabled("3.15.5", debug = true))
     }
+
+    @Test fun `the settings switch also shows on dev pre-releases, never on a stable release`() {
+        assertTrue(fidRecorderSwitchVisible("4.0.1-dev.2", debug = false))
+        assertTrue(fidRecorderSwitchVisible("3.15.5-test", debug = false))
+        assertFalse(fidRecorderSwitchVisible("4.0.1", debug = false))
+        // The exported receiver keeps the narrow gate on a dev pre-release.
+        assertFalse(fidRecorderEnabled("4.0.1-dev.2", debug = false))
+    }
 }

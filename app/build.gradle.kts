@@ -31,8 +31,8 @@ android {
         // on DiLink Android 12 (requestLegacyExternalStorage works).
         // targetSdk 30+ would break listFiles() on /storage/emulated/0/energydata/
         targetSdk = 29
-        versionCode = 509
-        versionName = "4.0.1-dev.1"   // development pre-release; stable X.Y.Z only after a real-car test
+        versionCode = 510
+        versionName = "4.0.1-dev.2"   // development pre-release; stable X.Y.Z only after a real-car test
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -119,6 +119,9 @@ android {
         disable += "ExpiredTargetSdkVersion"
         // Pre-existing issues frozen at CI introduction; new issues still fail.
         baseline = file("lint-baseline.xml")
+        // PR CI lints main sources only to stay within its time budget; the push run on develop
+        // and main lints the tests as well.
+        if (project.hasProperty("bydmate.lintMainOnly")) ignoreTestSources = true
     }
 
     sourceSets {
@@ -147,6 +150,18 @@ android {
                 // Robolectric suite on RAM-constrained CI runners (TtsModelManagerTest OOM,
                 // CI runs 2026-08-19/24); dev machines pass on GC luck. One worker → 2g is safe.
                 test.maxHeapSize = "2g"
+                // CI spreads the suite over parallel jobs: `-Pbydmate.testShard=2/3` runs every
+                // test class whose name hashes to shard 2 of 3 (nested classes go with their
+                // outer class), `-Pbydmate.testForks=2` runs it in two workers.
+                (project.findProperty("bydmate.testForks") as String?)?.toInt()?.let { test.maxParallelForks = it }
+                (project.findProperty("bydmate.testShard") as String?)?.let { spec ->
+                    val (index, count) = spec.split('/').map(String::toInt)
+                    test.exclude { element ->
+                        val path = element.relativePath.pathString
+                        !element.isDirectory && path.endsWith(".class") &&
+                            Math.floorMod(path.substringBefore('$').removeSuffix(".class").hashCode(), count) != index - 1
+                    }
+                }
                 // CI only: retry individual failed tests to absorb the known inter-test
                 // pollution flake (UncaughtExceptionsBeforeTest hitting random classes).
                 // Local runs stay strict; a real failure still fails all 3 attempts.
@@ -304,6 +319,11 @@ dependencies {
 // Coverage report only — no verification rule, nothing fails on a low number.
 // Report: ./gradlew :app:koverHtmlReportDebug
 kover {
+    // Instrumenting every class slows the 8k-test run; coverage is a local report, so CI and a
+    // `-Pbydmate.noCoverage` run skip the agent.
+    if (System.getenv("CI") == "true" || project.hasProperty("bydmate.noCoverage")) {
+        currentProject { instrumentation { disabledForAll.set(true) } }
+    }
     reports {
         filters {
             excludes {
