@@ -1800,6 +1800,8 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
                 collected.set(collected.get().copy(hudSwitch = hudSwitch))
                 val batteryPreheat = runCatching { helper.readBatch(BatteryPreheatDiagnostics.batchItems()) }.getOrNull()
                 collected.set(collected.get().copy(batteryPreheat = batteryPreheat))
+                val ambient = runCatching { helper.readBatch(AmbientDiagnostics.batchItems()) }.getOrNull()
+                collected.set(collected.get().copy(ambient = ambient))
             }
             withTimeoutOrNull(budgetMs) { probe.join() }
             return collected.get()
@@ -1815,6 +1817,7 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
         val hud: List<Pair<Int, Int>>? = null,
         val hudSwitch: List<Pair<Int, Int>>? = null,
         val batteryPreheat: List<Pair<Int, Int>>? = null,
+        val ambient: List<Pair<Int, Int>>? = null,
     )
 
     /** Liveness and the seat, steering heat and window fid snapshots under ONE shared budget. */
@@ -2510,6 +2513,9 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
 
             appendLine("--- steering heat ---")
             SteeringHeatDiagnostics.format(helperDiag.steeringHeat).forEach { appendLine(it) }
+
+            appendLine("--- ambient ---")
+            AmbientDiagnostics.format(helperDiag.ambient).forEach { appendLine(it) }
 
             appendLine("--- fid resolve ---")
             try {
