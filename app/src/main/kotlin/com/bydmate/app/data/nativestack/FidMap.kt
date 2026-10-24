@@ -238,6 +238,24 @@ object FidMap {
         FidEntry("seatCandLrseLevel2",          1000, 412180540,  5, Decoder.INT_RAW, symbol = "Ac.AC_LRSE_REAR_LEFT_SEAT_HEATING_LEVEL_SET_hal_only"),
         FidEntry("seatCandLrseLevel3",          1000, 412180544,  5, Decoder.INT_RAW, symbol = "Ac.AC_LRSE_REAR_RIGHT_SEAT_VENTILATING_LEVEL_SET_hal_only"),
         FidEntry("seatCandLrseLevel4",          1000, 412180548,  5, Decoder.INT_RAW, symbol = "Ac.AC_LRSE_REAR_RIGHT_SEAT_HEATING_LEVEL_SET_hal_only"),
+        // Front-seat massage (#3), read-only: the Tang L catalog (DiLink 150, dump 2026-10-24)
+        // names these; which of them follows the buttons, and with which values, is what the
+        // dump shows. Constants are the Tang L numbers; the resolver maps them per firmware.
+        FidEntry("massageModeFl",        1023, 1335885872,  5, Decoder.INT_RAW, symbol = "Setting.SET_FRONT_LEFT_SEAT_MASSAGE_MODE"),
+        FidEntry("massageLevelFl",       1023, 1335885876,  5, Decoder.INT_RAW, symbol = "Setting.SET_FRONT_LEFT_SEAT_MASSAGE_LEVEL"),
+        FidEntry("massageConfigFl",      1023, 1335885879,  5, Decoder.INT_RAW, symbol = "Setting.SET_FRONT_LEFT_SEAT_MASSAGE_CONFIG"),
+        FidEntry("massageModeFr",        1023, 1335885880,  5, Decoder.INT_RAW, symbol = "Setting.SET_FRONT_RIGHT_SEAT_MASSAGE_MODE"),
+        FidEntry("massageLevelFr",       1023, 1335885884,  5, Decoder.INT_RAW, symbol = "Setting.SET_FRONT_RIGHT_SEAT_MASSAGE_LEVEL"),
+        FidEntry("massageConfigFr",      1023, 1335885887,  5, Decoder.INT_RAW, symbol = "Setting.SET_FRONT_RIGHT_SEAT_MASSAGE_CONFIG"),
+        FidEntry("massageMode3ceFl",     1023, 1021313064,  5, Decoder.INT_RAW, symbol = "Setting.SET_FRONT_LEFT_SEAT_MASSAGE_MODE_3CE_hal_only"),
+        FidEntry("massageLevel3ceFl",    1023, 1021313068,  5, Decoder.INT_RAW, symbol = "Setting.SET_FRONT_LEFT_SEAT_MASSAGE_LEVEL_3CE_hal_only"),
+        FidEntry("massageMode3d3Fr",     1023, 1026555944,  5, Decoder.INT_RAW, symbol = "Setting.SET_FRONT_RIGHT_SEAT_MASSAGE_MODE_3D3_hal_only"),
+        FidEntry("massageLevel3d3Fr",    1023, 1026555948,  5, Decoder.INT_RAW, symbol = "Setting.SET_FRONT_RIGHT_SEAT_MASSAGE_LEVEL_3D3_hal_only"),
+        FidEntry("massageLfWorkMode",    1023, 598071,      5, Decoder.INT_RAW, symbol = "Setting.SETTING_LF_MASSAGE_WORK_MODE"),
+        FidEntry("massageLfIntensity",   1023, 175615,      5, Decoder.INT_RAW, symbol = "Setting.SETTING_LF_MASSAGE_WORK_INTENSITY"),
+        FidEntry("massageSwitchDriver",  1001, 1261437420,  5, Decoder.INT_RAW, symbol = "Bodywork.BODYWORK_MAIN_DRIVER_MASSAGE_SWITCH_OPERATION_MODE"),
+        FidEntry("massageSwitchPassenger", 1001, 1261437422, 5, Decoder.INT_RAW, symbol = "Bodywork.BODYWORK_PASSENGER_MASSAGE_SWITCH_OPERATION_MODE"),
+        FidEntry("massageButtonsConfig", 1001, 1335885854,  5, Decoder.INT_RAW, symbol = "Bodywork.BODY_MASSAGE_PHYSICAL_BUTTONS_CONFIG"),
     )
 
     /**

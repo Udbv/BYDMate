@@ -3068,6 +3068,15 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
                 text = stringResource(R.string.settings_fid_recorder_file, state.fidRecorderFile!!),
             )
         }
+        // The newest recording, for one the switch never sent (the car went off mid-run).
+        if (state.tgBackupBinding != null && !state.fidRecorderRunning) {
+            SettingActionRow(
+                title = stringResource(R.string.settings_fid_recorder_send_latest),
+                buttonLabel = stringResource(R.string.settings_log_tg_send),
+                onClick = { viewModel.sendLatestFidRecording() },
+                enabled = !state.logSending,
+            )
+        }
         if (state.fidRecorderSendStatus != null) SettingHint(text = state.fidRecorderSendStatus!!)
     }
     SettingDivider()
