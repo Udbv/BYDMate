@@ -8,7 +8,15 @@ import android.widget.Toast
 import com.bydmate.app.camera.BlindSpotPositionOverlay
 import com.bydmate.app.data.automation.AmbientNightController
 import com.bydmate.app.camera.BlindSpotPreferences
+import com.bydmate.app.camera.blindSpotClusterDisplay
 import com.bydmate.app.cluster.ClusterEntryPoint
+import com.bydmate.app.data.autoservice.AdbRestoreState
+import com.bydmate.app.data.autoservice.AdbVerdict
+import com.bydmate.app.data.autoservice.CloudOverWifiState
+import com.bydmate.app.data.backup.AutoBackupPeriod
+import com.bydmate.app.data.backup.BackupPart
+import com.bydmate.app.data.charging.ChargeConnector
+import com.bydmate.app.data.local.LocalePreferences
 import com.bydmate.app.cluster.ClusterProjectionManager
 import com.bydmate.app.cluster.CENTER_OFFSET_PCT
 import com.bydmate.app.cluster.MAX_OFFSET_PCT
@@ -21,10 +29,13 @@ import com.bydmate.app.cluster.DEFAULT_SCALE_PCT
 import com.bydmate.app.cluster.NAVI_PACKAGE
 import dagger.hilt.android.EntryPointAccessors
 import kotlin.math.roundToInt
+import com.bydmate.app.diagnostics.Trace
+import com.bydmate.app.diagnostics.TraceArea
 import com.bydmate.app.ui.widget.LeftTapMode
 import com.bydmate.app.ui.widget.WidgetController
 import com.bydmate.app.ui.widget.WidgetPreferences
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
@@ -35,7 +46,6 @@ import androidx.compose.material.icons.outlined.DirectionsCar
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.PhoneAndroid
-import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -43,7 +53,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -58,11 +70,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import com.bydmate.app.ui.components.AppAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -81,7 +95,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.withStyle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -90,6 +108,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -98,6 +118,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -105,6 +126,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.horizontalScroll
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.runtime.rememberCoroutineScope
+import com.bydmate.app.data.telegram.ReportField
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.window.Dialog
@@ -122,10 +150,14 @@ import com.bydmate.app.R
 import com.bydmate.app.agent.LlmAgentBackend
 import com.bydmate.app.data.remote.OpenRouterModel
 import com.bydmate.app.data.repository.SettingsRepository
+import com.bydmate.app.ui.components.AdbVerdictDialog
 import com.bydmate.app.ui.components.AppLaunchPickerDialog
+import com.bydmate.app.ui.components.adbVerdictColor
+import com.bydmate.app.ui.components.adbVerdictText
 import com.bydmate.app.ui.components.MultiAppPickerDialog
 import com.bydmate.app.ui.components.bydSwitchColors
 import com.bydmate.app.ui.theme.*
+import com.bydmate.app.util.APP_LANGUAGES
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
@@ -135,20 +167,23 @@ import com.bydmate.app.voice.AgentPersona
 import com.bydmate.app.voice.TtsGender
 import com.bydmate.app.voice.TtsVoiceCatalog
 import com.bydmate.app.voice.online.TtsRouter
+import com.bydmate.app.hud.HudCheck
 import com.bydmate.app.hud.HudController
 import com.bydmate.app.split.Split37Engine
 import com.bydmate.app.split.SplitFreeformVerdict
 import com.bydmate.app.split.SplitRole
 import com.bydmate.app.split.applyPick
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
-private enum class SettingsSection(@StringRes val labelRes: Int, val icon: ImageVector) {
+internal enum class SettingsSection(@StringRes val labelRes: Int, val icon: ImageVector) {
     VOICE(R.string.settings_section_voice_agent, Icons.Outlined.Mic),
     WIDGET(R.string.settings_section_widget_title, Icons.Outlined.PhoneAndroid),
     DISPLAY(R.string.settings_section_display_title, Icons.Outlined.DirectionsCar),
     SPLIT(R.string.settings_section_split_title, Icons.Outlined.Apps),
     BATTERY(R.string.settings_section_auto_battery_title, Icons.Outlined.BatteryChargingFull),
-    PLACES(R.string.settings_section_places_title, Icons.Outlined.Place),
     INTEGRATIONS(R.string.settings_section_integrations_title, Icons.Outlined.Link),
     SERVICE(R.string.settings_section_service_title, Icons.Outlined.Build),
     APP(R.string.settings_section_application_title, Icons.Outlined.Settings),
@@ -157,43 +192,21 @@ private enum class SettingsSection(@StringRes val labelRes: Int, val icon: Image
 
 private val PrimaryColor = AccentGreen
 
+/** Own phrases for built-in commands are hidden while the built-in phrase list settles. */
+private const val SHOW_VOICE_USER_PHRASES = false
+
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
     onNavigateToAgentChat: () -> Unit = {},
     onNavigateToVoiceJournal: () -> Unit = {},
+    onNavigateToVoiceUserPhrases: () -> Unit = {},
+    onNavigateToTariffPeriods: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // Recalculate confirmation dialog
-    if (state.showRecalcConfirm) {
-        val tariffLabel = when (state.tripCostTariff) {
-            "home" -> state.homeTariff
-            "dc" -> state.dcTariff
-            else -> state.tripCostTariff
-        }
-        AlertDialog(
-            onDismissRequest = { viewModel.hideRecalcConfirm() },
-            title = { Text(stringResource(R.string.settings_recalc_dialog_title), color = TextPrimary) },
-            text = {
-                Text(
-                    stringResource(R.string.settings_recalc_dialog_text, tariffLabel, state.currencySymbol),
-                    color = TextSecondary
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { viewModel.confirmRecalc() }) {
-                    Text(stringResource(R.string.settings_recalc_confirm_button), color = AccentOrange)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.hideRecalcConfirm() }) {
-                    Text(stringResource(R.string.settings_cancel_button), color = TextSecondary)
-                }
-            },
-            containerColor = CardSurface
-        )
-    }
+    // The fid recorder runs in the daemon, so its switch is re-read every time the screen opens.
+    LaunchedEffect(Unit) { viewModel.refreshFidRecorder() }
 
     // Manual range calculation table dialog
     if (state.showManualRangeTableDialog) {
@@ -283,13 +296,14 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     when (safeSelected) {
-                        SettingsSection.BATTERY -> BatterySection(state, viewModel)
+                        SettingsSection.BATTERY -> BatterySection(state, viewModel, onNavigateToTariffPeriods)
                         SettingsSection.INTEGRATIONS -> IntegrationsSection(state, viewModel)
-                        SettingsSection.VOICE -> VoiceSettingsContent(state, viewModel, onNavigateToVoiceJournal, onNavigateToAgentChat)
+                        SettingsSection.VOICE -> VoiceSettingsContent(
+                            state, viewModel, onNavigateToVoiceJournal, onNavigateToAgentChat, onNavigateToVoiceUserPhrases,
+                        )
                         SettingsSection.WIDGET -> WidgetSection()
                         SettingsSection.DISPLAY -> DisplaySection()
                         SettingsSection.SPLIT -> SplitSection()
-                        SettingsSection.PLACES -> PlacesSection()
                         SettingsSection.SERVICE -> ServiceSection(state, viewModel)
                         SettingsSection.APP -> AppSection(state, viewModel)
                         SettingsSection.SMART_HOME -> SmartHomeSection(state, viewModel)
@@ -315,26 +329,29 @@ private fun SettingsRail(
         modifier = modifier,
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(vertical = 12.dp, horizontal = 8.dp)) {
-            Text(
-                stringResource(R.string.settings_rail_sections_label),
-                color = TextMuted,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
-
-            SettingsSection.entries.forEach { section ->
-                val isHidden = section == SettingsSection.SMART_HOME
-                if (isHidden && !smartHomeUnlocked) return@forEach
-                RailItem(
-                    section = section,
-                    isActive = section == selected,
-                    isHidden = isHidden,
-                    onClick = { onSelect(section) },
+            // Only the section list scrolls, for enlarged fonts or a short screen; it takes the
+            // remaining height, so the divider and the version stay pinned to the bottom.
+            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                Text(
+                    stringResource(R.string.settings_rail_sections_label),
+                    color = TextMuted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                 )
+
+                SettingsSection.entries.forEach { section ->
+                    val isHidden = section == SettingsSection.SMART_HOME
+                    if (isHidden && !smartHomeUnlocked) return@forEach
+                    RailItem(
+                        section = section,
+                        isActive = section == selected,
+                        isHidden = isHidden,
+                        onClick = { onSelect(section) },
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
             HorizontalDivider(color = CardBorder)
             Row(
                 modifier = Modifier
@@ -392,8 +409,34 @@ private fun RailItem(
     }
 }
 
+/**
+ * One-line description of the period in force today, shown under the «Тарифы и периоды»
+ * button so the section stays compact but still tells the driver what is being charged.
+ */
 @Composable
-private fun BatterySection(state: SettingsUiState, viewModel: SettingsViewModel) {
+private fun currentTariffPeriodSummary(state: SettingsUiState, hybrid: Boolean): String {
+    val current = state.tariffPeriods.firstOrNull { it.startTs <= System.currentTimeMillis() }
+        ?: state.tariffPeriods.lastOrNull()
+        ?: return stringResource(R.string.settings_tariff_periods_empty)
+    val date = remember(current.startTs) {
+        if (current.startTs <= 0L) null
+        else SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(current.startTs))
+    }
+    val rates = stringResource(
+        R.string.settings_tariff_periods_summary,
+        "%.2f".format(current.homeRate), "%.2f".format(current.dcRate), state.currencySymbol,
+        "%.0f".format(current.acLossPct), "%.0f".format(current.dcLossPct),
+    ) + fuelPriceSuffix(current.fuelPricePerLiter, hybrid, stringResource(R.string.dashboard_unit_liters))
+    return if (date == null) rates
+    else stringResource(R.string.settings_tariff_periods_summary_since, date, rates)
+}
+
+@Composable
+private fun BatterySection(
+    state: SettingsUiState,
+    viewModel: SettingsViewModel,
+    onOpenTariffPeriods: () -> Unit,
+) {
     SectionHeader(text = stringResource(R.string.settings_battery_section_header))
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -412,70 +455,26 @@ private fun BatterySection(state: SettingsUiState, viewModel: SettingsViewModel)
             )
             SettingHint(stringResource(R.string.settings_battery_capacity_desc))
             SettingDivider()
-            SettingsTextField(
-                label = stringResource(R.string.settings_tariff_home_label, state.currencySymbol),
-                value = state.homeTariff,
-                onValueChange = { viewModel.updateHomeTariff(it) },
-                keyboardType = KeyboardType.Decimal
-            )
-            SettingHint(stringResource(R.string.settings_tariff_home_desc))
-            SettingDivider()
-            SettingsTextField(
-                label = stringResource(R.string.settings_tariff_dc_label, state.currencySymbol),
-                value = state.dcTariff,
-                onValueChange = { viewModel.updateDcTariff(it) },
-                keyboardType = KeyboardType.Decimal
-            )
-            SettingHint(stringResource(R.string.settings_tariff_dc_desc))
-            SettingDivider()
-            val customChipLabel = stringResource(R.string.settings_tariff_trip_custom_chip)
-            val tariffOptions = listOf("AC", "DC", customChipLabel)
-            val tariffSelectedIndex = when {
-                state.tripCostTariff == "home" -> 0
-                state.tripCostTariff == "dc" -> 1
-                else -> 2
-            }
             SettingChipRow(
-                title = stringResource(R.string.settings_tariff_trip_label),
-                description = stringResource(R.string.settings_tariff_trip_desc),
-                options = tariffOptions,
-                selectedIndex = tariffSelectedIndex,
-                onSelect = { index ->
-                    when (index) {
-                        0 -> viewModel.saveTripCostTariff("home")
-                        1 -> viewModel.saveTripCostTariff("dc")
-                        else -> viewModel.saveTripCostTariff(state.homeTariff)
-                    }
-                }
+                title = stringResource(R.string.settings_charge_connector_label),
+                description = stringResource(R.string.settings_charge_connector_desc),
+                options = ChargeConnector.entries.map { it.label },
+                selectedIndex = state.chargeConnector.ordinal,
+                onSelect = { idx -> viewModel.saveChargeConnector(ChargeConnector.entries[idx]) },
             )
-            if (state.tripCostTariff != "home" && state.tripCostTariff != "dc") {
-                SettingsTextField(
-                    label = stringResource(R.string.settings_tariff_custom_label, state.currencySymbol),
-                    value = state.tripCostTariff,
-                    onValueChange = { viewModel.saveTripCostTariff(it) },
-                    keyboardType = KeyboardType.Decimal
-                )
-            }
             SettingDivider()
+            val vehicleKind by viewModel.vehicleKind.collectAsStateWithLifecycle()
             SettingActionRow(
-                title = stringResource(R.string.settings_save_tariffs_button),
-                description = stringResource(R.string.settings_tariff_future_note),
-                buttonLabel = stringResource(R.string.settings_save_tariffs_button),
-                onClick = { viewModel.saveTariffs() },
+                title = stringResource(R.string.settings_tariff_periods_title),
+                description = currentTariffPeriodSummary(
+                    state, hybrid = vehicleKind == com.bydmate.app.data.nativestack.VehicleKind.HYBRID,
+                ),
+                buttonLabel = stringResource(R.string.settings_tariff_periods_button),
+                onClick = { viewModel.showTariffPeriods(); onOpenTariffPeriods() },
                 style = SettingButtonStyle.Primary
             )
-            state.tariffSaveStatus?.let {
-                Text(it, color = AccentGreen, fontSize = 12.sp)
-            }
-            SettingDivider()
-            SettingActionRow(
-                title = stringResource(R.string.settings_recalc_all_button),
-                description = stringResource(R.string.settings_recalc_note),
-                buttonLabel = stringResource(R.string.settings_recalc_all_button),
-                onClick = { viewModel.showRecalcConfirm() },
-                style = SettingButtonStyle.Warning
-            )
-            state.recalcStatus?.let {
+            SettingHint(stringResource(R.string.settings_tariff_periods_hint))
+            state.tariffRecalcStatus?.let {
                 Text(it, color = AccentGreen, fontSize = 12.sp)
             }
         }
@@ -560,6 +559,7 @@ private fun IntegrationsSection(state: SettingsUiState, viewModel: SettingsViewM
         ) {
             SettingToggleRow(
                 title = stringResource(R.string.settings_abrp_telemetry_label),
+                traceId = "abrp_telemetry",
                 description = stringResource(R.string.settings_abrp_telemetry_description),
                 checked = state.abrpTelemetryEnabled,
                 onCheckedChange = { viewModel.toggleAbrpTelemetry(it) },
@@ -573,6 +573,7 @@ private fun IntegrationsSection(state: SettingsUiState, viewModel: SettingsViewM
             )
             SettingToggleRow(
                 title = stringResource(R.string.settings_abrp_location_label),
+                traceId = "abrp_location",
                 description = stringResource(R.string.settings_abrp_location_description),
                 checked = state.abrpSendLocation,
                 onCheckedChange = { viewModel.toggleAbrpSendLocation(it) },
@@ -601,6 +602,7 @@ private fun IntegrationsSection(state: SettingsUiState, viewModel: SettingsViewM
         ) {
             SettingToggleRow(
                 title = stringResource(R.string.settings_webhook_label),
+                traceId = "webhook",
                 description = stringResource(R.string.settings_webhook_description),
                 checked = state.webhookEnabled,
                 onCheckedChange = { viewModel.toggleWebhook(it) },
@@ -620,6 +622,7 @@ private fun IntegrationsSection(state: SettingsUiState, viewModel: SettingsViewM
             )
             SettingToggleRow(
                 title = stringResource(R.string.settings_webhook_location_label),
+                traceId = "webhook_location",
                 description = stringResource(R.string.settings_webhook_location_description),
                 checked = state.webhookSendLocation,
                 onCheckedChange = { viewModel.toggleWebhookSendLocation(it) },
@@ -829,6 +832,8 @@ private fun WidgetSection() {
     )
     val hideOnYoutube by prefs.hideOnYoutubeFlow()
         .collectAsStateWithLifecycle(initialValue = prefs.isHideOnYoutube())
+    val homeOnly by prefs.homeOnlyFlow()
+        .collectAsStateWithLifecycle(initialValue = prefs.isHomeOnly())
     val hideInApps by prefs.hideInAppsFlow()
         .collectAsStateWithLifecycle(initialValue = prefs.getHideInApps())
     val powerGraph by prefs.powerGraphFlow()
@@ -848,13 +853,14 @@ private fun WidgetSection() {
         ) {
             SettingToggleRow(
                 title = stringResource(R.string.settings_widget_show_soc_label),
+                traceId = "widget_show_soc",
                 description = stringResource(R.string.settings_widget_show_desc),
                 checked = enabled,
                 onCheckedChange = { requested ->
                     if (requested) {
                         if (AndroidSettings.canDrawOverlays(context)) {
                             prefs.setEnabled(true)
-                            WidgetController.attach(context)
+                            WidgetController.attach(context, "settings_toggle_on")
                         } else {
                             val intent = Intent(
                                 AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -864,7 +870,7 @@ private fun WidgetSection() {
                         }
                     } else {
                         prefs.setEnabled(false)
-                        WidgetController.detach()
+                        WidgetController.detach("settings_toggle_off")
                     }
                 },
             )
@@ -877,9 +883,17 @@ private fun WidgetSection() {
             )
             SettingToggleRow(
                 title = stringResource(R.string.settings_widget_hide_youtube_label),
+                traceId = "widget_hide_youtube",
                 description = stringResource(R.string.settings_widget_hide_youtube_description),
                 checked = hideOnYoutube,
                 onCheckedChange = { prefs.setHideOnYoutube(it) },
+            )
+            SettingToggleRow(
+                title = stringResource(R.string.settings_widget_home_only_label),
+                traceId = "widget_home_only",
+                description = stringResource(R.string.settings_widget_home_only_description),
+                checked = homeOnly,
+                onCheckedChange = { prefs.setHomeOnly(it) },
             )
             SettingValueRow(
                 title = stringResource(R.string.settings_widget_hide_apps_label),
@@ -920,8 +934,8 @@ private fun WidgetSection() {
                 onClick = {
                     prefs.resetPosition()
                     if (enabled && AndroidSettings.canDrawOverlays(context)) {
-                        WidgetController.detach()
-                        WidgetController.attach(context)
+                        WidgetController.detach("reset_position")
+                        WidgetController.attach(context, "reset_position")
                     }
                 },
                 style = SettingButtonStyle.Secondary,
@@ -942,6 +956,7 @@ private fun WidgetSection() {
         ) {
             SettingToggleRow(
                 title = stringResource(R.string.settings_widget_left_tap_zoning_label),
+                traceId = "widget_left_tap_zoning",
                 description = stringResource(R.string.settings_widget_left_tap_zoning_description),
                 checked = leftTapApp.enabled,
                 onCheckedChange = { prefs.setLeftTapZoningEnabled(it) },
@@ -956,14 +971,18 @@ private fun WidgetSection() {
                     ),
                     selectedIndex = if (leftTapApp.mode == LeftTapMode.APP) 0 else 1,
                     onSelect = { idx ->
-                        prefs.setLeftTapMode(if (idx == 0) LeftTapMode.APP else LeftTapMode.SPLIT)
+                        if (leftTapModeSelectable(idx, splitFeatureEnabled)) {
+                            prefs.setLeftTapMode(if (idx == 0) LeftTapMode.APP else LeftTapMode.SPLIT)
+                        }
                     },
-                    // Disabled when split feature is off: prevents selecting split mode (Fix 1).
-                    enabled = enabled && splitFeatureEnabled,
+                    // Stays enabled with split off if SPLIT is still the saved mode, so the
+                    // user has a way to switch out of it (#188).
+                    enabled = leftTapModeChipEnabled(enabled, splitFeatureEnabled, leftTapApp.mode),
                 )
             }
             SettingToggleRow(
                 title = stringResource(R.string.settings_widget_buttons_label),
+                traceId = "widget_buttons",
                 description = stringResource(R.string.settings_widget_buttons_description),
                 checked = buttonsEnabled,
                 onCheckedChange = { prefs.setButtonsEnabled(it) },
@@ -1004,11 +1023,23 @@ private fun WidgetSection() {
     }
 }
 
-@Composable
-private fun PlacesSection() {
-    SectionHeader(text = stringResource(R.string.settings_section_places_title))
-    PlacesInlineContent()
-}
+/**
+ * Whether the "left tap mode" chip row should be interactive. With the split feature off the
+ * row still stays enabled if SPLIT is the saved mode, so the user has a way to switch out of
+ * it instead of being stuck (#188).
+ */
+internal fun leftTapModeChipEnabled(
+    widgetEnabled: Boolean,
+    splitFeatureEnabled: Boolean,
+    mode: LeftTapMode,
+): Boolean = widgetEnabled && (splitFeatureEnabled || mode == LeftTapMode.SPLIT)
+
+/**
+ * Whether a chip tap (idx 0 = APP, idx 1 = SPLIT) should be applied. APP is always accepted;
+ * SPLIT is ignored while the split feature is disabled.
+ */
+internal fun leftTapModeSelectable(idx: Int, splitFeatureEnabled: Boolean): Boolean =
+    idx == 0 || splitFeatureEnabled
 
 @Composable
 private fun DisplaySection() {
@@ -1067,6 +1098,9 @@ private fun DisplaySection() {
     }
     var extendedConfirmOpen by remember { mutableStateOf(false) }
     var modeHelpOpen by remember { mutableStateOf(false) }
+    var preferFullDisplay by remember {
+        mutableStateOf(ClusterProjectionManager.isPreferFullDisplay(context))
+    }
 
     // Persist the new size and re-apply it live. reproject() is a no-op unless we are actively
     // projecting, so a tweak while OFF just lands in prefs and shows on the next star press.
@@ -1113,6 +1147,7 @@ private fun DisplaySection() {
         // before sending the projection window.
         SettingToggleRow(
             title = stringResource(R.string.settings_cluster_auto_container_title),
+            traceId = "cluster_auto_container",
             description = stringResource(R.string.settings_cluster_auto_container_desc),
             checked = autoContainer,
             onCheckedChange = {
@@ -1151,8 +1186,22 @@ private fun DisplaySection() {
         if (modeHelpOpen) {
             SettingHint(text = stringResource(R.string.settings_projection_mode_help))
         }
+        SettingDivider()
+        // Which cluster projection surface to render on: the native mini band ("..._1", default)
+        // or the full cluster ("..._0"). Only the pref is written — like the transport chip, it
+        // applies at the next projection start, never to a live projection.
+        SettingToggleRow(
+            title = stringResource(R.string.settings_cluster_full_display_title),
+            traceId = "cluster_full_display",
+            description = stringResource(R.string.settings_cluster_full_display_desc),
+            checked = preferFullDisplay,
+            onCheckedChange = {
+                preferFullDisplay = it
+                ClusterProjectionManager.setPreferFullDisplay(context, it)
+            },
+        )
         if (extendedConfirmOpen) {
-            AlertDialog(
+            AppAlertDialog(
                 onDismissRequest = { extendedConfirmOpen = false },
                 containerColor = CardSurface,
                 title = {
@@ -1270,10 +1319,10 @@ private fun DisplaySection() {
             enabled = enabled,
             onValueChangeFinished = applyGeometry,
         )
-        // #121: only the VD transport can scale (it sizes the render buffer). Direct mode would
-        // need a density override on the live cluster display, which kills Qt apps like 2GIS, so
-        // the slider is inert there. Kept enabled and visible - the value still applies the moment
-        // the user switches back to Factory.
+        // #121: the VD transport scales by sizing the render buffer, direct mode by a density
+        // override on the cluster display. That override is only ever set while no window of the
+        // app is on the display (it kills Qt apps like 2GIS otherwise), so in direct mode a new
+        // value lands on the next send to the cluster rather than right away.
         if (directProjection) {
             SettingHint(text = stringResource(R.string.settings_display_scale_direct_hint))
         }
@@ -1284,6 +1333,7 @@ private fun DisplaySection() {
     val hudController = remember { entryPoint.hudController() }
     var hudEnabled by remember { mutableStateOf(hudController.isEnabled()) }
     var hudSpeedSign by remember { mutableStateOf(hudController.isSpeedSignEnabled()) }
+    var hudMode by remember { mutableStateOf(hudController.mode()) }
     val hudStatus by hudController.status.collectAsState()
 
     SettingCollapsibleCard(
@@ -1302,100 +1352,138 @@ private fun DisplaySection() {
         },
     ) {
         if (hudEnabled) {
-            SettingToggleRow(
-                title = stringResource(R.string.settings_hud_speed_sign_title),
-                description = stringResource(R.string.settings_hud_speed_sign_desc),
-                checked = hudSpeedSign,
-                onCheckedChange = {
-                    hudSpeedSign = it
-                    hudController.setSpeedSignEnabled(it)
-                },
-            )
-            SettingDivider()
-            // Glass family: which frame layout and gateway service key the car's HUD reads.
-            var hudDialectPref by remember { mutableStateOf(hudController.dialectPref()) }
-            val dialectPrefValues = listOf(
-                com.bydmate.app.hud.HudDialect.PREF_AUTO,
-                com.bydmate.app.hud.HudDialect.CLASSIC.prefValue,
-                com.bydmate.app.hud.HudDialect.AR_HUD.prefValue,
-            )
-            val detectedName = stringResource(
-                if (com.bydmate.app.hud.HudDialect.detect() == com.bydmate.app.hud.HudDialect.AR_HUD)
-                    R.string.settings_hud_dialect_arhud else R.string.settings_hud_dialect_classic
-            )
-            SettingChipRow(
-                title = stringResource(R.string.settings_hud_dialect_title),
-                description = stringResource(R.string.settings_hud_dialect_desc, detectedName),
-                options = listOf(
-                    stringResource(R.string.settings_hud_dialect_auto),
-                    stringResource(R.string.settings_hud_dialect_classic),
-                    stringResource(R.string.settings_hud_dialect_arhud),
-                ),
-                selectedIndex = dialectPrefValues.indexOf(hudDialectPref).coerceAtLeast(0),
-                onSelect = { index ->
-                    val value = dialectPrefValues[index]
-                    if (value != hudDialectPref) {
-                        hudDialectPref = value
-                        hudController.setDialectPref(value)
-                    }
-                },
-            )
-            val resolvedDialect = com.bydmate.app.hud.HudDialect.fromPref(hudDialectPref)
-                ?: com.bydmate.app.hud.HudDialect.detect()
-            if (resolvedDialect == com.bydmate.app.hud.HudDialect.AR_HUD) {
-                // Sub-channels of the AR-HUD dialect: together they reproduce what openbyd sends
-                // on the Tang L; the car test switches them off one by one.
-                var arRoadInfo by remember { mutableStateOf(hudController.isArHudRoadInfoEnabled()) }
-                var arFids by remember { mutableStateOf(hudController.isArHudFidsEnabled()) }
-                var arLanes by remember { mutableStateOf(hudController.isArHudLanesEnabled()) }
-                SettingDivider()
+            // No gateway (#301): the hints go to the cluster card, the glass settings do not apply.
+            if (hudStatus != HudController.Status.CLUSTER_ONLY) {
                 SettingToggleRow(
-                    title = stringResource(R.string.settings_hud_arhud_roadinfo_title),
-                    description = stringResource(R.string.settings_hud_arhud_roadinfo_desc),
-                    checked = arRoadInfo,
-                    onCheckedChange = { arRoadInfo = it; hudController.setArHudRoadInfoEnabled(it) },
-                )
-                SettingToggleRow(
-                    title = stringResource(R.string.settings_hud_arhud_fids_title),
-                    description = stringResource(R.string.settings_hud_arhud_fids_desc),
-                    checked = arFids,
-                    onCheckedChange = { arFids = it; hudController.setArHudFidsEnabled(it) },
-                )
-                SettingToggleRow(
-                    title = stringResource(R.string.settings_hud_lanes_title),
-                    description = stringResource(R.string.settings_hud_lanes_desc),
-                    checked = arLanes,
-                    onCheckedChange = { arLanes = it; hudController.setArHudLanesEnabled(it) },
-                )
-                // The cluster's own font set has no Cyrillic. openbyd Latinises the street name
-                // before sending it and has done so on real cars for years; off shows the raw
-                // name, which is worth a try on a firmware with a fuller font.
-                var streetTranslit by remember { mutableStateOf(hudController.streetTransliterate()) }
-                SettingToggleRow(
-                    title = stringResource(R.string.settings_hud_street_translit_title),
-                    description = stringResource(R.string.settings_hud_street_translit_desc),
-                    checked = streetTranslit,
+                    title = stringResource(R.string.settings_hud_speed_sign_title),
+                    traceId = "hud_speed_sign",
+                    description = stringResource(R.string.settings_hud_speed_sign_desc),
+                    checked = hudSpeedSign,
                     onCheckedChange = {
-                        streetTranslit = it
-                        hudController.setStreetTransliterate(it)
+                        hudSpeedSign = it
+                        hudController.setSpeedSignEnabled(it)
                     },
                 )
-                // openbyd's HUD Tester: hand-built frames and the 49-step demo tour, the only way
-                // to see what this cluster draws without driving a route.
-                HudPanelTestSection(entryPoint.hudPanelTester())
+                SettingDivider()
+                // Glass family: which frame layout and gateway service key the car's HUD reads.
+                var hudDialectPref by remember { mutableStateOf(hudController.dialectPref()) }
+                val dialectPrefValues = listOf(
+                    com.bydmate.app.hud.HudDialect.PREF_AUTO,
+                    com.bydmate.app.hud.HudDialect.CLASSIC.prefValue,
+                    com.bydmate.app.hud.HudDialect.AR_HUD.prefValue,
+                )
+                val detectedName = stringResource(
+                    if (com.bydmate.app.hud.HudDialect.detect() == com.bydmate.app.hud.HudDialect.AR_HUD)
+                        R.string.settings_hud_dialect_arhud else R.string.settings_hud_dialect_classic
+                )
+                SettingChipRow(
+                    title = stringResource(R.string.settings_hud_dialect_title),
+                    description = stringResource(R.string.settings_hud_dialect_desc, detectedName),
+                    options = listOf(
+                        stringResource(R.string.settings_hud_dialect_auto),
+                        stringResource(R.string.settings_hud_dialect_classic),
+                        stringResource(R.string.settings_hud_dialect_arhud),
+                    ),
+                    selectedIndex = dialectPrefValues.indexOf(hudDialectPref).coerceAtLeast(0),
+                    onSelect = { index ->
+                        val value = dialectPrefValues[index]
+                        if (value != hudDialectPref) {
+                            hudDialectPref = value
+                            hudController.setDialectPref(value)
+                        }
+                    },
+                )
+                val resolvedDialect = com.bydmate.app.hud.HudDialect.fromPref(hudDialectPref)
+                    ?: com.bydmate.app.hud.HudDialect.detect()
+                if (resolvedDialect == com.bydmate.app.hud.HudDialect.AR_HUD) {
+                    // Sub-channels of the AR-HUD dialect: together they reproduce what openbyd sends
+                    // on the Tang L; the car test switches them off one by one.
+                    var arRoadInfo by remember { mutableStateOf(hudController.isArHudRoadInfoEnabled()) }
+                    var arFids by remember { mutableStateOf(hudController.isArHudFidsEnabled()) }
+                    var arLanes by remember { mutableStateOf(hudController.isArHudLanesEnabled()) }
+                    SettingDivider()
+                    SettingToggleRow(
+                        title = stringResource(R.string.settings_hud_arhud_roadinfo_title),
+                        description = stringResource(R.string.settings_hud_arhud_roadinfo_desc),
+                        checked = arRoadInfo,
+                        onCheckedChange = { arRoadInfo = it; hudController.setArHudRoadInfoEnabled(it) },
+                    )
+                    SettingToggleRow(
+                        title = stringResource(R.string.settings_hud_arhud_fids_title),
+                        description = stringResource(R.string.settings_hud_arhud_fids_desc),
+                        checked = arFids,
+                        onCheckedChange = { arFids = it; hudController.setArHudFidsEnabled(it) },
+                    )
+                    SettingToggleRow(
+                        title = stringResource(R.string.settings_hud_lanes_title),
+                        description = stringResource(R.string.settings_hud_lanes_desc),
+                        checked = arLanes,
+                        onCheckedChange = { arLanes = it; hudController.setArHudLanesEnabled(it) },
+                    )
+                    // The cluster's own font set has no Cyrillic. openbyd Latinises the street name
+                    // before sending it and has done so on real cars for years; off shows the raw
+                    // name, which is worth a try on a firmware with a fuller font.
+                    var streetTranslit by remember { mutableStateOf(hudController.streetTransliterate()) }
+                    SettingToggleRow(
+                        title = stringResource(R.string.settings_hud_street_translit_title),
+                        description = stringResource(R.string.settings_hud_street_translit_desc),
+                        checked = streetTranslit,
+                        onCheckedChange = {
+                            streetTranslit = it
+                            hudController.setStreetTransliterate(it)
+                        },
+                    )
+                    // openbyd's HUD Tester: hand-built frames and the 49-step demo tour, the only way
+                    // to see what this cluster draws without driving a route.
+                    HudPanelTestSection(entryPoint.hudPanelTester())
+                }
+                SettingDivider()
+                // «Способ вывода на стекло» (#266): way 1 (default) never raises the car's navigation
+                // status, ways 2 and 3 do and add their channels (HudWayChannels).
+                val hudWays = listOf(HudController.MODE_GLASS_ONLY, HudController.MODE_NAVI_STATUS, HudController.MODE_LMCN)
+                SettingChipRow(
+                    title = stringResource(R.string.settings_hud_mode_title),
+                    options = listOf(
+                        stringResource(R.string.settings_hud_mode_1),
+                        stringResource(R.string.settings_hud_mode_2),
+                        stringResource(R.string.settings_hud_mode_3),
+                    ),
+                    selectedIndex = hudWays.indexOf(hudMode).coerceAtLeast(0),
+                    onSelect = { idx ->
+                        val mode = hudWays[idx]
+                        if (mode != hudMode) {
+                            Trace.event(TraceArea.USER, "choice", "id" to "hud_mode", "mode" to mode)
+                            hudMode = mode
+                            hudController.setMode(mode)
+                        }
+                    },
+                )
+                SettingHint(text = stringResource(R.string.settings_hud_mode_1_desc))
+                SettingHint(text = stringResource(R.string.settings_hud_mode_2_desc))
+                HudTrialHint(
+                    text = stringResource(R.string.settings_hud_mode_3_desc),
+                    tag = stringResource(R.string.settings_hud_mode_trial),
+                )
+                SettingHint(text = stringResource(R.string.settings_hud_mode_pick_hint))
+                SettingDivider()
             }
-            SettingDivider()
             SettingStatusRow(
                 title = when (hudStatus) {
                     HudController.Status.ON -> stringResource(R.string.settings_hud_status_on)
                     HudController.Status.UNSUPPORTED -> stringResource(R.string.settings_hud_status_unsupported)
                     HudController.Status.BIND_FAILED -> stringResource(R.string.settings_hud_status_bind_failed)
+                    HudController.Status.CLUSTER_ONLY -> stringResource(R.string.settings_hud_status_cluster_only)
                     else -> stringResource(R.string.settings_hud_status_connecting)
                 },
-                ok = hudStatus == HudController.Status.ON,
+                ok = hudStatus == HudController.Status.ON || hudStatus == HudController.Status.CLUSTER_ONLY,
             )
         }
-        SettingHint(text = stringResource(R.string.settings_hud_hint))
+        if (hudStatus != HudController.Status.CLUSTER_ONLY) {
+            SettingHint(text = stringResource(R.string.settings_hud_hint))
+        }
+        // Outside the switch: the check is meant to run with HUD output turned off too.
+        SettingDivider()
+        HudCheckRow(onWayChosen = { hudMode = it })
     }
 
     // Export-warning auto-close: BYD's "This car is not from official export" window is
@@ -1450,6 +1538,30 @@ private fun DisplaySection() {
     }
 
     BlindSpotCard()
+
+    // Instrument music card: mirrors Yandex music, which the stock controller leaves blank.
+    // ClusterMusicBridge reads the flag on every poll, so no restart is needed.
+    var clusterMusicCard by remember {
+        mutableStateOf(prefs.getBoolean(ClusterProjectionManager.KEY_CLUSTER_MUSIC_CARD, false))
+    }
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = CardSurfaceElevated),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+            SettingToggleRow(
+                title = stringResource(R.string.settings_cluster_music_card_title),
+                traceId = "cluster_music_card",
+                description = stringResource(R.string.settings_cluster_music_card_desc),
+                checked = clusterMusicCard,
+                onCheckedChange = {
+                    clusterMusicCard = it
+                    prefs.edit().putBoolean(ClusterProjectionManager.KEY_CLUSTER_MUSIC_CARD, it).apply()
+                },
+            )
+        }
+    }
     AmbientNightCard()
 }
 
@@ -1797,17 +1909,26 @@ private fun BlindSpotCard() {
             BlindSpotPreferences.KEY_PIP_WIDTH_PCT, BlindSpotPreferences.DEFAULT_PIP_WIDTH_PCT))
     }
     var bsdGlow by remember { mutableStateOf(prefs.getBoolean(BlindSpotPreferences.KEY_BSD_GLOW, true)) }
+    var rotate90 by remember {
+        mutableStateOf(prefs.getBoolean(BlindSpotPreferences.KEY_PIP_ROTATE_90, false))
+    }
     var bothOnMain by remember {
         mutableStateOf(prefs.getBoolean(BlindSpotPreferences.KEY_BOTH_ON_MAIN, false))
     }
+    var bothOnCluster by remember {
+        mutableStateOf(prefs.getBoolean(BlindSpotPreferences.KEY_BOTH_ON_CLUSTER, false))
+    }
+    // Same lookup the controller routes by: without a projection panel there is no cluster to offer.
+    val hasClusterDisplay = remember { blindSpotClusterDisplay(context) != null }
 
     // Drag-to-place preview: it lives in a WindowManager overlay, so leaving the screen has to
-    // take it down explicitly. The flag follows the window rather than the clicks — the overlay
-    // also goes away on its own idle timer.
-    val placingState = remember { mutableStateOf(false) }
+    // take it down explicitly. The state follows the window rather than the clicks — the overlay
+    // also goes away on its own idle timer. One window at a time, so the side being placed is
+    // the state (null = nothing on screen).
+    val placingState = remember { mutableStateOf<BlindSpotPositionOverlay.Side?>(null) }
     var placing by placingState
     val positionOverlay = remember {
-        BlindSpotPositionOverlay().apply { onHidden = { placingState.value = false } }
+        BlindSpotPositionOverlay().apply { onHidden = { placingState.value = null } }
     }
     // MainActivity survives configuration changes, so onDispose alone never fires when the driver
     // goes Home — an opaque touchable window would stay over whatever is on screen.
@@ -1839,7 +1960,7 @@ private fun BlindSpotCard() {
         checked = enabled,
         onCheckedChange = {
             enabled = it
-            prefs.edit().putBoolean(BlindSpotPreferences.KEY_ENABLED, it).apply()
+            BlindSpotPreferences.setEnabled(prefs, it)
             if (it && ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
                 != PackageManager.PERMISSION_GRANTED
             ) {
@@ -1861,7 +1982,10 @@ private fun BlindSpotCard() {
             steps = (BlindSpotPreferences.MAX_THRESHOLD_KMH - BlindSpotPreferences.MIN_THRESHOLD_KMH) / 5 - 1,
             enabled = enabled,
             onValueChangeFinished = {
+                val was = prefs.getInt(
+                    BlindSpotPreferences.KEY_THRESHOLD_KMH, BlindSpotPreferences.DEFAULT_THRESHOLD_KMH)
                 prefs.edit().putInt(BlindSpotPreferences.KEY_THRESHOLD_KMH, thresholdKmh).apply()
+                Trace.event(TraceArea.USER, "slider", "id" to "blindspot_threshold", "value" to thresholdKmh, "was" to was)
             },
         )
         SettingDivider()
@@ -1877,36 +2001,105 @@ private fun BlindSpotCard() {
             enabled = enabled,
             onValueChangeFinished = {
                 prefs.edit().putInt(BlindSpotPreferences.KEY_PIP_WIDTH_PCT, pipWidthPct).apply()
-                if (placing) positionOverlay.refreshSize()
+                if (placing != null) positionOverlay.refreshSize()
             },
+        )
+        SettingDivider()
+        SettingToggleRow(
+            title = stringResource(R.string.settings_blindspot_rotate_title),
+            traceId = "blindspot_rotate",
+            description = stringResource(R.string.settings_blindspot_rotate_desc),
+            checked = rotate90,
+            onCheckedChange = {
+                rotate90 = it
+                prefs.edit().putBoolean(BlindSpotPreferences.KEY_PIP_ROTATE_90, it).apply()
+                // Same path the width slider uses: the drag stand-in has to change shape with the
+                // camera window, and the controller re-applies the geometry on its next tick.
+                if (placing != null) positionOverlay.refreshSize()
+            },
+            enabled = enabled,
         )
         SettingDivider()
         SettingActionRow(
             title = stringResource(R.string.settings_blindspot_position_title),
             description = stringResource(R.string.settings_blindspot_position_desc),
             buttonLabel = stringResource(
-                if (placing) R.string.settings_blindspot_position_done
+                if (placing == BlindSpotPositionOverlay.Side.RIGHT) R.string.settings_blindspot_position_done
                 else R.string.settings_blindspot_position_button
             ),
             onClick = {
-                if (placing) positionOverlay.hide() else placing = positionOverlay.show(context)
+                val side = BlindSpotPositionOverlay.Side.RIGHT
+                // Read before hide(): hiding clears [placing] through onHidden, and a second
+                // tap on the same row must close the window, not reopen it.
+                val closing = placing == side
+                positionOverlay.hide()
+                if (!closing && positionOverlay.show(context, side)) placing = side
             },
             enabled = enabled,
         )
         SettingDivider()
         SettingToggleRow(
             title = stringResource(R.string.settings_blindspot_both_main_title),
+            traceId = "blindspot_both_main",
             description = stringResource(R.string.settings_blindspot_both_main_desc),
             checked = bothOnMain,
             onCheckedChange = {
                 bothOnMain = it
-                prefs.edit().putBoolean(BlindSpotPreferences.KEY_BOTH_ON_MAIN, it).apply()
+                // The two screen opt-ins exclude each other (#240): one write, so the controller
+                // never sees both on.
+                if (it) bothOnCluster = false
+                val editor = prefs.edit().putBoolean(BlindSpotPreferences.KEY_BOTH_ON_MAIN, it)
+                if (it) editor.putBoolean(BlindSpotPreferences.KEY_BOTH_ON_CLUSTER, false)
+                editor.apply()
+                // The left window only exists on the main screen while this is on; its placement
+                // row goes away with it, and an open drag overlay would have nothing to dismiss it.
+                if (!it && placing == BlindSpotPositionOverlay.Side.LEFT) positionOverlay.hide()
             },
             enabled = enabled,
         )
+        // Only when the left camera is actually shown on the main screen — there is nothing to
+        // place otherwise (it lives on the cluster panel).
+        if (bothOnMain) {
+            SettingDivider()
+            SettingActionRow(
+                title = stringResource(R.string.settings_blindspot_left_position_title),
+                description = stringResource(R.string.settings_blindspot_left_position_desc),
+                buttonLabel = stringResource(
+                    if (placing == BlindSpotPositionOverlay.Side.LEFT) R.string.settings_blindspot_position_done
+                    else R.string.settings_blindspot_position_button
+                ),
+                onClick = {
+                    val side = BlindSpotPositionOverlay.Side.LEFT
+                    val closing = placing == side
+                    positionOverlay.hide()
+                    if (!closing && positionOverlay.show(context, side)) placing = side
+                },
+                enabled = enabled,
+            )
+        }
+        if (hasClusterDisplay) {
+            SettingDivider()
+            SettingToggleRow(
+                title = stringResource(R.string.settings_blindspot_both_cluster_title),
+                traceId = "blindspot_both_cluster",
+                description = stringResource(R.string.settings_blindspot_both_cluster_desc),
+                checked = bothOnCluster,
+                onCheckedChange = {
+                    bothOnCluster = it
+                    if (it) bothOnMain = false
+                    val editor = prefs.edit().putBoolean(BlindSpotPreferences.KEY_BOTH_ON_CLUSTER, it)
+                    if (it) editor.putBoolean(BlindSpotPreferences.KEY_BOTH_ON_MAIN, false)
+                    editor.apply()
+                    // Turning the main-screen opt-in off takes the left placement row with it.
+                    if (it && placing == BlindSpotPositionOverlay.Side.LEFT) positionOverlay.hide()
+                },
+                enabled = enabled,
+            )
+        }
         SettingDivider()
         SettingToggleRow(
             title = stringResource(R.string.settings_blindspot_glow_title),
+            traceId = "blindspot_glow",
             description = stringResource(R.string.settings_blindspot_glow_desc),
             checked = bsdGlow,
             onCheckedChange = {
@@ -2000,6 +2193,7 @@ private fun SplitSection() {
             }
             SettingToggleRow(
                 title = stringResource(R.string.settings_split_enable_title),
+                traceId = "split_enable",
                 description = stringResource(R.string.settings_split_enable_desc),
                 checked = splitEnabled,
                 onCheckedChange = { enabled ->
@@ -2178,7 +2372,7 @@ internal sealed interface LearnUiState {
     data class Rejected(val keyCode: Int) : LearnUiState
     /** Assignable key, but already taken by another feature; [reason] explains which one. */
     data class Occupied(val keyCode: Int, val reason: String) : LearnUiState
-    data class Captured(val keyCode: Int) : LearnUiState
+    data class Captured(val keyCode: Int, val companions: Set<Int> = emptySet()) : LearnUiState
     data object TimedOut : LearnUiState
 }
 
@@ -2189,12 +2383,16 @@ internal sealed interface LearnUiState {
  *
  * [occupiedReason] lets a caller veto an otherwise assignable key: a non-null text means "this key
  * already does something else" and is shown while the dialog keeps waiting for another key.
+ *
+ * [onSaveWithCompanions], when set, replaces [onSave]: the caller also takes the other keycodes the
+ * same press sent (shown as "label (304 + 327)"). Without it companions are neither shown nor saved.
  */
 @Composable
 internal fun LearnButtonDialog(
-    onSave: (Int) -> Unit,
+    onSave: (Int) -> Unit = {},
     onDismiss: () -> Unit,
     occupiedReason: (Int) -> String? = { null },
+    onSaveWithCompanions: ((Int, Set<Int>) -> Unit)? = null,
 ) {
     var state by remember { mutableStateOf<LearnUiState>(LearnUiState.Waiting) }
 
@@ -2225,7 +2423,8 @@ internal fun LearnButtonDialog(
                     }
                     else -> {
                         SteeringWheelKeyService.learnMode = false
-                        LearnUiState.Captured(r.keyCode)
+                        LearnUiState.Captured(
+                            r.keyCode, if (onSaveWithCompanions != null) r.companions else emptySet())
                     }
                 }
             }
@@ -2249,7 +2448,7 @@ internal fun LearnButtonDialog(
         state = LearnUiState.Waiting
     }
 
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.learn_button_dialog_title)) },
         text = {
@@ -2275,7 +2474,8 @@ internal fun LearnButtonDialog(
                 is LearnUiState.Captured -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.learn_button_captured))
                     Text(
-                        "${steeringButtonLabel(s.keyCode)} (${s.keyCode})",
+                        "${steeringButtonLabel(s.keyCode)} " +
+                            "(${(listOf(s.keyCode) + s.companions.sorted()).joinToString(" + ")})",
                         color = TextPrimary, fontWeight = FontWeight.Medium,
                     )
                 }
@@ -2284,7 +2484,10 @@ internal fun LearnButtonDialog(
         },
         confirmButton = {
             when (val s = state) {
-                is LearnUiState.Captured -> TextButton(onClick = { onSave(s.keyCode) }) {
+                is LearnUiState.Captured -> TextButton(onClick = {
+                    if (onSaveWithCompanions != null) onSaveWithCompanions(s.keyCode, s.companions)
+                    else onSave(s.keyCode)
+                }) {
                     Text(stringResource(R.string.learn_button_save))
                 }
                 is LearnUiState.TimedOut -> TextButton(onClick = restart) {
@@ -2324,42 +2527,49 @@ private fun ServiceSection(
         EntryPointAccessors.fromApplication(context.applicationContext, ClusterEntryPoint::class.java)
     }
 
-    // SAF picker for restore — must be declared at composable top level
-    val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) viewModel.restoreConfig(uri)
-    }
-    var showRestoreConfirm by remember { mutableStateOf(false) }
-    var showExportConfirm by remember { mutableStateOf(false) }
+    // Own picker over Download/ instead of SAF: on some firmwares ACTION_OPEN_DOCUMENT hands
+    // back a URI without a read grant (#223). Non-null restoreCandidates = picker open.
+    var showSaveDialog by remember { mutableStateOf(false) }
 
-    // Confirm dialog for destructive restore operation
-    if (showRestoreConfirm) {
-        AlertDialog(
-            onDismissRequest = { showRestoreConfirm = false },
+    state.restoreCandidates?.let { files ->
+        AppAlertDialog(
+            onDismissRequest = { viewModel.closeRestorePicker() },
             title = {
                 Text(
-                    stringResource(R.string.settings_config_restore_confirm_title),
+                    stringResource(R.string.settings_config_restore_pick_title),
                     color = TextPrimary,
                 )
             },
             text = {
-                Text(
-                    stringResource(R.string.settings_config_restore_confirm_body),
-                    color = TextSecondary,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showRestoreConfirm = false
-                    restoreLauncher.launch(arrayOf("application/zip"))
-                }) {
+                if (files.isEmpty()) {
                     Text(
-                        stringResource(R.string.settings_config_restore_confirm_ok),
-                        color = SocRed,
+                        stringResource(R.string.settings_config_restore_pick_empty),
+                        color = TextSecondary,
                     )
+                } else {
+                    val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        items(files) { file ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.pickRestoreFile(file) }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text(file.name, color = TextPrimary, fontSize = 13.sp, maxLines = 1)
+                                Text(
+                                    dateFormat.format(Date(file.lastModified())),
+                                    color = TextSecondary,
+                                    fontSize = 12.sp,
+                                )
+                            }
+                        }
+                    }
                 }
             },
+            confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { showRestoreConfirm = false }) {
+                TextButton(onClick = { viewModel.closeRestorePicker() }) {
                     Text(
                         stringResource(R.string.settings_config_restore_confirm_cancel),
                         color = TextSecondary,
@@ -2370,42 +2580,45 @@ private fun ServiceSection(
         )
     }
 
-    // Confirm dialog before exporting plaintext backup
-    if (showExportConfirm) {
-        AlertDialog(
-            onDismissRequest = { showExportConfirm = false },
-            title = {
-                Text(
-                    stringResource(R.string.settings_config_export_confirm_title),
-                    color = TextPrimary,
-                )
+    // «Что восстановить»: only the parts the archive carries can be checked (#238).
+    state.restoreChoice?.let { choice ->
+        BackupPartsDialog(
+            title = stringResource(R.string.settings_config_restore_dialog_title),
+            initial = choice.parts,
+            available = choice.parts,
+            confirmLabel = stringResource(R.string.settings_config_restore_confirm_ok),
+            confirmColor = SocRed,
+            warning = stringResource(R.string.settings_config_restore_warning),
+            busy = state.restoreInProgress,
+            onConfirm = { viewModel.restoreConfig(choice.file, it) },
+            onDismiss = { viewModel.dismissRestoreChoice() },
+        )
+    }
+
+    if (showSaveDialog) {
+        BackupPartsDialog(
+            title = stringResource(R.string.settings_config_save_dialog_title),
+            initial = state.manualBackupParts,
+            available = BackupPart.ALL,
+            confirmLabel = stringResource(R.string.settings_config_save_button),
+            confirmColor = PrimaryColor,
+            warning = null,
+            busy = state.restoreInProgress,
+            onConfirm = {
+                showSaveDialog = false
+                viewModel.saveConfiguration(it)
             },
-            text = {
-                Text(
-                    stringResource(R.string.settings_config_export_confirm_body),
-                    color = TextSecondary,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showExportConfirm = false
-                    viewModel.exportConfig()
-                }) {
-                    Text(
-                        stringResource(R.string.settings_config_export_confirm_ok),
-                        color = PrimaryColor,
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showExportConfirm = false }) {
-                    Text(
-                        stringResource(R.string.settings_config_restore_confirm_cancel),
-                        color = TextSecondary,
-                    )
-                }
-            },
-            containerColor = CardSurfaceElevated,
+            onDismiss = { showSaveDialog = false },
+        )
+    }
+
+    // After a manual save: the file, the Telegram outcome and the system share sheet (#237, #238).
+    state.savedBackup?.let { saved ->
+        SavedBackupDialog(
+            saved = saved,
+            withKeys = BackupPart.KEYS in state.manualBackupParts,
+            onShare = { viewModel.shareExportedBackup() },
+            onDismiss = { viewModel.dismissExportedBackup() },
         )
     }
 
@@ -2425,6 +2638,7 @@ private fun ServiceSection(
         Column(modifier = Modifier.padding(horizontal = 12.dp)) {
             SettingToggleRow(
                 title = stringResource(R.string.settings_knob_play_pause_title),
+                traceId = "knob_play_pause",
                 description = stringResource(R.string.settings_knob_play_pause_desc),
                 checked = knobPlayPause,
                 onCheckedChange = {
@@ -2437,6 +2651,169 @@ private fun ServiceSection(
                 },
             )
         }
+    }
+
+    // ADB restore (firmwares that close port 5555 on every reboot). The toggle is shown on
+    // every car: where the port survives a reboot the status line simply says so.
+    val adbRestore = remember { clusterEntryPoint.adbRestoreManager() }
+    var adbRestoreEnabled by remember { mutableStateOf(adbRestore.isEnabled()) }
+    // Android 10: the toggle stays visible but locked off, the status line says why.
+    val adbRestoreSupported = remember { adbRestore.isSupported() }
+    var adbRestoreHelpOpen by remember { mutableStateOf(false) }
+    val adbRestoreState by adbRestore.state.collectAsStateWithLifecycle()
+    val adbVerdict by viewModel.adbVerdict.collectAsStateWithLifecycle()
+    val adbChecking by viewModel.adbChecking.collectAsStateWithLifecycle()
+    // The verdict the dialog was opened for; cleared when the problem goes away.
+    var openAdbVerdict by remember { mutableStateOf<AdbVerdict?>(null) }
+    LaunchedEffect(adbVerdict) {
+        if (adbVerdict == null || adbVerdict == AdbVerdict.OK) openAdbVerdict = null
+    }
+    // Opening Settings with the feature on refreshes the status line (and picks the port back
+    // up if it is down) instead of showing whatever the last trigger left behind. Keyed on the
+    // toggle, so switching it on runs an attempt right away. The attempt runs in the manager's
+    // own scope, not this composition: leaving the screen used to kill the helper bootstrap that
+    // follows a successful restore.
+    LaunchedEffect(adbRestoreEnabled) {
+        if (adbRestoreEnabled) adbRestore.requestAttempt("settings")
+    }
+    // BYD cloud over Wi-Fi (#310), same card. Every step goes through ADB to ourselves.
+    val cloudOverWifi = remember { clusterEntryPoint.cloudOverWifiManager() }
+    var cloudOverWifiEnabled by remember { mutableStateOf(cloudOverWifi.isEnabled()) }
+    var cloudOverWifiHelpOpen by remember { mutableStateOf(false) }
+    val cloudOverWifiState by cloudOverWifi.state.collectAsStateWithLifecycle()
+    val cloudAdbReady = adbVerdict == AdbVerdict.OK || adbVerdict == AdbVerdict.HELPER_DOWN
+    LaunchedEffect(cloudOverWifiEnabled) {
+        if (cloudOverWifiEnabled) cloudOverWifi.requestAttempt("settings")
+    }
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = CardSurfaceElevated),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+            SettingToggleRow(
+                title = stringResource(R.string.settings_adb_restore_title),
+                traceId = "adb_restore",
+                description = stringResource(R.string.settings_adb_restore_desc),
+                checked = adbRestoreEnabled && adbRestoreSupported,
+                onCheckedChange = { enabled ->
+                    adbRestoreEnabled = enabled
+                    adbRestore.setEnabled(enabled)
+                },
+                enabled = adbRestoreSupported,
+                // The help explains a working restore; on Android 10 the status line says why there is none.
+                onHelp = if (adbRestoreSupported) ({ adbRestoreHelpOpen = true }) else null,
+            )
+            adbRestoreStatusText(adbRestoreState)?.let { SettingHint(text = it) }
+            val verdict = adbVerdict
+            if (adbChecking) {
+                Text(
+                    stringResource(R.string.adb_verdict_checking),
+                    color = TextSecondary, fontSize = 12.5.sp,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            } else if (verdict != null && verdict != AdbVerdict.OK) {
+                val link = stringResource(
+                    if (verdict == AdbVerdict.NOT_ENABLED) R.string.adb_verdict_link_how
+                    else R.string.adb_verdict_link_more
+                )
+                Text(
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(color = adbVerdictColor(verdict))) { append(adbVerdictText(verdict)) }
+                        append(" ")
+                        withStyle(SpanStyle(color = AccentBlue, fontWeight = FontWeight.SemiBold)) { append(link) }
+                    },
+                    fontSize = 12.5.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { openAdbVerdict = verdict }
+                        .padding(bottom = 8.dp),
+                )
+            }
+            SettingDivider()
+            SettingToggleRow(
+                title = stringResource(R.string.settings_cloud_wifi_title),
+                traceId = "cloud_over_wifi",
+                description = stringResource(R.string.settings_cloud_wifi_desc),
+                checked = cloudOverWifiEnabled,
+                onCheckedChange = { enabled ->
+                    cloudOverWifiEnabled = enabled
+                    cloudOverWifi.setEnabled(enabled)
+                },
+                // Locked off without ADB; once on, switching off stays possible so the return
+                // of the car's settings can wait for ADB to come back.
+                enabled = cloudOverWifiEnabled || cloudAdbReady,
+                onHelp = { cloudOverWifiHelpOpen = true },
+            )
+            // A known verdict only: while the check runs there is nothing true to say yet.
+            val cloudLockedNoAdb = adbVerdict != null && !cloudAdbReady
+            val cloudStatus = if (!cloudOverWifiEnabled && cloudLockedNoAdb &&
+                cloudOverWifiState == CloudOverWifiState.Disabled
+            ) {
+                stringResource(R.string.settings_cloud_wifi_status_no_adb)
+            } else {
+                cloudOverWifiStatusText(cloudOverWifiState)
+            }
+            cloudStatus?.let { SettingHint(text = it) }
+        }
+    }
+    val dialogVerdict = adbVerdict
+    if (openAdbVerdict != null && dialogVerdict != null && dialogVerdict != AdbVerdict.OK) {
+        AdbVerdictDialog(
+            verdict = dialogVerdict,
+            restoreEnabled = adbRestoreEnabled,
+            restoreSupported = adbRestoreSupported,
+            onCheck = { viewModel.recheckAdb() },
+            onEnableRestore = {
+                // Keep the toggle above in step with the dialog's switch-on.
+                adbRestoreEnabled = true
+                viewModel.enableAdbRestore()
+            },
+            onOpenDiagnostics = null,
+            onDismiss = { openAdbVerdict = null },
+        )
+    }
+    if (adbRestoreHelpOpen) {
+        AppAlertDialog(
+            onDismissRequest = { adbRestoreHelpOpen = false },
+            containerColor = CardSurface,
+            title = {
+                Text(stringResource(R.string.settings_adb_restore_help_title), color = TextPrimary)
+            },
+            text = {
+                Text(
+                    stringResource(R.string.settings_adb_restore_help_body),
+                    color = TextSecondary, fontSize = 14.sp, lineHeight = 19.sp,
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { adbRestoreHelpOpen = false }) {
+                    Text(stringResource(R.string.nav_autostart_dialog_button), color = AccentGreen)
+                }
+            },
+        )
+    }
+    if (cloudOverWifiHelpOpen) {
+        AppAlertDialog(
+            onDismissRequest = { cloudOverWifiHelpOpen = false },
+            containerColor = CardSurface,
+            title = {
+                Text(stringResource(R.string.settings_cloud_wifi_help_title), color = TextPrimary)
+            },
+            text = {
+                Text(
+                    stringResource(R.string.settings_cloud_wifi_help_body),
+                    color = TextSecondary, fontSize = 14.sp, lineHeight = 19.sp,
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { cloudOverWifiHelpOpen = false }) {
+                    Text(stringResource(R.string.nav_autostart_dialog_button), color = AccentGreen)
+                }
+            },
+        )
     }
 
     // Hidden BYD language dialog (UI7 only). We never write the locale ourselves — the button just
@@ -2507,6 +2884,7 @@ private fun ServiceSection(
             }
             SettingToggleRow(
                 title = stringResource(R.string.settings_quiet_notification_title),
+                traceId = "quiet_notification",
                 description = stringResource(R.string.settings_quiet_notification_desc),
                 checked = quietNotification,
                 onCheckedChange = {
@@ -2515,92 +2893,31 @@ private fun ServiceSection(
                 },
             )
             SettingDivider()
+            SettingSubhead(stringResource(R.string.settings_config_header))
             SettingActionRow(
-                title = stringResource(R.string.settings_export_csv_button),
-                description = stringResource(R.string.settings_export_csv_desc),
-                buttonLabel = stringResource(R.string.settings_export_csv_button),
-                onClick = { viewModel.exportCsv() },
-            )
-            if (state.exportStatus != null) {
-                SettingHint(
-                    text = state.exportStatus!!,
-                )
-            }
-            SettingDivider()
-            // Trip debug log: the car keeps its own record because Wi-Fi is gone the moment it
-            // leaves the driveway, so logcat is unreachable for the drive that matters.
-            var tripDebug by remember { mutableStateOf(com.bydmate.app.diagnostics.TripDebugLog.isEnabled(context)) }
-            SettingToggleRow(
-                title = stringResource(R.string.settings_trip_debug_title),
-                description = stringResource(
-                    R.string.settings_trip_debug_desc,
-                    com.bydmate.app.diagnostics.TripDebugLog.folderPath(context),
-                ),
-                checked = tripDebug,
-                onCheckedChange = {
-                    tripDebug = it
-                    com.bydmate.app.diagnostics.TripDebugLog.setEnabled(context, it)
-                },
-            )
-            if (tripDebug) {
-                SettingHint(
-                    text = stringResource(
-                        R.string.settings_trip_debug_files,
-                        com.bydmate.app.diagnostics.TripDebugLog.files(context).size,
-                        com.bydmate.app.diagnostics.TripDebugLog.MAX_FILES,
-                    ),
-                )
-            }
-            SettingDivider()
-            SettingActionRow(
-                title = stringResource(R.string.settings_log_recording_start_button),
-                description = stringResource(R.string.settings_log_recording_desc),
-                buttonLabel = if (state.isRecordingLogs) {
-                    stringResource(R.string.settings_log_recording_stop_button)
-                } else {
-                    stringResource(R.string.settings_log_recording_start_button)
-                },
-                onClick = {
-                    if (state.isRecordingLogs) viewModel.stopLogRecording()
-                    else viewModel.startLogRecording()
-                },
-            )
-            if (state.logSaveStatus != null) {
-                SettingHint(
-                    text = state.logSaveStatus!!,
-                )
-            }
-            SettingDivider()
-            SettingActionRow(
-                title = stringResource(R.string.settings_config_export_button),
-                description = stringResource(R.string.settings_config_export_desc),
-                buttonLabel = stringResource(R.string.settings_config_export_button),
-                onClick = { showExportConfirm = true },
+                title = stringResource(R.string.settings_config_save_title),
+                description = stringResource(R.string.settings_config_save_desc),
+                buttonLabel = stringResource(R.string.settings_config_save_button),
+                onClick = { showSaveDialog = true },
+                style = SettingButtonStyle.Primary,
+                enabled = !state.restoreInProgress,
             )
             SettingDivider()
             SettingActionRow(
                 title = stringResource(R.string.settings_config_restore_button),
                 description = stringResource(R.string.settings_config_restore_desc),
-                buttonLabel = stringResource(R.string.settings_config_restore_button),
-                onClick = { showRestoreConfirm = true },
+                buttonLabel = stringResource(R.string.settings_config_restore_pick_button),
+                onClick = { viewModel.openRestorePicker() },
+                enabled = !state.restoreInProgress,
             )
             if (state.configStatus != null) {
                 SettingHint(
                     text = state.configStatus!!,
                 )
             }
+            AutoBackupRows(state, viewModel)
             SettingDivider()
-            SettingActionRow(
-                title = stringResource(R.string.settings_fid_dump_button),
-                description = stringResource(R.string.settings_fid_dump_desc),
-                buttonLabel = stringResource(R.string.settings_fid_dump_button),
-                onClick = { viewModel.dumpFids() },
-            )
-            if (state.fidDumpStatus != null) {
-                SettingHint(
-                    text = state.fidDumpStatus!!,
-                )
-            }
+            DiagnosticsRows(state, viewModel)
         }
     }
 
@@ -2630,10 +2947,765 @@ private fun ServiceSection(
     }
 }
 
+/** Log recording, the fid recorder (test builds) and the fid catalog dump, each with a [?] (#238). */
+@Composable
+private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel) {
+    // Title and body of the open [?] dialog; null = closed.
+    var help by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    help?.let { (title, body) ->
+        AppAlertDialog(
+            onDismissRequest = { help = null },
+            containerColor = CardSurface,
+            title = { Text(stringResource(title), color = TextPrimary) },
+            text = {
+                Text(
+                    stringResource(body),
+                    color = TextSecondary, fontSize = 14.sp, lineHeight = 19.sp,
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { help = null }) {
+                    Text(stringResource(R.string.nav_autostart_dialog_button), color = AccentGreen)
+                }
+            },
+        )
+    }
+    SettingSubhead(stringResource(R.string.settings_diagnostics_header))
+    val tripLogContext = LocalContext.current
+    // Trip debug log: the car keeps its own record because Wi-Fi is gone the moment it
+    // leaves the driveway, so logcat is unreachable for the drive that matters.
+    var tripDebug by remember { mutableStateOf(com.bydmate.app.diagnostics.TripDebugLog.isEnabled(tripLogContext)) }
+    SettingToggleRow(
+        title = stringResource(R.string.settings_trip_debug_title),
+        description = stringResource(
+            R.string.settings_trip_debug_desc,
+            com.bydmate.app.diagnostics.TripDebugLog.folderPath(tripLogContext),
+        ),
+        checked = tripDebug,
+        onCheckedChange = {
+            tripDebug = it
+            com.bydmate.app.diagnostics.TripDebugLog.setEnabled(tripLogContext, it)
+        },
+    )
+    if (tripDebug) {
+        SettingHint(
+            text = stringResource(
+                R.string.settings_trip_debug_files,
+                com.bydmate.app.diagnostics.TripDebugLog.files(tripLogContext).size,
+                com.bydmate.app.diagnostics.TripDebugLog.MAX_FILES,
+            ),
+        )
+    }
+    SettingDivider()
+    SettingActionRow(
+        title = stringResource(R.string.settings_log_recording_start_button),
+        description = stringResource(R.string.settings_log_recording_desc),
+        buttonLabel = if (state.isRecordingLogs) {
+            stringResource(R.string.settings_log_recording_stop_button)
+        } else {
+            stringResource(R.string.settings_log_recording_start_button)
+        },
+        onClick = {
+            if (state.isRecordingLogs) viewModel.stopLogRecording()
+            else viewModel.startLogRecording()
+        },
+        // The saved log to the user's own bot, on a tap only: it holds trips and coordinates (#324).
+        secondButtonLabel = if (state.canSendLogToTelegram) stringResource(R.string.settings_log_tg_send) else null,
+        onSecondClick = { viewModel.sendLogToTelegram() },
+        secondButtonEnabled = !state.logSending,
+        onHelp = { help = R.string.settings_log_recording_start_button to R.string.settings_log_recording_help },
+    )
+    if (state.logSaveStatus != null) {
+        SettingHint(
+            text = state.logSaveStatus!!,
+        )
+    }
+    // Diagnostic fid recorder (-test/debug builds only): the daemon owns the run, this row
+    // only reflects and toggles it, so a reopened screen still shows a recording in force.
+    if (state.fidRecorderVisible) {
+        SettingDivider()
+        SettingToggleRow(
+            title = stringResource(R.string.settings_fid_recorder_title),
+            traceId = "fid_recorder",
+            description = stringResource(R.string.settings_fid_recorder_desc),
+            checked = state.fidRecorderRunning,
+            onCheckedChange = { viewModel.setFidRecorder(it) },
+            onHelp = { help = R.string.settings_fid_recorder_title to R.string.settings_fid_recorder_help },
+        )
+        if (state.fidRecorderError != null) {
+            SettingHint(
+                text = stringResource(R.string.settings_fid_recorder_error, state.fidRecorderError!!),
+            )
+        }
+        if (state.fidRecorderFile != null) {
+            SettingHint(
+                text = stringResource(R.string.settings_fid_recorder_file, state.fidRecorderFile!!),
+            )
+        }
+    }
+    SettingDivider()
+    SettingActionRow(
+        title = stringResource(R.string.settings_fid_dump_button),
+        description = stringResource(R.string.settings_fid_dump_desc),
+        buttonLabel = stringResource(R.string.settings_config_save_button),
+        onClick = { viewModel.dumpFids() },
+        onHelp = { help = R.string.settings_fid_dump_button to R.string.settings_fid_dump_help },
+    )
+    if (state.fidDumpStatus != null) {
+        SettingHint(
+            text = state.fidDumpStatus!!,
+        )
+    }
+}
+
+/** «Проверка HUD»: about 90 s of test hints on the glass; the recorded log and a video of the
+ *  glass tell which channel draws on this car. The row only starts the check and shows where it is. */
+@Composable
+private fun HudCheckRow(onWayChosen: (Int) -> Unit) {
+    val context = LocalContext.current
+    val hudCheck = remember {
+        EntryPointAccessors.fromApplication(context.applicationContext, ClusterEntryPoint::class.java).hudCheck()
+    }
+    val checkState by hudCheck.state.collectAsStateWithLifecycle()
+    val askAnswer by hudCheck.askAnswer.collectAsStateWithLifecycle()
+    val notice by hudCheck.notice.collectAsStateWithLifecycle()
+    // After an answer: the way the check picked, 0 when the glass showed nothing.
+    var answered by remember { mutableStateOf<Int?>(null) }
+    if (askAnswer) {
+        HudCheckQuestionDialog(
+            onAnswer = { seen ->
+                val way = hudCheck.answer(seen)
+                way?.let(onWayChosen)
+                answered = way ?: 0
+            },
+            onDismiss = { hudCheck.dismissAnswer() },
+        )
+    }
+    answered?.let { way -> HudCheckAnswerDialog(way) { answered = null } }
+    // The hint line under the row is easy to miss: a refusal or a route that ended the check is
+    // also said once in a dialog.
+    notice?.let { HudCheckNoticeDialog(it) { hudCheck.dismissNotice() } }
+    val running = checkState is HudCheck.State.Preparing || checkState is HudCheck.State.Step ||
+        checkState == HudCheck.State.Restoring
+    SettingActionRow(
+        title = stringResource(R.string.settings_hud_check_title),
+        description = stringResource(R.string.settings_hud_check_desc),
+        buttonLabel = stringResource(R.string.settings_hud_check_button),
+        onClick = { hudCheck.start() },
+        enabled = !running,
+    )
+    val hint = when (val s = checkState) {
+        HudCheck.State.Idle -> null
+        HudCheck.State.Preparing -> stringResource(R.string.settings_hud_check_preparing)
+        is HudCheck.State.Step -> stringResource(R.string.settings_hud_check_step, s.number, HudCheck.STEPS)
+        HudCheck.State.Restoring -> stringResource(R.string.settings_hud_check_restoring)
+        HudCheck.State.Done -> stringResource(R.string.settings_hud_check_done)
+        HudCheck.State.RouteStarted -> stringResource(R.string.settings_hud_check_route_started)
+        is HudCheck.State.Refused -> stringResource(
+            when (s.reason) {
+                HudCheck.Refusal.GUIDANCE -> R.string.settings_hud_check_refused_guidance
+                HudCheck.Refusal.MOVING -> R.string.settings_hud_check_refused_moving
+                HudCheck.Refusal.NO_LINK -> R.string.settings_hud_check_refused_no_link
+            }
+        )
+    }
+    hint?.let { SettingHint(text = it) }
+}
+
+/** A hint line with a small orange tag after it (way 3 «пробный»). */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun HudTrialHint(text: String, tag: String) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(text = text, color = TextMuted, fontSize = 12.sp, lineHeight = 16.sp)
+        Text(
+            text = tag,
+            color = AccentOrange,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+                .border(1.dp, AccentOrange, RoundedCornerShape(4.dp))
+                .padding(horizontal = 6.dp, vertical = 1.dp),
+        )
+    }
+}
+
+/** The end of a finished HUD check: which number the glass showed; the smallest picks the way. */
+@Composable
+private fun HudCheckQuestionDialog(onAnswer: (Int?) -> Unit, onDismiss: () -> Unit) {
+    AppAlertDialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(dismissOnClickOutside = false),
+        title = { Text(stringResource(R.string.settings_hud_answer_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.settings_hud_answer_text), color = TextSecondary, fontSize = 14.sp, lineHeight = 19.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HudCheck.MARKERS.forEach { marker ->
+                        Button(
+                            onClick = { onAnswer(marker) },
+                            modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 4.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = NavyDark),
+                        ) { Text(marker.toString(), fontSize = 20.sp, fontWeight = FontWeight.Medium, maxLines = 1) }
+                    }
+                }
+                OutlinedButton(
+                    onClick = { onAnswer(null) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, CardBorder),
+                ) { Text(stringResource(R.string.settings_hud_answer_none), color = TextPrimary, fontSize = 15.sp) }
+            }
+        },
+        confirmButton = {},
+    )
+}
+
+/** What the answer did: the way picked ([way] 1..3), or 0 = the glass showed nothing, way kept. */
+@Composable
+private fun HudCheckAnswerDialog(way: Int, onDone: () -> Unit) {
+    AppAlertDialog(
+        onDismissRequest = onDone,
+        title = {
+            Text(
+                if (way > 0) stringResource(R.string.settings_hud_answer_chosen_title, way)
+                else stringResource(R.string.settings_hud_answer_nothing_title)
+            )
+        },
+        text = {
+            Text(
+                stringResource(
+                    if (way > 0) R.string.settings_hud_answer_chosen_text else R.string.settings_hud_answer_nothing_text
+                ),
+                fontSize = 14.sp, lineHeight = 19.sp,
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onDone,
+                modifier = Modifier.heightIn(min = 48.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = NavyDark),
+            ) { Text(stringResource(R.string.settings_hud_answer_done), fontSize = 14.sp, fontWeight = FontWeight.Medium) }
+        },
+    )
+}
+
+/** Why the check did not run through, and what to do: [notice] is a refusal or a route that ended it. */
+@Composable
+private fun HudCheckNoticeDialog(notice: HudCheck.State, onDone: () -> Unit) {
+    val text = when (notice) {
+        HudCheck.State.RouteStarted -> R.string.settings_hud_check_notice_route_started
+        is HudCheck.State.Refused -> when (notice.reason) {
+            HudCheck.Refusal.GUIDANCE -> R.string.settings_hud_check_notice_guidance
+            HudCheck.Refusal.MOVING -> R.string.settings_hud_check_notice_moving
+            HudCheck.Refusal.NO_LINK -> R.string.settings_hud_check_refused_no_link
+        }
+        else -> return
+    }
+    AppAlertDialog(
+        onDismissRequest = onDone,
+        title = {
+            Text(
+                stringResource(
+                    if (notice == HudCheck.State.RouteStarted) R.string.settings_hud_check_notice_interrupted_title
+                    else R.string.settings_hud_check_notice_refused_title
+                )
+            )
+        },
+        text = { Text(stringResource(text), fontSize = 14.sp, lineHeight = 19.sp) },
+        confirmButton = {
+            Button(
+                onClick = onDone,
+                modifier = Modifier.heightIn(min = 48.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = NavyDark),
+            ) { Text(stringResource(R.string.settings_hud_check_notice_ok), fontSize = 14.sp, fontWeight = FontWeight.Medium) }
+        },
+    )
+}
+
+/**
+ * Automatic save (#237, #238): period and part chips with the last run, then the Telegram bot and
+ * the power-off report it sends (3.19).
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun AutoBackupRows(state: SettingsUiState, viewModel: SettingsViewModel) {
+    val context = LocalContext.current
+    val tokenFocus = remember { FocusRequester() }
+    val botBringer = remember { BringIntoViewRequester() }
+    val periods = AutoBackupPeriod.entries
+    val locale = LocalConfiguration.current.locales[0]
+    val dateFormat = remember(locale) { SimpleDateFormat("d MMM HH:mm", locale) }
+    SettingDivider()
+    // Two halves instead of SettingChipRow: at the largest text size the chips wrap onto a second
+    // line instead of scrolling the last one out of sight.
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(
+                stringResource(R.string.settings_auto_backup_title),
+                color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+            )
+            Text(
+                stringResource(R.string.settings_auto_backup_desc),
+                color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            Text(
+                text = when {
+                    state.autoBackupLastTs > 0L -> stringResource(
+                        R.string.settings_auto_backup_last,
+                        dateFormat.format(Date(state.autoBackupLastTs)),
+                        autoBackupResultText(context, state.autoBackupLastResult),
+                    )
+                    // A first run that failed to export has no timestamp but does have a reason.
+                    state.autoBackupLastResult.isNotEmpty() -> autoBackupResultText(context, state.autoBackupLastResult)
+                    else -> stringResource(R.string.settings_auto_backup_never)
+                },
+                color = TextPrimary, fontSize = 13.sp, lineHeight = 17.sp,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+            val periodLabels = listOf(
+                stringResource(R.string.settings_auto_backup_off),
+                stringResource(R.string.settings_auto_backup_daily),
+                stringResource(R.string.settings_auto_backup_weekly),
+                stringResource(R.string.settings_auto_backup_monthly),
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
+                periods.forEachIndexed { index, period ->
+                    UnitChip(
+                        label = periodLabels[index],
+                        selected = period == state.autoBackupPeriod,
+                        onClick = { viewModel.setAutoBackupPeriod(period) },
+                    )
+                }
+            }
+            Text(
+                stringResource(R.string.settings_auto_backup_parts_label),
+                color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp, textAlign = TextAlign.End,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
+                BackupPart.entries.forEach { part ->
+                    val label = stringResource(
+                        when (part) {
+                            BackupPart.TABLES -> R.string.settings_backup_chip_tables
+                            BackupPart.SETTINGS -> R.string.settings_backup_chip_settings
+                            BackupPart.KEYS -> R.string.settings_backup_chip_keys
+                        }
+                    )
+                    val selected = part in state.autoBackupParts
+                    UnitChip(
+                        label = if (selected) "✓ $label" else label,
+                        selected = selected,
+                        onClick = { viewModel.toggleAutoBackupPart(part) },
+                    )
+                }
+            }
+        }
+    }
+    SettingDivider()
+    TelegramBotRows(state, viewModel, tokenFocus, botBringer)
+    SettingDivider()
+    PowerOffReportRows(state, viewModel, tokenFocus, botBringer)
+    SettingDivider()
+    // Needs the bot above too; the link to connect it already sits under the power-off report.
+    val connected = state.tgBackupBinding != null
+    SettingToggleRow(
+        title = stringResource(R.string.settings_tg_log_auto_title),
+        traceId = "tg_log_auto_send",
+        description = stringResource(R.string.settings_tg_log_auto_hint),
+        checked = connected && state.tgLogAutoSendEnabled,
+        onCheckedChange = { viewModel.setTgLogAutoSendEnabled(it) },
+        enabled = connected,
+    )
+}
+
+/**
+ * «Отчёт при выключении машины»: needs the bot above, so without it the switch is grey and a link
+ * takes the driver to the token field. The items show only while the report is on.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun PowerOffReportRows(
+    state: SettingsUiState,
+    viewModel: SettingsViewModel,
+    tokenFocus: FocusRequester,
+    botBringer: BringIntoViewRequester,
+) {
+    val connected = state.tgBackupBinding != null
+    val scope = rememberCoroutineScope()
+    SettingToggleRow(
+        title = stringResource(R.string.settings_tg_report_off_title),
+        traceId = "tg_report_off",
+        description = stringResource(R.string.settings_tg_report_off_hint),
+        checked = connected && state.tgReportOffEnabled,
+        onCheckedChange = { viewModel.setTgReportOffEnabled(it) },
+        enabled = connected,
+    )
+    if (!connected) {
+        FlowRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clickable {
+                    scope.launch {
+                        botBringer.bringIntoView()
+                        // The token field exists only on the first step; on the code step the block is enough.
+                        if (state.tgBackupCode == null) tokenFocus.requestFocus()
+                    }
+                }
+                .padding(bottom = 4.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                stringResource(R.string.settings_tg_report_off_no_bot),
+                color = TextSecondary, fontSize = 12.5.sp, lineHeight = 17.sp,
+                modifier = Modifier.padding(end = 4.dp),
+            )
+            Text(
+                stringResource(R.string.settings_tg_report_off_connect),
+                color = AccentBlue, fontSize = 12.5.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold,
+            )
+        }
+    } else if (state.tgReportOffEnabled) {
+        Text(
+            stringResource(R.string.settings_tg_report_items_label),
+            color = TextSecondary, fontSize = 12.sp, lineHeight = 16.sp,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(bottom = 6.dp),
+        ) {
+            ReportField.entries.forEach { field ->
+                val label = stringResource(field.labelRes)
+                val selected = field in state.tgReportOffFields
+                UnitChip(
+                    label = if (selected) "✓ $label" else label,
+                    selected = selected,
+                    onClick = { viewModel.toggleTgReportOffField(field) },
+                )
+            }
+        }
+    }
+}
+
+/** Telegram bot as a three-step stepper: token, code sent to the bot, connected (#238). */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun TelegramBotRows(
+    state: SettingsUiState,
+    viewModel: SettingsViewModel,
+    tokenFocus: FocusRequester,
+    botBringer: BringIntoViewRequester,
+) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    val copiedToast = stringResource(R.string.settings_tg_backup_code_copied)
+    val binding = state.tgBackupBinding
+    val code = state.tgBackupCode
+    val step = when {
+        binding != null -> 3
+        code != null -> 2
+        else -> 1
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().bringIntoViewRequester(botBringer).padding(vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            stringResource(R.string.settings_tg_backup_title),
+            color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+        )
+        TelegramStepper(step)
+        when {
+            binding != null -> {
+                Text(
+                    "✓ " + stringResource(R.string.settings_tg_backup_connected_chip),
+                    color = AccentGreen, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .background(AccentGreen.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+                Text(
+                    stringResource(R.string.settings_tg_backup_chat_line, binding.botName, binding.chatName),
+                    color = TextPrimary, fontSize = 14.sp,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.settings_tg_backup_connected_note),
+                        color = TextMuted, fontSize = 12.sp, lineHeight = 16.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { viewModel.disconnectTelegramBackup() }) {
+                        Text(stringResource(R.string.settings_tg_backup_disconnect), color = TextSecondary, fontSize = 13.sp)
+                    }
+                }
+            }
+            code != null -> {
+                Text(
+                    code,
+                    color = TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace, letterSpacing = 6.sp,
+                    modifier = Modifier
+                        .background(NavyDark, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                )
+                Text(
+                    stringResource(R.string.settings_tg_backup_code_instruction, state.tgBackupBotName),
+                    color = TextSecondary, fontSize = 13.sp, lineHeight = 18.sp,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            clipboard.setText(AnnotatedString(code))
+                            Toast.makeText(context, copiedToast, Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, CardBorder),
+                    ) { Text(stringResource(R.string.settings_tg_backup_copy_code), color = TextPrimary, fontSize = 13.sp) }
+                    TelegramCheckButton(state, viewModel)
+                    TextButton(onClick = { viewModel.cancelTelegramCode() }) {
+                        Text(stringResource(R.string.settings_tg_backup_back), color = TextSecondary, fontSize = 13.sp)
+                    }
+                }
+            }
+            else -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        SettingsTextField(
+                            label = stringResource(R.string.settings_tg_backup_token_label),
+                            value = state.tgBackupToken,
+                            onValueChange = { viewModel.updateTgBackupToken(it) },
+                            keyboardType = KeyboardType.Password,
+                            secret = true,
+                            modifier = Modifier.focusRequester(tokenFocus),
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    TelegramCheckButton(state, viewModel)
+                }
+                Text(
+                    stringResource(R.string.settings_tg_backup_hint),
+                    color = TextMuted, fontSize = 12.sp, lineHeight = 16.sp,
+                )
+            }
+        }
+        // Progress and errors right under the controls, in colour: easy to miss as a grey hint.
+        state.tgBackupStatus?.takeIf { step != 3 }?.let { status ->
+            Text(
+                status,
+                color = if (state.tgBackupChecking) TextSecondary else AccentOrange,
+                fontSize = 14.sp, lineHeight = 19.sp, fontWeight = FontWeight.Medium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TelegramCheckButton(state: SettingsUiState, viewModel: SettingsViewModel) {
+    Button(
+        onClick = { viewModel.checkTelegramBackup() },
+        enabled = !state.tgBackupChecking && state.tgBackupToken.isNotBlank(),
+        shape = RoundedCornerShape(8.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = AccentGreen, contentColor = NavyDark),
+    ) { Text(stringResource(R.string.settings_tg_backup_check), fontSize = 13.sp, fontWeight = FontWeight.Medium) }
+}
+
+/** «1 Токен — 2 Код — 3 Готово»; steps before [current] show a check mark. */
+@Composable
+private fun TelegramStepper(current: Int) {
+    val labels = listOf(
+        stringResource(R.string.settings_tg_backup_step_token),
+        stringResource(R.string.settings_tg_backup_step_code),
+        stringResource(R.string.settings_tg_backup_step_done),
+    )
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        labels.forEachIndexed { index, label ->
+            val step = index + 1
+            val active = step == current
+            val done = step < current || (active && step == labels.size)
+            if (index > 0) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp)
+                        .height(1.dp)
+                        .background(if (step <= current) AccentGreen else CardBorder),
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .background(if (active || done) AccentGreen else CardBorder, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    if (done) "✓" else step.toString(),
+                    color = if (active || done) NavyDark else TextSecondary,
+                    fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                )
+            }
+            Text(
+                label,
+                color = if (active) TextPrimary else TextSecondary,
+                fontSize = 13.sp, fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+        }
+    }
+}
+
+/**
+ * «Что сохранить» / «Что восстановить» (#238): a checkbox per part, [available] parts only; at least
+ * one must stay checked. Scrolls, so the buttons stay reachable at the largest text size.
+ * [busy] = a restore runs, the confirm button stays disabled.
+ */
+@Composable
+private fun BackupPartsDialog(
+    title: String,
+    initial: Set<BackupPart>,
+    available: Set<BackupPart>,
+    confirmLabel: String,
+    confirmColor: Color,
+    warning: String?,
+    busy: Boolean,
+    onConfirm: (Set<BackupPart>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var selected by remember { mutableStateOf(initial intersect available) }
+    AppAlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardSurfaceElevated,
+        title = { Text(title, color = TextPrimary) },
+        text = {
+            Box(modifier = Modifier.heightIn(max = 400.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    BackupPart.entries.forEach { part ->
+                        val enabled = part in available
+                        val (titleRes, descRes) = when (part) {
+                            BackupPart.TABLES -> R.string.settings_backup_part_tables to R.string.settings_backup_part_tables_desc
+                            BackupPart.SETTINGS -> R.string.settings_backup_part_settings to R.string.settings_backup_part_settings_desc
+                            BackupPart.KEYS -> R.string.settings_backup_part_keys to R.string.settings_backup_part_keys_desc
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = enabled) {
+                                    selected = if (part in selected) selected - part else selected + part
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = part in selected,
+                                onCheckedChange = null,
+                                enabled = enabled,
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = AccentGreen,
+                                    uncheckedColor = CardBorder,
+                                    checkmarkColor = NavyDark,
+                                ),
+                            )
+                            Column(modifier = Modifier.padding(start = 10.dp)) {
+                                Text(
+                                    stringResource(titleRes),
+                                    color = if (enabled) TextPrimary else TextMuted,
+                                    fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                                )
+                                Text(
+                                    stringResource(if (enabled) descRes else R.string.settings_backup_part_absent),
+                                    color = if (enabled) TextSecondary else TextMuted,
+                                    fontSize = 12.sp, lineHeight = 16.sp,
+                                )
+                            }
+                        }
+                    }
+                    if (warning != null) {
+                        Text(
+                            warning,
+                            color = AccentOrange, fontSize = 13.sp, lineHeight = 18.sp,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            val canConfirm = selected.isNotEmpty() && !busy
+            TextButton(onClick = { onConfirm(selected) }, enabled = canConfirm) {
+                Text(confirmLabel, color = if (canConfirm) confirmColor else TextMuted)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.settings_config_restore_confirm_cancel), color = TextSecondary)
+            }
+        },
+    )
+}
+
+/** «Сохранено»: file name and size, the Telegram outcome, «Поделиться» and «Закрыть». */
+@Composable
+private fun SavedBackupDialog(saved: SavedBackup, withKeys: Boolean, onShare: () -> Unit, onDismiss: () -> Unit) {
+    val locale = LocalConfiguration.current.locales[0]
+    val sizeMb = remember(saved.file, locale) {
+        String.format(locale, "%.1f", saved.file.length() / (1024.0 * 1024.0))
+    }
+    AppAlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardSurfaceElevated,
+        title = { Text(stringResource(R.string.settings_config_saved_title), color = TextPrimary) },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.settings_config_saved_file, saved.file.name, sizeMb), color = TextPrimary)
+                if (saved.telegramStatus != null) {
+                    Text(saved.telegramStatus, color = TextPrimary, fontSize = 14.sp)
+                }
+                if (withKeys) {
+                    Text(stringResource(R.string.settings_backup_share_hint), color = TextSecondary, fontSize = 13.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.settings_backup_close), color = PrimaryColor)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onShare) {
+                Text(stringResource(R.string.settings_backup_share), color = TextSecondary)
+            }
+        },
+    )
+}
+
 @Composable
 private fun AppSection(state: SettingsUiState, viewModel: SettingsViewModel) {
     val lang by viewModel.appLanguage.collectAsState()
     LanguageBlock(currentLang = lang, onLanguageChange = viewModel::setAppLanguage)
+    val fontScale by viewModel.fontScale.collectAsState()
+    FontScaleBlock(current = fontScale, onChange = viewModel::setFontScale)
 
     var showDonate by remember { mutableStateOf(false) }
     if (showDonate) {
@@ -2656,12 +3728,14 @@ private fun AppSection(state: SettingsUiState, viewModel: SettingsViewModel) {
                 selectedIndex = if (state.units == "km") 0 else 1,
                 onSelect = { idx -> viewModel.saveUnits(if (idx == 0) "km" else "miles") },
             )
+            SettingDivider()
             SettingChipRow(
                 title = stringResource(R.string.settings_app_currency_label),
                 options = SettingsRepository.CURRENCIES.map { it.code },
                 selectedIndex = SettingsRepository.CURRENCIES.indexOfFirst { it.code == state.currency }.coerceAtLeast(0),
                 onSelect = { idx -> viewModel.saveCurrency(SettingsRepository.CURRENCIES[idx].code) },
             )
+            SettingDivider()
             SettingChipRow(
                 title = stringResource(R.string.settings_map_tile_source_label),
                 options = listOf("OpenStreetMap", "Amap"),
@@ -2683,6 +3757,7 @@ private fun AppSection(state: SettingsUiState, viewModel: SettingsViewModel) {
         ) {
             SettingToggleRow(
                 title = stringResource(R.string.settings_update_check_toggle_label),
+                traceId = "update_check",
                 description = stringResource(R.string.settings_update_check_toggle_description),
                 checked = state.autoCheckUpdates,
                 onCheckedChange = { viewModel.setAutoCheckUpdates(it) },
@@ -2769,6 +3844,7 @@ private fun VoiceSettingsContent(
     viewModel: SettingsViewModel,
     onNavigateToVoiceJournal: () -> Unit,
     onNavigateToAgentChat: () -> Unit,
+    onNavigateToVoiceUserPhrases: () -> Unit,
 ) {
     val context = LocalContext.current
 
@@ -2814,6 +3890,7 @@ private fun VoiceSettingsContent(
         Column(modifier = Modifier.padding(horizontal = 12.dp)) {
             SettingToggleRow(
                 title = stringResource(R.string.agent_enable_title),
+                traceId = "agent_enable",
                 description = stringResource(R.string.agent_enable_desc),
                 checked = state.agentEnabled,
                 onCheckedChange = { viewModel.setAgentEnabled(it) },
@@ -2859,6 +3936,26 @@ private fun VoiceSettingsContent(
                 selectedIndex = genderIds.indexOf(state.agentGender).coerceAtLeast(0),
                 onSelect = { viewModel.setAgentGender(genderIds[it]) },
             )
+            SettingDivider()
+            // #190/#200: the map app every route/search command opens (voice agent and automation).
+            val routeNavigatorIds = listOf(
+                com.bydmate.app.data.automation.RouteNavigatorUris.YANDEX,
+                com.bydmate.app.data.automation.RouteNavigatorUris.DGIS,
+                com.bydmate.app.data.automation.RouteNavigatorUris.MAPS,
+                com.bydmate.app.data.automation.RouteNavigatorUris.WAZE,
+            )
+            SettingChipRow(
+                title = stringResource(R.string.settings_route_navigator_label),
+                description = stringResource(R.string.settings_route_navigator_hint),
+                options = listOf(
+                    stringResource(R.string.settings_route_navigator_yandex),
+                    stringResource(R.string.settings_route_navigator_dgis),
+                    stringResource(R.string.settings_route_navigator_maps),
+                    stringResource(R.string.settings_route_navigator_waze),
+                ),
+                selectedIndex = routeNavigatorIds.indexOf(state.routeNavigator).coerceAtLeast(0),
+                onSelect = { viewModel.setRouteNavigator(routeNavigatorIds[it]) },
+            )
         }
     }
 
@@ -2886,7 +3983,18 @@ private fun VoiceSettingsContent(
                 )
             } else {
                 state.agentMemoryFacts.forEach { fact ->
-                    Text("\u2022 $fact", color = TextSecondary, fontSize = 12.sp, lineHeight = 17.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "\u2022 $fact",
+                            color = TextSecondary,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { viewModel.forgetAgentFact(fact) }) {
+                            Text(stringResource(R.string.settings_agent_memory_forget_one), fontSize = 12.sp)
+                        }
+                    }
                 }
             }
         }
@@ -2931,6 +4039,7 @@ private fun VoiceSettingsContent(
         Column(modifier = Modifier.padding(horizontal = 12.dp)) {
             SettingToggleRow(
                 title = stringResource(R.string.settings_tts_toggle),
+                traceId = "tts_toggle",
                 description = stringResource(R.string.settings_tts_subtitle),
                 checked = state.ttsEnabled,
                 onCheckedChange = { viewModel.setTtsEnabled(it) },
@@ -3049,8 +4158,15 @@ private fun VoiceSettingsContent(
         Column(modifier = Modifier.padding(horizontal = 12.dp)) {
             val gigaAmDownloading = state.gigaAmDownloadProgress >= 0
             if (gigaAmDownloading) {
+                // The unpack pulls nothing over the network and runs for minutes on a
+                // DiLink 3; labelling it "Downloading" is what made it read as a hang.
+                val phaseLabel = when (state.gigaAmDownloadPhase) {
+                    com.bydmate.app.voice.GigaAmModelManager.Phase.UNPACK ->
+                        R.string.settings_voice_model_unpacking
+                    else -> R.string.settings_voice_model_downloading
+                }
                 Text(
-                    stringResource(R.string.settings_voice_model_downloading, state.gigaAmDownloadProgress),
+                    stringResource(phaseLabel, state.gigaAmDownloadProgress),
                     color = TextSecondary, fontSize = 12.sp,
                     modifier = Modifier.padding(vertical = 8.dp),
                 )
@@ -3073,8 +4189,17 @@ private fun VoiceSettingsContent(
                     )
                 } else {
                     if (state.gigaAmDownloadFailed) {
+                        val shortfall = state.gigaAmSpaceShortfall
                         Text(
-                            stringResource(R.string.settings_asr_gigaam_download_failed),
+                            if (shortfall != null) {
+                                stringResource(
+                                    R.string.settings_asr_gigaam_no_space,
+                                    shortfall.requiredMb,
+                                    shortfall.availableMb,
+                                )
+                            } else {
+                                stringResource(R.string.settings_asr_gigaam_download_failed)
+                            },
                             color = SocRed, fontSize = 12.sp,
                             modifier = Modifier.padding(vertical = 4.dp),
                         )
@@ -3105,6 +4230,7 @@ private fun VoiceSettingsContent(
         Column(modifier = Modifier.padding(horizontal = 12.dp)) {
             SettingToggleRow(
                 title = stringResource(R.string.settings_voice_enable_label),
+                traceId = "voice_enable",
                 description = stringResource(R.string.settings_voice_enable_description),
                 checked = state.voiceEnabled,
                 onCheckedChange = { on ->
@@ -3115,6 +4241,13 @@ private fun VoiceSettingsContent(
                         viewModel.setVoiceEnabled(on)
                     }
                 },
+            )
+            SettingToggleRow(
+                title = stringResource(R.string.settings_voice_close_after_command_label),
+                traceId = "close_after_command",
+                description = stringResource(R.string.settings_voice_close_after_command_description),
+                checked = state.closeAfterCommand,
+                onCheckedChange = { viewModel.setCloseAfterCommand(it) },
             )
         }
     }
@@ -3140,8 +4273,8 @@ private fun VoiceSettingsContent(
 
     if (learningVoiceKey) {
         LearnButtonDialog(
-            onSave = { code ->
-                viewModel.saveVoiceKeycode(code)
+            onSaveWithCompanions = { code, companions ->
+                viewModel.saveVoiceKeycode(code, companions)
                 learningVoiceKey = false
             },
             onDismiss = { learningVoiceKey = false },
@@ -3183,6 +4316,15 @@ private fun VoiceSettingsContent(
                 onClick = onNavigateToVoiceJournal,
                 style = SettingButtonStyle.Secondary,
             )
+            if (SHOW_VOICE_USER_PHRASES) {
+                SettingActionRow(
+                    title = stringResource(R.string.settings_voice_user_phrases_title),
+                    description = stringResource(R.string.settings_voice_user_phrases_description),
+                    buttonLabel = stringResource(R.string.settings_voice_user_phrases_button),
+                    onClick = onNavigateToVoiceUserPhrases,
+                    style = SettingButtonStyle.Secondary,
+                )
+            }
         }
     }
 
@@ -3196,12 +4338,39 @@ private fun VoiceSettingsContent(
         Column(modifier = Modifier.padding(horizontal = 12.dp)) {
             SettingToggleRow(
                 title = stringResource(R.string.settings_voice_disable_native_label),
+                traceId = "voice_disable_native",
                 description = stringResource(R.string.settings_voice_disable_native_description),
                 checked = state.disableNativeAssistant,
-                onCheckedChange = { viewModel.setDisableNativeAssistant(it) },
+                onCheckedChange = { viewModel.toggleDisableNativeAssistant(it) },
             )
             SettingHint(stringResource(R.string.settings_voice_native_assistant_reboot_note))
         }
+    }
+    if (state.showDisableNativeAssistantDialog) {
+        AppAlertDialog(
+            onDismissRequest = { viewModel.dismissDisableNativeAssistantDialog() },
+            containerColor = CardSurface,
+            title = {
+                Text(stringResource(R.string.settings_voice_disable_native_confirm_title), color = TextPrimary)
+            },
+            text = {
+                Text(
+                    stringResource(R.string.settings_voice_disable_native_confirm_body),
+                    color = TextSecondary, fontSize = 14.sp, lineHeight = 19.sp,
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmDisableNativeAssistant() }) {
+                    Text(stringResource(R.string.settings_voice_disable_native_confirm_button), color = AccentGreen)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissDisableNativeAssistantDialog() }) {
+                    Text(stringResource(R.string.settings_cancel_button), color = TextSecondary)
+                }
+            },
+        )
     }
 }
 
@@ -3359,6 +4528,7 @@ private fun SmartHomeSection(state: SettingsUiState, viewModel: SettingsViewMode
         ) {
             SettingToggleRow(
                 title = "Polling",
+                traceId = "alice_polling",
                 checked = state.aliceEnabled,
                 onCheckedChange = { viewModel.toggleAlice(it) },
             )
@@ -3398,11 +4568,8 @@ private fun LanguageBlock(
     // No Activity.recreate(): MainActivity listens to LocalePreferences,
     // mutates Resources.configuration in place, and re-provides
     // LocalConfiguration so every stringResource recomposes on next frame.
-    val langCodes = listOf("ru", "en", "zh", "pt", "pl", "be", "uk")
-    val langLabels = listOf(
-        stringResource(R.string.settings_lang_russian), "English", "简体中文", "Português",
-        "Polski", "Беларуская", "Українська",
-    )
+    val langCodes = APP_LANGUAGES.map { it.first }
+    val langLabels = APP_LANGUAGES.map { it.second }
     SectionHeader(text = stringResource(R.string.settings_language_title))
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -3418,6 +4585,38 @@ private fun LanguageBlock(
                 options = langLabels,
                 selectedIndex = langCodes.indexOf(currentLang).coerceAtLeast(0),
                 onSelect = { idx -> if (langCodes[idx] != currentLang) onLanguageChange(langCodes[idx]) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun FontScaleBlock(
+    current: Float,
+    onChange: (Float) -> Unit
+) {
+    val scales = LocalePreferences.FONT_SCALES
+    val labels = listOf(
+        stringResource(R.string.settings_font_scale_normal),
+        stringResource(R.string.settings_font_scale_large),
+        stringResource(R.string.settings_font_scale_xlarge),
+    )
+    SectionHeader(text = stringResource(R.string.settings_font_scale_title))
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = CardSurfaceElevated),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SettingChipRow(
+                title = stringResource(R.string.settings_font_scale_title),
+                description = stringResource(R.string.settings_font_scale_desc),
+                options = labels,
+                selectedIndex = scales.indexOf(current).coerceAtLeast(0),
+                onSelect = { idx -> if (scales[idx] != current) onChange(scales[idx]) },
             )
         }
     }
@@ -3551,11 +4750,13 @@ private fun ConnDropdown(
                 Text(selectedLabel, fontSize = 13.sp, maxLines = 1)
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                if (allowNone) {
-                    DropdownMenuItem(text = { Text(noneLabel) }, onClick = { onSelect(""); expanded = false })
-                }
-                options.forEach { (id, text) ->
-                    DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(id); expanded = false })
+                ScaledDialogContent {
+                    if (allowNone) {
+                        DropdownMenuItem(text = { Text(noneLabel) }, onClick = { onSelect(""); expanded = false })
+                    }
+                    options.forEach { (id, text) ->
+                        DropdownMenuItem(text = { Text(text) }, onClick = { onSelect(id); expanded = false })
+                    }
                 }
             }
         }
@@ -3613,7 +4814,8 @@ private fun SettingsTextField(
     onValueChange: (String) -> Unit,
     keyboardType: KeyboardType,
     secret: Boolean = false,
-    singleLine: Boolean = true
+    singleLine: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
     // Secret fields (API keys, tokens) are masked so screenshots and over-the-shoulder
     // looks do not leak them; the eye icon reveals the value while editing.
@@ -3639,7 +4841,7 @@ private fun SettingsTextField(
                 }
             }
         } else null,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = Color.White,
@@ -3695,48 +4897,50 @@ private fun CustomModelPickerDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = CardSurface),
-            modifier = Modifier
-                .fillMaxWidth(0.6f)
-                .heightIn(max = 500.dp)
-                .padding(16.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    stringResource(R.string.settings_model_picker_title),
-                    color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                if (loading) {
+        ScaledDialogContent {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = CardSurface),
+                modifier = Modifier
+                    .fillMaxWidth(0.6f)
+                    .heightIn(max = 500.dp)
+                    .padding(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        stringResource(R.string.settings_model_picker_loading),
-                        color = TextSecondary, fontSize = 14.sp
+                        stringResource(R.string.settings_model_picker_title),
+                        color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold
                     )
-                } else {
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                        modifier = Modifier.weight(1f, fill = false)
-                    ) {
-                        items(models) { id ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onSelect(id) }
-                                    .background(
-                                        if (id == selectedId) AccentGreen.copy(alpha = 0.15f)
-                                        else Color.Transparent,
-                                        RoundedCornerShape(8.dp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (loading) {
+                        Text(
+                            stringResource(R.string.settings_model_picker_loading),
+                            color = TextSecondary, fontSize = 14.sp
+                        )
+                    } else {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
+                            items(models) { id ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onSelect(id) }
+                                        .background(
+                                            if (id == selectedId) AccentGreen.copy(alpha = 0.15f)
+                                            else Color.Transparent,
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        id,
+                                        color = if (id == selectedId) AccentGreen else TextPrimary,
+                                        fontSize = 13.sp,
+                                        maxLines = 1
                                     )
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                            ) {
-                                Text(
-                                    id,
-                                    color = if (id == selectedId) AccentGreen else TextPrimary,
-                                    fontSize = 13.sp,
-                                    maxLines = 1
-                                )
+                                }
                             }
                         }
                     }
@@ -3760,77 +4964,79 @@ private fun ModelPickerDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = CardSurface),
-            modifier = Modifier
-                .fillMaxWidth(0.6f)
-                .heightIn(max = 500.dp)
-                .padding(16.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(stringResource(R.string.settings_model_picker_title), color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
+        ScaledDialogContent {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = CardSurface),
+                modifier = Modifier
+                    .fillMaxWidth(0.6f)
+                    .heightIn(max = 500.dp)
+                    .padding(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(stringResource(R.string.settings_model_picker_title), color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    label = { Text(stringResource(R.string.settings_model_picker_search_label)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = AccentGreen,
-                        unfocusedBorderColor = CardBorder,
-                        focusedLabelColor = AccentGreen,
-                        unfocusedLabelColor = TextSecondary,
-                        cursorColor = AccentGreen
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        label = { Text(stringResource(R.string.settings_model_picker_search_label)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = AccentGreen,
+                            unfocusedBorderColor = CardBorder,
+                            focusedLabelColor = AccentGreen,
+                            unfocusedLabelColor = TextSecondary,
+                            cursorColor = AccentGreen
+                        )
                     )
-                )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                if (loading) {
-                    Text(stringResource(R.string.settings_model_picker_loading), color = TextSecondary, fontSize = 14.sp)
-                } else {
-                    val filtered = if (searchQuery.isBlank()) models
-                    else models.filter { it.name.contains(searchQuery, ignoreCase = true) ||
-                        it.id.contains(searchQuery, ignoreCase = true) }
+                    if (loading) {
+                        Text(stringResource(R.string.settings_model_picker_loading), color = TextSecondary, fontSize = 14.sp)
+                    } else {
+                        val filtered = if (searchQuery.isBlank()) models
+                        else models.filter { it.name.contains(searchQuery, ignoreCase = true) ||
+                            it.id.contains(searchQuery, ignoreCase = true) }
 
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                        modifier = Modifier.weight(1f, fill = false)
-                    ) {
-                        items(filtered) { model ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onSelect(model) }
-                                    .background(
-                                        if (model.id == selectedId) AccentGreen.copy(alpha = 0.15f)
-                                        else Color.Transparent,
-                                        RoundedCornerShape(8.dp)
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
+                            items(filtered) { model ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onSelect(model) }
+                                        .background(
+                                            if (model.id == selectedId) AccentGreen.copy(alpha = 0.15f)
+                                            else Color.Transparent,
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        model.name,
+                                        color = if (model.id == selectedId) AccentGreen else TextPrimary,
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 1
                                     )
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    model.name,
-                                    color = if (model.id == selectedId) AccentGreen else TextPrimary,
-                                    fontSize = 13.sp,
-                                    modifier = Modifier.weight(1f),
-                                    maxLines = 1
-                                )
-                                Text(
-                                    if (model.pricingPrompt == 0.0) "FREE"
-                                    else "${"%.2f".format(model.pricingPrompt)}$/M",
-                                    color = if (model.pricingPrompt == 0.0) AccentGreen else TextSecondary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+                                    Text(
+                                        if (model.pricingPrompt == 0.0) "FREE"
+                                        else "${"%.2f".format(model.pricingPrompt)}$/M",
+                                        color = if (model.pricingPrompt == 0.0) AccentGreen else TextSecondary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
                             }
                         }
                     }
@@ -3840,3 +5046,33 @@ private fun ModelPickerDialog(
     }
 }
 
+/** Status line under the ADB restore toggle; null while the feature is off. */
+@Composable
+private fun adbRestoreStatusText(state: AdbRestoreState): String? = when (state) {
+    AdbRestoreState.Disabled -> null
+    AdbRestoreState.Unsupported -> stringResource(R.string.settings_adb_restore_status_unsupported)
+    AdbRestoreState.NotNeeded -> stringResource(R.string.settings_adb_restore_status_not_needed)
+    AdbRestoreState.NeedsActivation -> stringResource(R.string.settings_adb_restore_status_needs_activation)
+    AdbRestoreState.WaitingWifi -> stringResource(R.string.settings_adb_restore_status_waiting_wifi)
+    AdbRestoreState.NeedsDialog -> stringResource(R.string.settings_adb_restore_status_needs_dialog)
+    AdbRestoreState.Connecting -> stringResource(R.string.settings_adb_restore_status_connecting)
+    is AdbRestoreState.Restored -> stringResource(
+        R.string.settings_adb_restore_status_restored,
+        android.text.format.DateFormat.getTimeFormat(LocalContext.current)
+            .format(java.util.Date(state.atMs)),
+    )
+    is AdbRestoreState.Failed -> stringResource(R.string.settings_adb_restore_status_failed, state.reason)
+}
+
+@Composable
+private fun cloudOverWifiStatusText(state: CloudOverWifiState): String? = when (state) {
+    CloudOverWifiState.Disabled -> null
+    CloudOverWifiState.NoAdb -> stringResource(R.string.settings_cloud_wifi_status_no_adb)
+    CloudOverWifiState.OwnCellular -> stringResource(R.string.settings_cloud_wifi_status_own_cellular)
+    CloudOverWifiState.WaitingInternet -> stringResource(R.string.settings_cloud_wifi_status_waiting)
+    CloudOverWifiState.ProfileRejected -> stringResource(R.string.settings_cloud_wifi_status_rejected)
+    CloudOverWifiState.CloudSilent -> stringResource(R.string.settings_cloud_wifi_status_silent)
+    CloudOverWifiState.ServerRefused -> stringResource(R.string.settings_cloud_wifi_status_refused)
+    CloudOverWifiState.Connected -> stringResource(R.string.settings_cloud_wifi_status_connected)
+    CloudOverWifiState.ReturnPending -> stringResource(R.string.settings_cloud_wifi_status_return_pending)
+}

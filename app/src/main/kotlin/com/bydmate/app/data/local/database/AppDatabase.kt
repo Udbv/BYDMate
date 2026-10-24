@@ -5,12 +5,14 @@ import androidx.room.RoomDatabase
 import com.bydmate.app.data.local.dao.BatterySnapshotDao
 import com.bydmate.app.data.local.dao.ChargeDao
 import com.bydmate.app.data.local.dao.ChargePointDao
+import com.bydmate.app.data.local.dao.CounterSnapshotDao
 import com.bydmate.app.data.local.dao.IdleDrainDao
 import com.bydmate.app.data.local.dao.OdometerSampleDao
 import com.bydmate.app.data.local.dao.PlaceDao
 import com.bydmate.app.data.local.dao.RuleDao
 import com.bydmate.app.data.local.dao.RuleLogDao
 import com.bydmate.app.data.local.dao.SettingsDao
+import com.bydmate.app.data.local.dao.TariffPeriodDao
 import com.bydmate.app.data.local.dao.TripDao
 import com.bydmate.app.data.local.dao.LastStateDao
 import com.bydmate.app.data.local.dao.TripPointDao
@@ -20,12 +22,14 @@ import com.bydmate.app.data.local.entity.BatterySnapshotEntity
 import com.bydmate.app.data.local.entity.LastStateEntity
 import com.bydmate.app.data.local.entity.ChargeEntity
 import com.bydmate.app.data.local.entity.ChargePointEntity
+import com.bydmate.app.data.local.entity.CounterSnapshotEntity
 import com.bydmate.app.data.local.entity.IdleDrainEntity
 import com.bydmate.app.data.local.entity.OdometerSampleEntity
 import com.bydmate.app.data.local.entity.PlaceEntity
 import com.bydmate.app.data.local.entity.RuleEntity
 import com.bydmate.app.data.local.entity.RuleLogEntity
 import com.bydmate.app.data.local.entity.SettingEntity
+import com.bydmate.app.data.local.entity.TariffPeriodEntity
 import com.bydmate.app.data.local.entity.TripEntity
 import com.bydmate.app.data.local.entity.TripPointEntity
 import com.bydmate.app.data.local.entity.TripTombstoneEntity
@@ -46,16 +50,18 @@ import com.bydmate.app.data.local.entity.VehicleWriteLogEntity
         OdometerSampleEntity::class,
         LastStateEntity::class,
         VehicleWriteLogEntity::class,
-        TripTombstoneEntity::class
+        TripTombstoneEntity::class,
+        TariffPeriodEntity::class,
+        CounterSnapshotEntity::class
     ],
-    version = 18,
+    version = 23,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** Current Room schema version. Must match the @Database(version = ...) annotation above. */
-        const val SCHEMA_VERSION = 18
+        const val SCHEMA_VERSION = 23
     }
 
     abstract fun tripDao(): TripDao
@@ -72,4 +78,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun lastStateDao(): LastStateDao
     abstract fun vehicleWriteLogDao(): VehicleWriteLogDao
     abstract fun tripTombstoneDao(): TripTombstoneDao
+    abstract fun tariffPeriodDao(): TariffPeriodDao
+    abstract fun counterSnapshotDao(): CounterSnapshotDao
 }

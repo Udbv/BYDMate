@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.SwitchColors
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -29,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -40,7 +43,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bydmate.app.R
@@ -104,6 +113,12 @@ fun formatDuration(context: android.content.Context, startTs: Long, endTs: Long)
     else context.getString(R.string.common_duration_minutes, minutes.toInt())
 }
 
+// Language-neutral h:mm form (1:32, 0:05) for cells too narrow for formatDuration's words.
+fun formatDurationCompact(startTs: Long, endTs: Long): String {
+    val totalMin = ((endTs - startTs) / 60_000L).coerceAtLeast(0L)
+    return "%d:%02d".format(totalMin / 60, totalMin % 60)
+}
+
 // Единый стиль Switch по всему приложению:
 // включён — зелёный track + тёмный thumb, выключен — серый track + тёмный thumb.
 @Composable
@@ -119,6 +134,12 @@ fun bydSwitchColors(): SwitchColors = SwitchDefaults.colors(
 // ============================================================================
 // SocGauge - Premium circular arc gauge with gradient and glow
 // ============================================================================
+
+private val SocGaugeStroke = 14.dp
+private val SocGaugeIconSize = 18.dp
+private val SocGaugeNumberSize = 32.sp
+private val SocGaugeLabelSize = 12.sp
+private const val SOC_GAUGE_LABEL = "SOC %"
 
 @Composable
 fun SocGauge(
@@ -136,7 +157,7 @@ fun SocGauge(
         label = "socSweep"
     )
     val socSweep = totalSweep * animatedSoc
-    val strokeWidth = 14.dp
+    val strokeWidth = SocGaugeStroke
 
     Box(
         contentAlignment = Alignment.Center,
@@ -199,26 +220,98 @@ fun SocGauge(
                     imageVector = Icons.Outlined.Bolt,
                     contentDescription = stringResource(R.string.battery_health_charging_cd),
                     tint = AccentGreen,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(SocGaugeIconSize)
                 )
             }
             Text(
                 text = "$clampedSoc",
                 color = TextPrimary,
-                fontSize = 32.sp,
+                fontSize = SocGaugeNumberSize,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "SOC %",
+                text = SOC_GAUGE_LABEL,
                 color = TextMuted,
-                fontSize = 12.sp,
+                fontSize = SocGaugeLabelSize,
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center
             )
         }
     }
+}
+
+/** One row of SocGauge's centred content, px: layout height, ink top and bottom within it, width. */
+internal data class GaugeContentRow(val height: Float, val inkTop: Float, val inkBottom: Float, val width: Float)
+
+/**
+ * Smallest square SocGauge can take before any row of its centred content reaches the arc's
+ * inner edge, which lies [strokePx] inside half the square. Pure geometry, px in and out.
+ */
+internal fun socGaugeMinSizePx(rows: List<GaugeContentRow>, strokePx: Float): Float {
+    var top = -rows.sumOf { it.height.toDouble() }.toFloat() / 2f
+    var radius = 0f
+    for (row in rows) {
+        val reach = maxOf(kotlin.math.abs(top + row.inkTop), kotlin.math.abs(top + row.inkBottom))
+        radius = maxOf(radius, kotlin.math.hypot(row.width / 2f, reach))
+        top += row.height
+    }
+    return 2f * (radius + strokePx)
+}
+
+/**
+ * Smallest SocGauge size that keeps «100», «SOC %» and, while charging, the bolt clear of the
+ * arc at the current text scale (app setting times system font scale). Glyphs of the 32 sp
+ * number are taller than the theme line height, so the ink comes from the platform paint.
+ */
+@Composable
+fun rememberSocGaugeMinSize(isCharging: Boolean): Dp {
+    val measurer = rememberTextMeasurer()
+    val baseStyle = LocalTextStyle.current
+    val density = LocalDensity.current
+    return remember(measurer, baseStyle, density, isCharging) {
+        with(density) {
+            val rows = buildList {
+                if (isCharging) {
+                    val icon = SocGaugeIconSize.toPx()
+                    add(GaugeContentRow(icon, 0f, icon, icon))
+                }
+                add(gaugeTextRow(measurer, "100",
+                    baseStyle.merge(TextStyle(fontSize = SocGaugeNumberSize, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)),
+                    android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD),
+                    SocGaugeNumberSize.toPx()))
+                add(gaugeTextRow(measurer, SOC_GAUGE_LABEL,
+                    baseStyle.merge(TextStyle(fontSize = SocGaugeLabelSize, fontWeight = FontWeight.Medium)),
+                    android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, FontWeight.Medium.weight, false),
+                    SocGaugeLabelSize.toPx()))
+            }
+            // A lower bound: round up, or the arc could still touch the ink by a fraction of a px.
+            kotlin.math.ceil(socGaugeMinSizePx(rows, SocGaugeStroke.toPx())).toDp()
+        }
+    }
+}
+
+// Row height and width as Compose lays the text out; ink bounds from the paint, on that baseline.
+private fun gaugeTextRow(
+    measurer: TextMeasurer,
+    text: String,
+    style: TextStyle,
+    typeface: android.graphics.Typeface,
+    textSizePx: Float,
+): GaugeContentRow {
+    val layout = measurer.measure(text, style, softWrap = false, maxLines = 1)
+    val ink = android.graphics.Rect()
+    android.graphics.Paint().apply {
+        this.typeface = typeface
+        textSize = textSizePx
+    }.getTextBounds(text, 0, text.length, ink)
+    return GaugeContentRow(
+        height = layout.size.height.toFloat(),
+        inkTop = layout.firstBaseline + ink.top,
+        inkBottom = layout.firstBaseline + ink.bottom,
+        width = layout.size.width.toFloat(),
+    )
 }
 
 // ============================================================================
@@ -230,7 +323,10 @@ fun TripCard(
     trip: TripEntity,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    currencySymbol: String = "BYN"
+    currencySymbol: String = "BYN",
+    verticalPadding: Dp = 8.dp,
+    // DM-i (#184): adds the «л» column and the litre rule of «/100»; off draws today's row.
+    showFuel: Boolean = false,
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     // Compact single-row trip card with weight-based columns
@@ -239,7 +335,7 @@ fun TripCard(
             .fillMaxWidth()
             .background(CardSurface, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = verticalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Time range
@@ -251,13 +347,24 @@ fun TripCard(
         Text(text = timeRange, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium,
             fontFamily = FontFamily.Monospace, modifier = Modifier.weight(2.5f))
 
-        // Duration (2nd column)
-        Text(
-            text = if (trip.endTs != null) formatDuration(ctx, trip.startTs, trip.endTs) else "…",
-            color = TextMuted, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
-            textAlign = TextAlign.End,
-            modifier = Modifier.weight(1f)
-        )
+        // Duration (2nd column): always one line. The worded form while the cell fits it,
+        // h:mm once a large text size leaves the cell too narrow, ellipsized if even that is
+        // too wide so a cut «24:00» never reads as a shorter time.
+        val durationStyle = LocalTextStyle.current.merge(TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace))
+        val measurer = rememberTextMeasurer()
+        BoxWithConstraints(modifier = Modifier.weight(1f)) {
+            val durationText = if (trip.endTs != null) {
+                val full = formatDuration(ctx, trip.startTs, trip.endTs)
+                val fullWidth = measurer.measure(full, durationStyle, softWrap = false, maxLines = 1).size.width
+                if (fullWidth <= constraints.maxWidth) full else formatDurationCompact(trip.startTs, trip.endTs)
+            } else "…"
+            Text(
+                text = durationText,
+                color = TextMuted, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                textAlign = TextAlign.End, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
 
         // Distance
         Text(
@@ -276,15 +383,40 @@ fun TripCard(
             modifier = Modifier.weight(1f)
         )
 
-        // Consumption — color-coded
-        val consumptionText = trip.kwhPer100km?.let { "%.1f".format(it) } ?: "—"
-        val consumptionClr = trip.kwhPer100km?.let { consumptionColor(it) } ?: TextSecondary
-        Text(
-            text = consumptionText, color = consumptionClr, fontSize = 14.sp, fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            textAlign = TextAlign.End,
-            modifier = Modifier.weight(1f)
-        )
+        if (showFuel) {
+            val liters = trip.fuelLiters
+            Text(
+                text = com.bydmate.app.ui.trips.litersCell(liters),
+                color = if (liters != null && liters > 0.0) AccentOrange else TextMuted,
+                fontSize = 14.sp, fontFamily = FontFamily.Monospace,
+                textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            val per100 = trip.kwhPer100km
+            val cell = com.bydmate.app.ui.trips.per100Cell(per100, liters, trip.distanceKm,
+                stringResource(R.string.dashboard_unit_liters))
+            Text(
+                text = cell.text,
+                color = when {
+                    cell.colored && per100 != null -> consumptionColor(per100)
+                    per100 == null && cell.text == "—" -> TextSecondary
+                    else -> TextPrimary
+                },
+                fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace,
+                textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        } else {
+            // Consumption — color-coded
+            val consumptionText = trip.kwhPer100km?.let { "%.1f".format(it) } ?: "—"
+            val consumptionClr = trip.kwhPer100km?.let { consumptionColor(it) } ?: TextSecondary
+            Text(
+                text = consumptionText, color = consumptionClr, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                textAlign = TextAlign.End,
+                modifier = Modifier.weight(1f)
+            )
+        }
 
         // Cost
         Text(

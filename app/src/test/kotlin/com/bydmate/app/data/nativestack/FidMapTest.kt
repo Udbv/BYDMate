@@ -50,6 +50,55 @@ class FidMapTest {
         assertTrue("Missing FidMap entries: ${required - mapped}", mapped.containsAll(required))
     }
 
+    // Audit 3.19 items 10, 11: the passenger belt reads the Instrument fid (Setting 1004 answered
+    // a constant), the rear belts sit next to it; the Setting rear fids ride along for the probe.
+    @Test fun `belt fids read the Instrument belt states`() {
+        val expected = mapOf(
+            "seatbeltFR" to 638582811, "seatbeltRL" to 638582812,
+            "seatbeltRM" to 638582813, "seatbeltRR" to 638582814,
+        )
+        for ((field, fid) in expected) {
+            val entry = FidMap.entries.single { it.field == field }
+            assertEquals(field, 1007, entry.device)
+            assertEquals(field, fid, entry.fid)
+        }
+        val probe = FidMap.entries.filter { it.field.startsWith("rearBeltSetting") }
+            .associate { it.field to (it.device to it.fid) }
+        assertEquals(
+            mapOf(
+                "rearBeltSettingRL" to (1023 to 824180746),
+                "rearBeltSettingRM" to (1023 to 824180750),
+                "rearBeltSettingRR" to (1023 to 824180748),
+            ),
+            probe,
+        )
+    }
+
+    // Audit 3.19 item 4: dev 1006 reads 3 on normal and on every terrain mode.
+    @Test fun `the target drive mode fid is mapped`() {
+        val entry = FidMap.entries.single { it.field == "driveModeTarget" }
+        assertEquals(1023, entry.device)
+        assertEquals(255852712, entry.fid)
+        assertEquals("Setting.SETTING_TARGET_DRIVING_MODE", entry.symbol)
+    }
+
+    @Test fun `front trunk position fid is mapped for the toggle action`() {
+        val entry = FidMap.entries.single { it.field == "frontTrunk" }
+        assertEquals(1001, entry.device)
+        assertEquals(1156579344, entry.fid)
+        assertEquals(5, entry.transact)
+        assertEquals("Bodywork.BODYWORK_FRONT_HATCH_CURRENT_POSITION", entry.symbol)
+    }
+
+    @Test fun `BMS remaining-energy fid is mapped as a float read`() {
+        val entry = FidMap.entries.single { it.field == "batteryRemainKwh" }
+        assertEquals(1005, entry.device)
+        assertEquals(882901008, entry.fid)
+        assertEquals(7, entry.transact)
+        assertEquals(Decoder.FLOAT_KWH, entry.decoder)
+        assertEquals("Power.POWER_BATTERY_REMAIN_ELECTRICITY", entry.symbol)
+    }
+
     @Test fun `turn signal read fid is mapped`() {
         val entry = FidMap.entries.single { it.field == "turnSignal" }
         assertEquals(1004, entry.device)
@@ -79,7 +128,7 @@ class FidMapTest {
         val required = setOf(
             "insulationKohm", "motorTempFront", "motorTempRear",
             "inverterTempFront", "inverterTempRear", "hvVoltage", "hvCurrent",
-            "motorCurrentFront", "motorCurrentRear", "bmsMaxChargeKw", "bmsMaxDischargeKw",
+            "motorCurrentFront", "motorCurrentRear", "bmsMaxChargeKw", "bmsMaxDischargeAllowKw", "bmsMaxDischargeKw",
             "motorRpmFront", "motorRpmRear", "compressorW",
             "tyreTempFL", "tyreTempFR", "tyreTempRL", "tyreTempRR",
             "pedalAccel", "pedalBrake",
@@ -99,6 +148,7 @@ class FidMapTest {
             "motorCurrentFront" to Triple(1009, 1186988040, 7),
             "motorCurrentRear" to Triple(1009, 1186988056, 7),
             "bmsMaxChargeKw" to Triple(1014, 877658136, 5),
+            "bmsMaxDischargeAllowKw" to Triple(1014, 877658120, 5),
             "bmsMaxDischargeKw" to Triple(1014, 1145045048, 5),
             "motorRpmFront" to Triple(1012, 1141899272, 5),
             "motorRpmRear" to Triple(1012, 621805576, 5),
@@ -117,5 +167,80 @@ class FidMapTest {
             assertEquals("transact for $field", addr.third, e.transact)
         }
         assertEquals(0.1, FidMap.entries.single { it.field == "bmsMaxChargeKw" }.scale, 0.0001)
+        assertEquals(0.1, FidMap.entries.single { it.field == "bmsMaxDischargeAllowKw" }.scale, 0.0001)
+    }
+
+    /** The addresses moved out of FidRegistry must still be the ones it documents. */
+    @Test fun `extra entries carry the constants they took over`() {
+        val registry = mapOf(
+            "soh" to (com.bydmate.app.data.autoservice.FidRegistry.DEV_STATISTIC
+                to com.bydmate.app.data.autoservice.FidRegistry.FID_SOH),
+            "lifetimeAvgPhm" to (com.bydmate.app.data.autoservice.FidRegistry.DEV_STATISTIC
+                to com.bydmate.app.data.autoservice.FidRegistry.FID_LIFETIME_AVG_PHM),
+            "chargingType" to (com.bydmate.app.data.autoservice.FidRegistry.DEV_CHARGING
+                to com.bydmate.app.data.autoservice.FidRegistry.FID_CHARGING_TYPE),
+            "chargeBatteryVolt" to (com.bydmate.app.data.autoservice.FidRegistry.DEV_CHARGING
+                to com.bydmate.app.data.autoservice.FidRegistry.FID_CHARGE_BATTERY_VOLT),
+            "batteryType" to (com.bydmate.app.data.autoservice.FidRegistry.DEV_CHARGING
+                to com.bydmate.app.data.autoservice.FidRegistry.FID_BATTERY_TYPE),
+            "chargingCapacity" to (com.bydmate.app.data.autoservice.FidRegistry.DEV_CHARGING
+                to com.bydmate.app.data.autoservice.FidRegistry.FID_CHARGING_CAPACITY),
+            "soc" to (com.bydmate.app.data.autoservice.FidRegistry.DEV_STATISTIC
+                to com.bydmate.app.data.autoservice.FidRegistry.FID_SOC),
+            "mileage" to (com.bydmate.app.data.autoservice.FidRegistry.DEV_STATISTIC
+                to com.bydmate.app.data.autoservice.FidRegistry.FID_LIFETIME_MILEAGE),
+            "totalElecConsumption" to (com.bydmate.app.data.autoservice.FidRegistry.DEV_STATISTIC
+                to com.bydmate.app.data.autoservice.FidRegistry.FID_LIFETIME_KWH),
+            "voltage12v" to (com.bydmate.app.data.autoservice.FidRegistry.DEV_BODYWORK
+                to com.bydmate.app.data.autoservice.FidRegistry.FID_OTA_BATTERY_POWER_VOLTAGE),
+            "power" to (com.bydmate.app.data.autoservice.FidRegistry.DEV_ENGINE
+                to com.bydmate.app.data.autoservice.FidRegistry.FID_ENGINE_POWER),
+            "chargeGunState" to (com.bydmate.app.data.autoservice.FidRegistry.DEV_CHARGING
+                to com.bydmate.app.data.autoservice.FidRegistry.FID_GUN_CONNECT_STATE),
+            "bmsState" to (com.bydmate.app.data.autoservice.FidRegistry.DEV_CHARGING
+                to com.bydmate.app.data.autoservice.FidRegistry.FID_CHARGING_BMS_STATE),
+        )
+        registry.forEach { (field, address) ->
+            val entry = FidMap.byField.getValue(field)
+            assertEquals("device of $field", address.first, entry.device)
+            assertEquals("fid of $field", address.second, entry.fid)
+        }
+    }
+
+    /**
+     * Readers ask for addresses by field name, so a rename would only show up at runtime.
+     * These are the names looked up outside the poll loop.
+     */
+    @Test fun `field names the readers ask for all exist`() {
+        val asked = listOf(
+            "soh", "soc", "mileage", "totalElecConsumption", "voltage12v", "power",
+            "chargeGunState", "chargingType", "chargeBatteryVolt", "batteryType",
+            "chargingCapacity", "bmsState",
+            "turnSignal", "gear", "bsdLeft", "bsdRight",
+            "windowFL", "windowFR", "windowRL", "windowRR", "windowRRGen3",
+        ) + com.bydmate.app.ui.settings.SeatsDiagnostics.FIDS.map { it.field }
+        val missing = asked.filterNot { it in FidMap.byField }
+        assertTrue("FidMap has no entry for $missing", missing.isEmpty())
+    }
+
+    @Test fun `every entry carries a catalog symbol`() {
+        // windowRRGen3 used to be the one exception; it now shares windowRR's symbol as an
+        // alias fid so the collision guard treats both as the same field (#216).
+        val withoutSymbol = FidMap.all.filter { it.symbol == null }.map { it.field }
+        assertEquals(emptyList<String>(), withoutSymbol)
+    }
+
+    @Test fun `field names are unique across the polled and extra tables`() {
+        assertEquals(FidMap.all.size, FidMap.byField.size)
+    }
+
+    /** A per-address scale is a deliberate exception, not a habit: the odometer is the
+     *  only field whose catalog address reports a different unit than our constant. */
+    @Test fun `only the odometer carries a catalog scale`() {
+        assertEquals(1.0, FidMap.byField.getValue("mileage").catalogScale)
+        assertEquals(
+            listOf("mileage"),
+            FidMap.all.filter { it.catalogScale != null }.map { it.field },
+        )
     }
 }

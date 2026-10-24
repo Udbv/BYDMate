@@ -3,6 +3,7 @@ package com.bydmate.app.ui.places
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bydmate.app.data.local.entity.PlaceEntity
+import com.bydmate.app.data.local.entity.TriggerDef
 import com.bydmate.app.data.repository.PlaceRepository
 import com.bydmate.app.data.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -12,6 +13,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -30,7 +34,7 @@ class PlacesViewModel @Inject constructor(
         )
 
     // Map: placeId -> number of rules that reference it (0 = safe to delete).
-    // Populated lazily when places list changes or after a delete attempt.
+    // Recounted when the places or the rules change, and after a delete attempt.
     private val _usageCounts = MutableStateFlow<Map<Long, Int>>(emptyMap())
     val usageCounts: StateFlow<Map<Long, Int>> = _usageCounts.asStateFlow()
 
@@ -45,11 +49,18 @@ class PlacesViewModel @Inject constructor(
         viewModelScope.launch {
             _mapTileSource.value = settingsRepository.getMapTileSource()
         }
-        // Refresh usage counts whenever the places list changes.
-        viewModelScope.launch {
-            places.collect { list ->
-                refreshUsageCounts(list.map { it.id })
+        // Refresh usage counts whenever the places list or the place references of the rules
+        // change: the dialog outlives a rule edit, so counts taken when it first opened would go
+        // stale. A rule firing (lastTriggeredAt, triggerCount) changes no reference and recounts
+        // nothing. One entry per rule and place, so a duplicated rule still counts.
+        val placeRefs = placeRepository.ruleChanges()
+            .map { rules ->
+                rules.flatMap { rule -> TriggerDef.listFromJson(rule.triggers).mapNotNull { it.placeId }.distinct() }.sorted()
             }
+            .distinctUntilChanged()
+        viewModelScope.launch {
+            combine(places, placeRefs) { list, _ -> list.map { it.id } }
+                .collect { ids -> refreshUsageCounts(ids) }
         }
     }
 

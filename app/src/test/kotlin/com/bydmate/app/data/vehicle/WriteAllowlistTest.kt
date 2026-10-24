@@ -14,30 +14,6 @@ class WriteAllowlistTest {
 
     private val bannedDevs = setOf(1004, 1006, 1007, 1009, 1011, 1012, 1013, 1014, 1016, 1023, 1032)
 
-    // ── Test 5: WriteEntry data class construction with new fields ────────────
-    @Test fun `WriteEntry data class construction with new fields works`() {
-        val entry = WriteEntry(
-            actionName = "test_action",
-            dev = 1001,
-            writeFid = 12345,
-            readbackFid = 67890,
-            valueMin = 0,
-            valueMax = 100,
-            category = "windows",
-            validated = true,
-            source = "live-leopard3-2026-05-28",
-        )
-        assertEquals("test_action", entry.actionName)
-        assertEquals(1001, entry.dev)
-        assertEquals(12345, entry.writeFid)
-        assertEquals(67890, entry.readbackFid)
-        assertEquals(0, entry.valueMin)
-        assertEquals(100, entry.valueMax)
-        assertEquals("windows", entry.category)
-        assertTrue(entry.validated)
-        assertEquals("live-leopard3-2026-05-28", entry.source)
-    }
-
     // ── Test 1: banned dev entries are dropped; safe entries survive ──────────
     @Test fun `no production entry targets a banned dev namespace`() {
         val fixture = """
@@ -312,6 +288,114 @@ class WriteAllowlistTest {
         assertNotNull(heat); assertEquals(35, heat!!.valueMin); assertEquals(50, heat.valueMax)
     }
 
+    // ── Steering wheel heat: dev 1023 carve-out for the write fid only, unvalidated ──
+    @Test fun `steering heat write fid is the only new dev 1023 carve-out`() {
+        assertTrue((1023 to 944767029) in WriteAllowlist.BANNED_DEV_FID_EXCEPTIONS)
+        assertTrue(WriteAllowlist.isBanned(1023, WriteAllowlist.STEERING_HEAT_STATE_FID))
+        assertTrue(WriteAllowlist.isBanned(1023, 1116733496))
+        assertFalse(WriteAllowlist.isBanned(1023, 944767029))
+    }
+
+    @Test fun `steering heat entries are dev 1023 unvalidated and override the competitor`() {
+        val fixture = """
+            {
+              "steering_heat_on": { "featureId": 944767029, "deviceType": 1000, "value": 2 },
+              "steering_heat_off": { "featureId": 944767029, "deviceType": 1000, "value": 1 },
+              "wheel_heat_on": { "featureId": 944767029, "deviceType": 1000, "value": 2 },
+              "wheel_heat_off": { "featureId": 944767029, "deviceType": 1000, "value": 1 }
+            }
+        """.trimIndent()
+        val al = WriteAllowlist.loadProduction { fixture }
+        for ((name, value) in listOf("steering_heat_on" to 2, "steering_heat_off" to 1)) {
+            val e = al.find(name) ?: error("missing $name")
+            assertEquals("$name dev", 1023, e.dev)
+            assertEquals(944767029, e.writeFid)
+            assertNull("$name must not read back inline", e.readbackFid)
+            assertEquals(value, e.valueMin); assertEquals(value, e.valueMax)
+            assertEquals("climate", e.category)
+            assertFalse("$name must be unvalidated", e.validated)
+        }
+        // The competitor's dev=1000 pair stays as the fallback channel.
+        assertEquals(1000, al.find("wheel_heat_on")!!.dev)
+        assertEquals(1000, al.find("wheel_heat_off")!!.dev)
+    }
+
+    // ── HUD master switch (#292): dev 1023 carve-out for the write fid, values 1 and 2 only ──
+    @Test fun `hud switch write fid is carved out, its status and config fids stay banned`() {
+        assertFalse(WriteAllowlist.isBanned(1023, 1276174371))
+        assertTrue(WriteAllowlist.isBanned(1023, WriteAllowlist.HUD_SWITCH_STATUS_FID))
+        assertTrue(WriteAllowlist.isBanned(1023, WriteAllowlist.HUD_CONFIG_FID))
+    }
+
+    @Test fun `hud entries are dev 1023 unvalidated 1 on and 2 off`() {
+        val al = WriteAllowlist.loadProduction { "{}" }
+        for ((name, value) in listOf("hud_on" to 1, "hud_off" to 2)) {
+            val e = al.find(name) ?: error("missing $name")
+            assertEquals(1023, e.dev)
+            assertEquals(1276174371, e.writeFid)
+            assertNull("$name is read back by its channel, not inline", e.readbackFid)
+            assertEquals(value, e.valueMin); assertEquals(value, e.valueMax)
+            assertFalse("$name must be unvalidated", e.validated)
+        }
+    }
+
+    @Test fun `no other hud switch value opens up, whatever the source`() {
+        val fixture = """
+            {
+              "hud_any": { "featureId": 1276174371, "deviceType": 1023 },
+              "hud_three": { "featureId": 1276174371, "deviceType": 1023, "value": 3 },
+              "hud_on_competitor": { "featureId": 1276174371, "deviceType": 1023, "value": 1 }
+            }
+        """.trimIndent()
+        val al = WriteAllowlist.loadProduction { fixture }
+        assertNull(al.find("hud_any"))
+        assertNull(al.find("hud_three"))
+        assertNotNull(al.find("hud_on_competitor"))
+        val values = al.allEntries().filter { it.dev == 1023 && it.writeFid == 1276174371 }.map { it.valueMin }.toSet()
+        assertEquals(setOf(1, 2), values)
+    }
+
+    // ── Battery warm-up (#311): dev 1009 carve-out for the write fid, values 1 and 2 only ──
+    @Test fun `battery preheat write fid is the only dev 1009 carve-out, its read fids stay banned`() {
+        assertFalse(WriteAllowlist.isBanned(1009, 1324617774))
+        assertEquals(
+            setOf(1324617774),
+            WriteAllowlist.BANNED_DEV_FID_EXCEPTIONS.filter { it.first == 1009 }.map { it.second }.toSet(),
+        )
+        for (fid in listOf(
+            WriteAllowlist.BATTERY_PREHEAT_STATUS_FID, WriteAllowlist.BATTERY_PREHEAT_PERMIT_FID,
+            WriteAllowlist.BATTERY_PREHEAT_CONFIG_FID, WriteAllowlist.CHARGE_GUN_STATE_FID,
+        )) assertTrue("fid=$fid", WriteAllowlist.isBanned(1009, fid))
+    }
+
+    @Test fun `battery preheat entries are dev 1009 unvalidated 1 on and 2 off`() {
+        val al = WriteAllowlist.loadProduction { "{}" }
+        for ((name, value) in listOf("battery_preheat_on" to 1, "battery_preheat_off" to 2)) {
+            val e = al.find(name) ?: error("missing $name")
+            assertEquals(1009, e.dev)
+            assertEquals(1324617774, e.writeFid)
+            assertNull("$name is read back by its channel, not inline", e.readbackFid)
+            assertEquals(value, e.valueMin); assertEquals(value, e.valueMax)
+            assertFalse("$name must be unvalidated", e.validated)
+        }
+    }
+
+    @Test fun `no other battery preheat value opens up, whatever the source`() {
+        val fixture = """
+            {
+              "preheat_any": { "featureId": 1324617774, "deviceType": 1009 },
+              "preheat_three": { "featureId": 1324617774, "deviceType": 1009, "value": 3 },
+              "charge_other": { "featureId": 1276145714, "deviceType": 1009, "value": 1 }
+            }
+        """.trimIndent()
+        val al = WriteAllowlist.loadProduction { fixture }
+        assertNull(al.find("preheat_any"))
+        assertNull(al.find("preheat_three"))
+        assertNull("the rest of dev 1009 stays banned", al.find("charge_other"))
+        val values = al.allEntries().filter { it.dev == 1009 }.map { it.writeFid to it.valueMin }.toSet()
+        assertEquals(setOf(1324617774 to 1, 1324617774 to 2), values)
+    }
+
     // ── Task 4: competitor dev=1001 fallback seat entries in CANDIDATE_UNVALIDATED ──
     @Test fun `seat fallback entries are dev 1001 range 1 to 6 unvalidated`() {
         val al = WriteAllowlist(
@@ -361,6 +445,88 @@ class WriteAllowlistTest {
         }
     }
 
+    // ── #64: rear open/close, the twins of the live-validated front short-form ──
+    @Test fun `window open and close entries cover all four doors`() {
+        val al = WriteAllowlist.loadProduction { "{}" }
+        val fids = mapOf(
+            "window_driver" to 1125122104,
+            "window_passenger" to 1125122107,
+            "window_rear_left" to 1125122112,
+            "window_rear_right" to 1125122115,
+        )
+        for ((door, fid) in fids) {
+            val open = al.find("${door}_open") ?: error("missing ${door}_open")
+            val close = al.find("${door}_close") ?: error("missing ${door}_close")
+            assertEquals("${door}_open dev", 1001, open.dev)
+            assertEquals("${door}_open fid", fid, open.writeFid)
+            assertEquals("${door}_open valueMin", 1, open.valueMin)
+            assertEquals("${door}_open valueMax", 1, open.valueMax)
+            assertEquals("${door}_open category", "windows", open.category)
+            assertEquals("${door}_close dev", 1001, close.dev)
+            assertEquals("${door}_close fid", fid, close.writeFid)
+            assertEquals("${door}_close valueMin", 2, close.valueMin)
+            assertEquals("${door}_close valueMax", 2, close.valueMax)
+            assertEquals("${door}_close category", "windows", close.category)
+        }
+        // All four doors are live-confirmed on Leopard 3 (rear pair on-car 2026-09-10).
+        for (name in listOf(
+            "window_rear_left_open", "window_rear_left_close",
+            "window_rear_right_open", "window_rear_right_close",
+        )) {
+            assertTrue("$name is live-validated", al.find(name)!!.validated)
+        }
+    }
+
+    // ── Drive mode: dev 1023 carve-out for one fid and nine single values ─────
+    @Test fun `drive mode write fid is the only drive mode carve-out on dev 1023`() {
+        assertFalse(WriteAllowlist.isBanned(1023, 1276260400))
+        // The readback, flag and dev=1006 fids stay banned.
+        assertTrue(WriteAllowlist.isBanned(1023, WriteAllowlist.DRIVE_MODE_TARGET_FID))
+        assertTrue(WriteAllowlist.isBanned(1023, 1219518496))
+        assertTrue(WriteAllowlist.isBanned(1006, 734003229))
+        assertTrue(WriteAllowlist.isBanned(1006, 555745294))
+        val dev1023 = WriteAllowlist.BANNED_DEV_FID_EXCEPTIONS.filter { it.first == 1023 }.map { it.second }.toSet()
+        assertEquals(setOf(1330643002, 1069547536, 850427920, 850427928, 944767029, 1276260400, 1276174371), dev1023)
+    }
+
+    @Test fun `drive mode entries are single allowed values, rock unvalidated`() {
+        val al = WriteAllowlist.loadProduction { "{}" }
+        val entries = al.allEntries().filter { it.dev == 1023 && it.writeFid == 1276260400 }
+        assertEquals(setOf(1, 2, 3, 4, 5, 6, 7, 8, 21), entries.map { it.valueMin }.toSet())
+        for (e in entries) {
+            assertEquals(e.actionName, e.valueMin, e.valueMax)
+            assertEquals(e.actionName, "drive_mode", e.category)
+            assertEquals(e.actionName, e.actionName != "drive_mode_rock", e.validated)
+        }
+        assertEquals("live-leopard3-2026-09-27", al.find("drive_mode_eco")!!.source)
+    }
+
+    @Test fun `no other drive mode value opens up, whatever the source`() {
+        // Competitor JSON cannot add 19 CUSTOM, 23 TRACTION, 255 EXIT or a value-less range.
+        val fixture = """
+            {
+              "drive_custom":   { "featureId": 1276260400, "deviceType": 1023, "value": 19 },
+              "drive_traction": { "featureId": 1276260400, "deviceType": 1023, "value": 23 },
+              "drive_exit":     { "featureId": 1276260400, "deviceType": 1023, "value": 255 },
+              "drive_any":      { "featureId": 1276260400, "deviceType": 1023 },
+              "drive_eco_dup":  { "featureId": 1276260400, "deviceType": 1023, "value": 2 }
+            }
+        """.trimIndent()
+        val al = WriteAllowlist.loadProduction { fixture }
+        assertNull(al.find("drive_custom"))
+        assertNull(al.find("drive_traction"))
+        assertNull(al.find("drive_exit"))
+        assertNull(al.find("drive_any"))
+        assertNotNull(al.find("drive_eco_dup"))
+        val allowed = setOf(1, 2, 3, 4, 5, 6, 7, 8, 21)
+        for (e in al.allEntries().filter { it.dev == 1023 && it.writeFid == 1276260400 }) {
+            assertTrue(e.actionName, e.valueMin == e.valueMax && e.valueMin in allowed)
+        }
+        // A ranged entry is refused too, even when its bounds are allowed values.
+        assertFalse(WriteAllowlist.valuesAllowed(
+            WriteEntry("x", 1023, 1276260400, null, 1, 3, "drive_mode", false, "test")))
+    }
+
     // ── Dim 6, Test 6: LIVE_VALIDATED has no duplicate actionName ────────────
     @Test fun `LIVE_VALIDATED has no duplicate actionName case-insensitive`() {
         val liveKeys = WriteAllowlist.LIVE_VALIDATED.map { it.actionName.lowercase() }
@@ -392,5 +558,49 @@ class WriteAllowlistTest {
         assertEquals(1125122064, al.find("driver_seat_vent_fallback")!!.writeFid)
         assertEquals(1125122076, al.find("passenger_seat_heat_fallback")!!.writeFid)
         assertEquals(1125122072, al.find("passenger_seat_vent_fallback")!!.writeFid)
+    }
+
+    // ── Window target reset: 255 exists only as the release of a percent write ──
+    private val percentActions = listOf(
+        "window_driver_pos", "window_passenger_pos", "window_rear_left_pos", "window_rear_right_pos",
+    )
+
+    private fun productionWithAsset(): WriteAllowlist {
+        val root = generateSequence(File(".").canonicalFile) { it.parentFile }
+            .first { File(it, "app/src/main/assets/competitor-actions.json").exists() }
+        return WriteAllowlist.loadProduction { File(root, "app/src/main/assets/competitor-actions.json").readText() }
+    }
+
+    @Test fun `each window percent entry has a reset of 255 on its own fid`() {
+        val al = productionWithAsset()
+        for (name in percentActions) {
+            val entry = al.find(name)!!
+            val reset = WriteAllowlist.percentResetFor(entry)
+            assertNotNull("$name must have a reset", reset)
+            assertEquals(entry.dev, reset!!.dev)
+            assertEquals(entry.writeFid, reset.writeFid)
+            assertEquals(255, reset.valueMin)
+            assertEquals(255, reset.valueMax)
+        }
+    }
+
+    @Test fun `no other entry has a reset`() {
+        val al = productionWithAsset()
+        for (entry in al.allEntries().filter { it.actionName.lowercase() !in percentActions }) {
+            assertNull("${entry.actionName} must have no reset", WriteAllowlist.percentResetFor(entry))
+        }
+    }
+
+    @Test fun `255 is not writable on a window percent fid through any allowlist entry`() {
+        val al = productionWithAsset()
+        val percentFids = percentActions.map { al.find(it)!!.dev to al.find(it)!!.writeFid }.toSet()
+        for (entry in al.allEntries().filter { (it.dev to it.writeFid) in percentFids }) {
+            assertFalse("${entry.actionName} accepts 255", 255 in entry.valueMin..entry.valueMax)
+        }
+        for (name in percentActions) assertNull(al.find("${name}_reset"))
+    }
+
+    @Test fun `no translator command resolves to 255 on a window`() {
+        assertTrue(CommandTranslator.allResolved().none { it.actionName.startsWith("window") && it.value == 255 })
     }
 }

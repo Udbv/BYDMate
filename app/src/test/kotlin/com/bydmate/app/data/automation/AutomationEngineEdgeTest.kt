@@ -9,6 +9,7 @@ import com.bydmate.app.data.local.entity.RuleEntity
 import com.bydmate.app.data.local.entity.TriggerDef
 import com.bydmate.app.data.remote.diParsData
 import com.bydmate.app.data.repository.PlaceRepository
+import com.bydmate.app.diagnostics.TraceRecorder
 import com.bydmate.app.ui.overlay.OverlayNotificationManager
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -20,6 +21,8 @@ import io.mockk.Runs
 import io.mockk.unmockkObject
 import io.mockk.verify
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -35,6 +38,13 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
 class AutomationEngineEdgeTest {
+
+    @get:Rule val trace = TraceRecorder()
+
+    /** The engine's edge lines, without ids and padding. */
+    private fun edgeLines() = trace.events()
+        .map { it.replace(Regex(" #\\d+"), "").replace(Regex(" +"), " ") }
+        .filter { it.startsWith("auto rule ") }
 
     private fun paramTrigger(param: String, op: String, value: String) = TriggerDef(
         param = param, chineseName = "", operator = op, value = value, displayName = param
@@ -62,7 +72,10 @@ class AutomationEngineEdgeTest {
         lastTriggeredAt = lastTriggeredAt,
     )
 
-    private fun setup(rulesProvider: () -> List<RuleEntity>): Pair<AutomationEngine, RuleDao> {
+    private fun setup(
+        context: Context = ApplicationProvider.getApplicationContext(),
+        rulesProvider: () -> List<RuleEntity>,
+    ): Pair<AutomationEngine, RuleDao> {
         val ruleDao = mockk<RuleDao>(relaxed = true) {
             coEvery { getEnabled() } answers { rulesProvider() }
         }
@@ -75,8 +88,10 @@ class AutomationEngineEdgeTest {
                 every { lastAvailableAt } returns 0L
                 every { probePending } returns false
             },
-            context = ApplicationProvider.getApplicationContext<Context>(),
+            context = context,
+            appStrings = com.bydmate.app.util.AppStrings(ApplicationProvider.getApplicationContext()),
         )
+        engine.interactiveProvider = { true }  // screen on unless a test says otherwise
         return engine to ruleDao
     }
 
@@ -187,6 +202,7 @@ class AutomationEngineEdgeTest {
                     every { probePending } returns false
                 },
                 context = ApplicationProvider.getApplicationContext<Context>(),
+                appStrings = com.bydmate.app.util.AppStrings(ApplicationProvider.getApplicationContext()),
             )
             engine.evaluate(diParsData(exteriorTemp = 10), null)
             engine.evaluate(diParsData(exteriorTemp = 25), null)
@@ -197,5 +213,28 @@ class AutomationEngineEdgeTest {
         } finally {
             unmockkObject(OverlayNotificationManager)
         }
+    }
+
+    @Test fun `each edge is traced once with what the engine did, never per poll`() = runBlocking {
+        var r = rule(1, listOf(paramTrigger("ExtTemp", ">", "23")), cooldown = 600)
+        val (engine, _) = setup { listOf(r) }
+
+        engine.evaluate(diParsData(exteriorTemp = 25), null)  // already true at first sight
+        engine.evaluate(diParsData(exteriorTemp = 25), null)  // held: no line
+        engine.evaluate(diParsData(exteriorTemp = 10), null)
+        r = r.copy(lastTriggeredAt = System.currentTimeMillis())
+        engine.evaluate(diParsData(exteriorTemp = 25), null)  // front during cooldown
+        engine.evaluate(diParsData(exteriorTemp = 10), null)
+        r = r.copy(lastTriggeredAt = null)
+        engine.evaluate(diParsData(exteriorTemp = 25), null)  // front that fires
+
+        assertEquals(
+            listOf(
+                "auto rule id=1 edge=seed-first-check src=poll",
+                "auto rule id=1 edge=skip:cooldown src=poll",
+                "auto rule id=1 edge=fire src=poll",
+            ),
+            edgeLines(),
+        )
     }
 }

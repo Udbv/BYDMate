@@ -37,8 +37,8 @@ class HelperBinderProtocolTest {
     fun `the SDK verbs sit above the previously highest code`() {
         // Documents the numbering the mixed-version window depends on: new verbs only ever
         // append, so an old daemon rejects them (transact false -> null) instead of misreading.
-        assertEquals(42, HelperBinderProtocol.TX_WRITE_BYTES)
-        assertEquals(43, HelperBinderProtocol.TX_SDK_SET)
-        assertEquals(44, HelperBinderProtocol.TX_SDK_NAVI)
+        assertEquals(61, HelperBinderProtocol.TX_WRITE_BYTES)
+        assertEquals(62, HelperBinderProtocol.TX_SDK_SET)
+        assertEquals(63, HelperBinderProtocol.TX_SDK_NAVI)
     }
 }

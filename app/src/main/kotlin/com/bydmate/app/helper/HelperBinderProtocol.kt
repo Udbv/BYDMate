@@ -61,6 +61,7 @@ import android.os.IBinder
  *       -> reply: writeInt(status), writeInt(0)  // status 0 = ok; -1 = failed/component unresolved
  *       activityType = trailing int, absent on old clients → RECENTS (see PANE_TYPE_*).
  *       An old daemon without this handler makes transact return false → client returns false.
+ *   TX_REGISTER_CLIENT : writeStrongBinder(clientBinder)   -> reply: writeInt(status=0)
  *   TX_DUMP_FIDS : (no args)
  *       -> reply: writeInt(status), writeString(dump)  // status 0 = ok; -1 = reflection failed
  *       dump = sorted "ClassName.FIELD_NAME=value" lines joined with \n; empty string on non-BYD firmware.
@@ -143,8 +144,11 @@ object HelperBinderProtocol {
     val TX_LAUNCH_FREEFORM: Int = IBinder.FIRST_CALL_TRANSACTION + 21          // 22
 
     /** `wm density` override on a NON-default display: [int displayId, int density
-     *  (0 = reset)] -> [int status, int 0]. Maps the projection scale regulator onto the
-     *  real cluster display in direct mode. */
+     *  (0 = reset)] -> [int status, int 0, String readback]. Maps the projection scale regulator
+     *  onto the real cluster display in direct mode. The readback is what `wm density -d <id>`
+     *  prints right after the write (`Physical density: N; Override density: M`) — additive
+     *  trailing field, old clients read the two ints and stop, and a new client against an old
+     *  daemon finds no bytes left and reads it as empty. */
     val TX_SET_DISPLAY_DENSITY: Int = IBinder.FIRST_CALL_TRANSACTION + 22      // 23
 
     /** `pm grant` of android.permission.READ_LOGS to our own package (development permission,
@@ -315,7 +319,7 @@ object HelperBinderProtocol {
      * write on an empty parcel and answered -1. Numbering is now unique (see the distinctness
      * test in HelperBinderProtocolTest).
      */
-    val TX_WRITE_BYTES: Int = IBinder.FIRST_CALL_TRANSACTION + 41            // 42
+    val TX_WRITE_BYTES: Int = IBinder.FIRST_CALL_TRANSACTION + 60            // 61 (fork; after upstream's 41..59)
 
     /**
      * Recovers the steering-wheel accessibility service on Android 10 (DiLink 3.0/4.0) after the
@@ -360,7 +364,7 @@ object HelperBinderProtocol {
      * -2147482646 TIMEOUT, -2147482645 INVALID_VALUE); daemon-side -1 = class/method/field
      * missing or reflection threw, -3 = no system context, -4 = malformed arguments.
      */
-    val TX_SDK_SET: Int = IBinder.FIRST_CALL_TRANSACTION + 42               // 43
+    val TX_SDK_SET: Int = IBinder.FIRST_CALL_TRANSACTION + 61               // 62 (fork; after upstream's 41..59)
 
     /**
      * Navigation methods of `android.hardware.bydauto.instrument.BYDAutoInstrumentDevice`, the
@@ -375,7 +379,7 @@ object HelperBinderProtocol {
      *   SDK_NAVI_CAMERA_GUIDANCE : int type, int distance, int state -> sendCameraGuidanceInfo(int,int,int)
      * Reply: [int status, int 0], status semantics as TX_SDK_SET.
      */
-    val TX_SDK_NAVI: Int = IBinder.FIRST_CALL_TRANSACTION + 43              // 44
+    val TX_SDK_NAVI: Int = IBinder.FIRST_CALL_TRANSACTION + 62              // 63 (fork; after upstream's 41..59)
 
     /** Device selectors of TX_SDK_SET. Not autoservice device numbers: they name SDK classes. */
     const val SDK_DEV_INSTRUMENT = 1   // android.hardware.bydauto.instrument.BYDAutoInstrumentDevice
@@ -397,6 +401,244 @@ object HelperBinderProtocol {
 
     /** Hard cap on one SDK_KIND_INT_ARRAY write (openbyd's lane batch is 25). */
     const val MAX_SDK_ARRAY: Int = 64
+
+    /**
+     * Full display inventory read out of `dumpsys display` under shell uid (issue #194).
+     * The projection needs it on firmwares where BYD whitelisted DisplayManager per app and the
+     * app uid sees display 0 only, so [com.bydmate.app.cluster.ClusterProjectionManager]'s own
+     * lookup finds no cluster surface. Read-only: one dumpsys, nothing is written or invoked.
+     * Synchronous and not rate-limited (unlike TX_CLUSTER_DISPLAY_DIAG, which spawns a whole
+     * snapshot): the caller needs the answer inside one projection attempt.
+     *
+     * (no args) -> [int status (0 = ok, -1 = failed), int count, then per display:
+     *   int displayId, String name, int width, int height, int densityDpi,
+     *   String ownerPkg ("" when none), int ownerUid (-1 when none),
+     *   String flags (comma-separated, "" when none)]
+     */
+    val TX_LIST_DISPLAYS: Int = IBinder.FIRST_CALL_TRANSACTION + 41  // 42
+
+    /**
+     * WindowManager-side readback for the cluster scale investigation (direct mode, DiLink 4.0):
+     * what `dumpsys window displays` says about every display's density (`init=…` line, which
+     * carries the `base=` override when one is in force) and what configuration the projected
+     * app's activity last reported (`mLastReportedConfiguration`, i.e. the dpi the app itself
+     * received). `dumpsys display` alone cannot answer either question — it prints the display
+     * device density, not the WindowManager override. Read-only: two bounded dumpsys calls.
+     *
+     * Request: [String projectedPkg ("" = skip the activity lookup)]
+     * Reply:   [int status (0 = ok, -1 = failed), String wmDisplays, String navTaskConfig]
+     * Both strings are newline-joined, already capped lines; empty when nothing matched.
+     * An old daemon without this handler makes transact return false → client returns null.
+     */
+    val TX_CLUSTER_WM_DIAG: Int = IBinder.FIRST_CALL_TRANSACTION + 42  // 43
+
+    /**
+     * Registers the app process with the daemon so it stops re-announcing its Binder
+     * (broadcast transport only, #64/#148). The app sends a plain Binder of its own; the daemon
+     * links to its death and resumes the re-announce timer when the app process goes away.
+     *
+     * Request: [IBinder client] -> [int status (0 = registered)]
+     * An old daemon without this handler makes transact return false → client returns null and
+     * simply keeps receiving one broadcast per re-announce interval.
+     */
+    val TX_REGISTER_CLIENT: Int = IBinder.FIRST_CALL_TRANSACTION + 43  // 44
+
+    /**
+     * Installs the fid push subscription: the daemon registers vendor listeners for the given fids
+     * and pushes every event back over [TX_PUSH_EVENT]. A repeated call replaces the whole
+     * subscription (the previous listeners are unregistered first).
+     *
+     * Each fid travels with its device because the app owns the resolved fid catalog and the daemon
+     * does not — see FidPushWire.
+     *
+     * Request: [IBinder callback, int count, count × (int fid, int device)]
+     * Reply:   [int status (0 = ok, -1 = failed), int count, count × (int fid, int device, String outcome)]
+     * outcome is "OK", "unsupported", or the exception the registration threw.
+     * An old daemon without this handler makes transact return false → client returns null.
+     */
+    val TX_PUSH_SUBSCRIBE: Int = IBinder.FIRST_CALL_TRANSACTION + 44  // 45
+
+    /** Drops every push listener and the callback. (no args) -> [int status, int unregistered]. */
+    val TX_PUSH_UNSUBSCRIBE: Int = IBinder.FIRST_CALL_TRANSACTION + 45  // 46
+
+    /**
+     * Live state of the subscription for the diagnostic dump.
+     *
+     * (no args) -> [int status (0 = ok), int count,
+     *   count × (int fid, int device, String outcome, int events, int lastIntValue,
+     *            double lastDoubleValue, long lastTsElapsed),
+     *   int callbackAlive (0|1), int deliverErrors, int packets, int events, int coalesced]
+     */
+    val TX_PUSH_STATUS: Int = IBinder.FIRST_CALL_TRANSACTION + 46  // 47
+
+    /**
+     * The one transaction that runs daemon → app, on the plain Binder the app hands over with
+     * [TX_PUSH_SUBSCRIBE]. Sent FLAG_ONEWAY, so the daemon never blocks on the app.
+     *
+     * One transact carries a whole flush of the daemon's coalescing buffer — the last value of
+     * every fid that moved in the window, never more than one event per subscribed fid.
+     *
+     * Request: [int count, count × (int fid, int intValue, double doubleValue, long tsElapsed)]
+     * under [PUSH_CALLBACK_DESCRIPTOR]. No reply.
+     */
+    val TX_PUSH_EVENT: Int = IBinder.FIRST_CALL_TRANSACTION + 47  // 48
+
+    /** Interface token of [TX_PUSH_EVENT] — the app's callback binder, not the daemon's stub. */
+    const val PUSH_CALLBACK_DESCRIPTOR = "com.bydmate.app.helper.push.callback"
+
+    /**
+     * Starts the diagnostic fid recorder: the daemon registers a listener of its own on every fid
+     * of the given devices and logs each changed value under the `FidRec` tag. An empty device
+     * list means every device the daemon knows a listener class for. Independent of the push
+     * subscription — starting or stopping a recording never touches it.
+     *
+     * Request: [int count, count × int device]  (count above MAX_REC_DEVICES is read as empty)
+     * Reply:   [int status (0 = ok, -1 = failed), int devices, int registeredFids]
+     * An old daemon without this handler makes transact return false → client returns null.
+     */
+    val TX_REC_START: Int = IBinder.FIRST_CALL_TRANSACTION + 48  // 49
+
+    /** Unregisters every recorder listener. (no args) -> [int status, int devicesUnregistered]. */
+    val TX_REC_STOP: Int = IBinder.FIRST_CALL_TRANSACTION + 49  // 50
+
+    /**
+     * Live state of the recorder for the diagnostic dump and the broadcast answer.
+     *
+     * (no args) -> [int status (0 = ok), int running (0|1), int totalEvents,
+     *   int deviceCount, deviceCount × (int device, int registered, int total, int filtered,
+     *                                   int events, String error),
+     *   int topCount, topCount × (int fid, String symbol, int events, int lastIntValue,
+     *                             double lastDoubleValue)]
+     */
+    val TX_REC_STATUS: Int = IBinder.FIRST_CALL_TRANSACTION + 50  // 51
+
+    /**
+     * Reads one Settings.Global key under shell uid (`settings get global`), the read side of
+     * [TX_PUT_GLOBAL_SETTING] and bounded by the same key whitelist. Feeds the sentry toggle,
+     * which has to know the current state before it can flip it.
+     *
+     * Request: [String key] -> [int status (0 = ok, -1 = not readable / not whitelisted),
+     *   int value]. An old daemon without this handler makes transact return false → the client
+     * returns null and the toggle reports an unknown state instead of guessing.
+     */
+    val TX_GET_GLOBAL_SETTING: Int = IBinder.FIRST_CALL_TRANSACTION + 51  // 52
+
+    /**
+     * Arms the power-off Telegram report (3.19): the daemon keeps it and sends it itself when its
+     * own listener on the power fids sees the car switched off (see helper/offreport). A repeated
+     * call replaces the report. The handler only stores it and answers: the listener registration
+     * (retried every 30 s while a fid is missing) and the priming reads run on the daemon's worker.
+     * An arm also lets the daemon deliver the reports still pending from earlier power-offs.
+     *
+     * Request: [String id, String token, long chatId, String text with `{{time}}`,
+     *   String lateMark with `{{time}}` (the «(записано в HH:MM)» line of a pending delivery)]
+     * Reply:   [int status (0 = armed, -1 = refused / failed)]
+     * An old daemon without this handler makes transact return false → the client returns false,
+     * and the app, finding the daemon alive, logs it as outdated.
+     */
+    val TX_OFFREPORT_ARM: Int = IBinder.FIRST_CALL_TRANSACTION + 52  // 53
+
+    /**
+     * Drops the armed report and every pending one (the report was switched off or the bot
+     * disconnected). (no args) -> [int status (0 = ok, the pending files are gone; 1 = a file could
+     * not be deleted, ask again)]. Outcomes already kept stay.
+     */
+    val TX_OFFREPORT_DISARM: Int = IBinder.FIRST_CALL_TRANSACTION + 53  // 54
+
+    /**
+     * Where one report id stands (unknown / armed / sending / sent / failed, with the power-off
+     * time), plus what is armed now, the last delivery outcome whatever its id, each power fid's
+     * registration state and how many reports wait on disk — for the app's dump.
+     *
+     * Request: [String id] -> Reply: [int status (0 = ok), OffReportStatus (see OffReportWire)]
+     */
+    val TX_OFFREPORT_STATUS: Int = IBinder.FIRST_CALL_TRANSACTION + 54  // 55
+
+    /**
+     * HUD navigation status (HUD wave 1, #198): BYDAutoInstrumentDevice.sendAutoNaviStatus(status)
+     * called reflectively inside the daemon. From the app uid the SDK answers
+     * `SecurityException: [setInt] permission deny!`; under the shell uid it goes through.
+     *
+     * Request: [int status (0..4; [HUD_NAVI_PROBE] = only say whether the method exists)]
+     * Reply:   [int outcome (HUD_NAVI_CALLED / HUD_NAVI_ABSENT / HUD_NAVI_THREW), int sdkReturn]
+     * An old daemon without this handler makes transact return false → the client returns null,
+     * and the app, finding the daemon alive, logs it as outdated and writes the fid raw instead.
+     */
+    val TX_HUD_NAVI_STATUS: Int = IBinder.FIRST_CALL_TRANSACTION + 55  // 56
+
+    /**
+     * autoservice setBuffer (tx 14): the instrument's road-name field takes a byte buffer, not an
+     * int. Ported from the archived CAN probe (test/hud-can-probe); the bytes go out as given.
+     *
+     * Request: [int dev, int fid, byte[] bytes] -> Reply: [int status, int 0] (raw autoservice status)
+     * An old daemon without this handler makes transact return false → the client returns null.
+     */
+    val TX_WRITE_BUFFER: Int = IBinder.FIRST_CALL_TRANSACTION + 56  // 57
+
+    /**
+     * Way 3 of the HUD output: the BYDAutoInstrumentDevice call OpenBYD's CAN strategy makes after
+     * its raw writes of the same fields, picked by [HUD_SDK_GUIDANCE] / [HUD_SDK_PATH_NAME] /
+     * [HUD_SDK_REST_ROUTE] and called reflectively inside the daemon, like [TX_HUD_NAVI_STATUS].
+     *
+     * Request: [int method, then GUIDANCE: int icon, int distance | PATH_NAME: String name |
+     *           REST_ROUTE: int hours, int minutes, long mileage]
+     * Reply:   [int outcome (HUD_NAVI_CALLED / HUD_NAVI_ABSENT / HUD_NAVI_THREW), int sdkReturn]
+     * An unknown method answers HUD_NAVI_ABSENT. An old daemon without this handler makes transact
+     * return false → the client returns null, and way 3 keeps its raw writes alone.
+     */
+    val TX_HUD_SDK: Int = IBinder.FIRST_CALL_TRANSACTION + 57  // 58
+
+    /**
+     * Central screen backlight off / on (#275): the hidden PowerManager.turnBacklightOff(long) /
+     * turnBacklightOn(long) the stock screen-off button calls, `TurnBacklight*` on DiLink 3.0 / 4.0,
+     * looked up by name inside the daemon (DEVICE_POWER, which the shell uid holds). Only the
+     * backlight changes: Android stays awake. The daemon then reads getPowerScreenStatus()
+     * (0 = off, 1 = on) until it shows the wanted state.
+     *
+     * Request: [int on: 1=on, 0=off]
+     * Reply:   [int outcome (SCREEN_BACKLIGHT_*), int status (last read, -1 = none),
+     *           String detail (the method found and the reads, or the exception)]
+     * An old daemon without this handler makes transact return false → the client returns null.
+     */
+    val TX_SET_SCREEN_BACKLIGHT: Int = IBinder.FIRST_CALL_TRANSACTION + 58  // 59
+
+    /**
+     * Diagnostic read of one native split root and one task in it, for the journal line the split
+     * engine writes when a pane task is "already in root" (field 2026-10-13: Navi vanished from
+     * the wide pane leaving the gray backdrop while its task still read as in the root). Read-only.
+     * Root data comes from the getAllRootTaskInfos() entry of [rootTaskId]: topActivity (the
+     * root's top running activity), `visible`, and the leaf children (childTaskIds/childTaskNames,
+     * in the framework's order — bottom to top on API 31/32). The task data comes from the
+     * getTasks() entry of [taskId]: isVisible and topActivity.
+     *
+     * Request: [int rootTaskId, int taskId]
+     * Reply:   [int status (see SPLIT37_*), String rootTop ("" = unknown), int rootVisible (1/0/-1),
+     *           int childCount (-1 = root not listed), childCount × (int taskId, String name),
+     *           int taskVisible (1/0/-1), String taskTop ("" = unknown)]
+     * An old daemon without this handler makes transact return false → the client returns null.
+     */
+    val TX_SPLIT37_ROOT_STATE: Int = IBinder.FIRST_CALL_TRANSACTION + 59  // 60
+
+    /** TX_SET_SCREEN_BACKLIGHT outcomes: called and the status shows the wanted state; called but
+     *  the status did not follow (or could not be read); no such method on this firmware; the
+     *  PowerManager or the call threw. */
+    const val SCREEN_BACKLIGHT_CONFIRMED = 0
+    const val SCREEN_BACKLIGHT_NOT_FOLLOWED = 1
+    const val SCREEN_BACKLIGHT_ABSENT = 2
+    const val SCREEN_BACKLIGHT_THREW = -1
+
+    /** TX_HUD_SDK methods: sendSimpleGuidanceInfo, sendNextPathName, sendRestRouteInfo. */
+    const val HUD_SDK_GUIDANCE = 1
+    const val HUD_SDK_PATH_NAME = 2
+    const val HUD_SDK_REST_ROUTE = 3
+
+    /** TX_HUD_NAVI_STATUS: the status that asks only whether the SDK method exists. */
+    const val HUD_NAVI_PROBE = -1
+    /** TX_HUD_NAVI_STATUS outcomes: the method exists (and was called unless probed), is absent
+     *  on this firmware, or the device / the call threw (the daemon logs the exception class). */
+    const val HUD_NAVI_CALLED = 0
+    const val HUD_NAVI_ABSENT = 1
+    const val HUD_NAVI_THREW = -1
 
     /** Status codes of the TX_SPLIT37_* verbs. Distinct from the (status, value) autoservice
      *  convention: 2 says the firmware has no native split surface at all (methods absent on the

@@ -2,7 +2,9 @@ package com.bydmate.app.ui.automation
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.bydmate.app.data.automation.ActionDispatcher
 import com.bydmate.app.data.local.LocalePreferences
+import com.bydmate.app.util.appLocalizedContext
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -43,12 +45,21 @@ class AutomationI18nGoldenTest {
         "副驾通风" to Triple("Проветрить окно пассажира", "Vent Passenger Window", "副驾车窗通风"),
         "后左通风" to Triple("Проветрить заднее левое окно", "Vent Rear Left Window", "后左车窗通风"),
         "后右通风" to Triple("Проветрить заднее правое окно", "Vent Rear Right Window", "后右车窗通风"),
+        "主驾半开" to Triple("Окно водителя на 50%", "Driver Window 50%", "主驾车窗半开"),
+        "副驾半开" to Triple("Окно пассажира на 50%", "Passenger Window 50%", "副驾车窗半开"),
+        "后左半开" to Triple("Заднее левое окно на 50%", "Rear Left Window 50%", "后左车窗半开"),
+        "后右半开" to Triple("Заднее правое окно на 50%", "Rear Right Window 50%", "后右车窗半开"),
+        "前排车窗半开" to Triple("Передние на 50%", "Front Windows 50%", "前排车窗半开"),
+        "前排车窗通风" to Triple("Проветрить передние", "Vent Front Windows", "前排车窗通风"),
+        "后排车窗半开" to Triple("Задние на 50%", "Rear Windows 50%", "后排车窗半开"),
+        "后排车窗通风" to Triple("Проветрить задние", "Vent Rear Windows", "后排车窗通风"),
         "自动空调" to Triple("Авто AC", "Auto AC", "自动空调"),
         "打开空调通风" to Triple("Обдув без AC", "Ventilation (no AC)", "通风（不开AC）"),
-        "设置温度18" to Triple("Темп. 18°C", "Temp 18°C", "温度 18°C"),
-        "设置温度20" to Triple("Темп. 20°C", "Temp 20°C", "温度 20°C"),
-        "设置温度22" to Triple("Темп. 22°C", "Temp 22°C", "温度 22°C"),
-        "设置温度25" to Triple("Темп. 25°C", "Temp 25°C", "温度 25°C"),
+        "吹面" to Triple("Обдув: в лицо", "Airflow: face", "出风：吹面"),
+        "吹面吹脚" to Triple("Обдув: лицо и ноги", "Airflow: face and feet", "出风：吹面吹脚"),
+        "吹脚" to Triple("Обдув: в ноги", "Airflow: feet", "出风：吹脚"),
+        "吹脚除霜" to Triple("Обдув: ноги и стекло", "Airflow: feet and windshield", "出风：吹脚除霜"),
+        "除霜" to Triple("Обдув: на стекло", "Airflow: windshield", "出风：除霜"),
         "内循环" to Triple("Циркуляция внутр.", "Recirculation", "内循环"),
         "外循环" to Triple("Циркуляция внешн.", "Fresh Air", "外循环"),
         "吹前挡" to Triple("Обдув лобового вкл", "Windshield Defog On", "前挡风除雾开"),
@@ -56,32 +67,19 @@ class AutomationI18nGoldenTest {
         "关闭空调" to Triple("Выключить климат", "AC Off", "关闭空调"),
         "空调自动" to Triple("Климат: авторежим", "AC Auto Mode", "空调自动"),
         "空调手动" to Triple("Климат: ручной режим", "AC Manual Mode", "空调手动"),
-        "主驾座椅加热1档" to Triple("Подогрев водителя 1", "Driver Heat 1", "主驾座椅加热1档"),
-        "主驾座椅加热2档" to Triple("Подогрев водителя 2", "Driver Heat 2", "主驾座椅加热2档"),
-        "主驾座椅加热3档" to Triple("Подогрев водителя 3", "Driver Heat 3", "主驾座椅加热3档"),
-        "主驾座椅加热4档" to Triple("Подогрев водителя 4", "Driver Heat 4", "主驾座椅加热4档"),
-        "主驾座椅加热5档" to Triple("Подогрев водителя 5", "Driver Heat 5", "主驾座椅加热5档"),
-        "主驾座椅加热关闭" to Triple("Подогрев водителя выкл", "Driver Heat Off", "主驾座椅加热关"),
-        "副驾座椅加热1档" to Triple("Подогрев пассажира 1", "Passenger Heat 1", "副驾座椅加热1档"),
-        "副驾座椅加热2档" to Triple("Подогрев пассажира 2", "Passenger Heat 2", "副驾座椅加热2档"),
-        "副驾座椅加热3档" to Triple("Подогрев пассажира 3", "Passenger Heat 3", "副驾座椅加热3档"),
-        "副驾座椅加热4档" to Triple("Подогрев пассажира 4", "Passenger Heat 4", "副驾座椅加热4档"),
-        "副驾座椅加热5档" to Triple("Подогрев пассажира 5", "Passenger Heat 5", "副驾座椅加热5档"),
-        "副驾座椅加热关闭" to Triple("Подогрев пассажира выкл", "Passenger Heat Off", "副驾座椅加热关"),
-        "主驾座椅通风1档" to Triple("Вентиляция водителя 1", "Driver Vent 1", "主驾座椅通风1档"),
-        "主驾座椅通风2档" to Triple("Вентиляция водителя 2", "Driver Vent 2", "主驾座椅通风2档"),
-        "主驾座椅通风3档" to Triple("Вентиляция водителя 3", "Driver Vent 3", "主驾座椅通风3档"),
-        "主驾座椅通风4档" to Triple("Вентиляция водителя 4", "Driver Vent 4", "主驾座椅通风4档"),
-        "主驾座椅通风5档" to Triple("Вентиляция водителя 5", "Driver Vent 5", "主驾座椅通风5档"),
-        "主驾座椅通风关闭" to Triple("Вентиляция водителя выкл", "Driver Vent Off", "主驾座椅通风关"),
-        "副驾座椅通风1档" to Triple("Вентиляция пассажира 1", "Passenger Vent 1", "副驾座椅通风1档"),
-        "副驾座椅通风2档" to Triple("Вентиляция пассажира 2", "Passenger Vent 2", "副驾座椅通风2档"),
-        "副驾座椅通风3档" to Triple("Вентиляция пассажира 3", "Passenger Vent 3", "副驾座椅通风3档"),
-        "副驾座椅通风4档" to Triple("Вентиляция пассажира 4", "Passenger Vent 4", "副驾座椅通风4档"),
-        "副驾座椅通风5档" to Triple("Вентиляция пассажира 5", "Passenger Vent 5", "副驾座椅通风5档"),
-        "副驾座椅通风关闭" to Triple("Вентиляция пассажира выкл", "Passenger Vent Off", "副驾座椅通风关"),
         "后视镜加热" to Triple("Подогрев зеркал вкл", "Mirror Heat On", "后视镜加热开"),
         "关闭后视镜加热" to Triple("Подогрев зеркал выкл", "Mirror Heat Off", "后视镜加热关"),
+        "方向盘加热" to Triple("Подогрев руля вкл", "Steering Wheel Heat On", "方向盘加热开"),
+        "关闭方向盘加热" to Triple("Подогрев руля выкл", "Steering Wheel Heat Off", "方向盘加热关"),
+        "ECO模式" to Triple("Режим ЭКО", "ECO mode", "ECO模式"),
+        "普通模式" to Triple("Режим Норма", "Normal mode", "普通模式"),
+        "运动模式" to Triple("Режим Спорт", "Sport mode", "运动模式"),
+        "雪地模式" to Triple("Режим Снег", "Snow mode", "雪地模式"),
+        "沙地模式" to Triple("Режим Песок", "Sand mode", "沙地模式"),
+        "泥地模式" to Triple("Режим Грязь", "Mud mode", "泥地模式"),
+        "山地模式" to Triple("Режим Горы", "Mountain mode", "山地模式"),
+        "岩石模式" to Triple("Режим Камни", "Rock mode", "岩石模式"),
+        "智能模式" to Triple("Умный режим", "Smart mode", "智能模式"),
         "氛围灯打开" to Triple("Амбиент вкл", "Ambient Light On", "氛围灯开"),
         "氛围灯关闭" to Triple("Амбиент выкл", "Ambient Light Off", "氛围灯关"),
         "打开日行灯" to Triple("ДХО вкл", "DRL On", "日行灯开"),
@@ -90,6 +88,10 @@ class AutomationI18nGoldenTest {
         "双闪关闭" to Triple("Аварийка: выключить", "Hazard lights: off", "关闭双闪"),
         "打开车内灯" to Triple("Салонный свет вкл", "Interior Light On", "车内灯开"),
         "关闭车内灯" to Triple("Салонный свет выкл", "Interior Light Off", "车内灯关"),
+        "打开抬头显示" to Triple("HUD: включить", "HUD: on", "打开抬头显示"),
+        "关闭抬头显示" to Triple("HUD: выключить", "HUD: off", "关闭抬头显示"),
+        "打开电池预热" to Triple("Подогрев батареи: включить", "Battery warm-up: on", "打开电池预热"),
+        "关闭电池预热" to Triple("Подогрев батареи: выключить", "Battery warm-up: off", "关闭电池预热"),
         "车门上锁" to Triple("Заблокировать", "Lock Doors", "车门上锁"),
         "车门解锁" to Triple("Разблокировать", "Unlock Doors", "车门解锁"),
         "天窗打开100" to Triple("Люк открыть 100%", "Sunroof Open 100%", "天窗全开"),
@@ -107,15 +109,6 @@ class AutomationI18nGoldenTest {
         "冰箱制冷" to Triple("Холодильник: охлаждение", "Fridge Cool", "冰箱制冷"),
         "冰箱制热" to Triple("Холодильник: обогрев", "Fridge Heat", "冰箱制热"),
         "冰箱关闭" to Triple("Холодильник: выкл", "Fridge Off", "冰箱关闭"),
-        "冰箱制冷-6度" to Triple("Холодильник: охл -6°C", "Fridge Cool -6°C", "冰箱制冷-6度"),
-        "冰箱制冷-3度" to Triple("Холодильник: охл -3°C", "Fridge Cool -3°C", "冰箱制冷-3度"),
-        "冰箱制冷0度" to Triple("Холодильник: охл 0°C", "Fridge Cool 0°C", "冰箱制冷0度"),
-        "冰箱制冷3度" to Triple("Холодильник: охл +3°C", "Fridge Cool +3°C", "冰箱制冷3度"),
-        "冰箱制冷6度" to Triple("Холодильник: охл +6°C", "Fridge Cool +6°C", "冰箱制冷6度"),
-        "冰箱制热35度" to Triple("Холодильник: обогрев 35°C", "Fridge Heat 35°C", "冰箱制热35度"),
-        "冰箱制热40度" to Triple("Холодильник: обогрев 40°C", "Fridge Heat 40°C", "冰箱制热40度"),
-        "冰箱制热45度" to Triple("Холодильник: обогрев 45°C", "Fridge Heat 45°C", "冰箱制热45度"),
-        "冰箱制热50度" to Triple("Холодильник: обогрев 50°C", "Fridge Heat 50°C", "冰箱制热50度"),
     )
     private val actCat = mapOf(
         "车窗通风" to Triple("Окна", "Windows", "车窗"),
@@ -138,12 +131,21 @@ class AutomationI18nGoldenTest {
         "副驾通风" to Triple("Окна", "Windows", "车窗"),
         "后左通风" to Triple("Окна", "Windows", "车窗"),
         "后右通风" to Triple("Окна", "Windows", "车窗"),
+        "主驾半开" to Triple("Окна", "Windows", "车窗"),
+        "副驾半开" to Triple("Окна", "Windows", "车窗"),
+        "后左半开" to Triple("Окна", "Windows", "车窗"),
+        "后右半开" to Triple("Окна", "Windows", "车窗"),
+        "前排车窗半开" to Triple("Окна", "Windows", "车窗"),
+        "前排车窗通风" to Triple("Окна", "Windows", "车窗"),
+        "后排车窗半开" to Triple("Окна", "Windows", "车窗"),
+        "后排车窗通风" to Triple("Окна", "Windows", "车窗"),
         "自动空调" to Triple("Климат", "Climate", "空调"),
         "打开空调通风" to Triple("Климат", "Climate", "空调"),
-        "设置温度18" to Triple("Климат", "Climate", "空调"),
-        "设置温度20" to Triple("Климат", "Climate", "空调"),
-        "设置温度22" to Triple("Климат", "Climate", "空调"),
-        "设置温度25" to Triple("Климат", "Climate", "空调"),
+        "吹面" to Triple("Климат", "Climate", "空调"),
+        "吹面吹脚" to Triple("Климат", "Climate", "空调"),
+        "吹脚" to Triple("Климат", "Climate", "空调"),
+        "吹脚除霜" to Triple("Климат", "Climate", "空调"),
+        "除霜" to Triple("Климат", "Climate", "空调"),
         "内循环" to Triple("Климат", "Climate", "空调"),
         "外循环" to Triple("Климат", "Climate", "空调"),
         "吹前挡" to Triple("Климат", "Climate", "空调"),
@@ -151,32 +153,19 @@ class AutomationI18nGoldenTest {
         "关闭空调" to Triple("Климат", "Climate", "空调"),
         "空调自动" to Triple("Климат", "Climate", "空调"),
         "空调手动" to Triple("Климат", "Climate", "空调"),
-        "主驾座椅加热1档" to Triple("Сиденья", "Seats", "座椅"),
-        "主驾座椅加热2档" to Triple("Сиденья", "Seats", "座椅"),
-        "主驾座椅加热3档" to Triple("Сиденья", "Seats", "座椅"),
-        "主驾座椅加热4档" to Triple("Сиденья", "Seats", "座椅"),
-        "主驾座椅加热5档" to Triple("Сиденья", "Seats", "座椅"),
-        "主驾座椅加热关闭" to Triple("Сиденья", "Seats", "座椅"),
-        "副驾座椅加热1档" to Triple("Сиденья", "Seats", "座椅"),
-        "副驾座椅加热2档" to Triple("Сиденья", "Seats", "座椅"),
-        "副驾座椅加热3档" to Triple("Сиденья", "Seats", "座椅"),
-        "副驾座椅加热4档" to Triple("Сиденья", "Seats", "座椅"),
-        "副驾座椅加热5档" to Triple("Сиденья", "Seats", "座椅"),
-        "副驾座椅加热关闭" to Triple("Сиденья", "Seats", "座椅"),
-        "主驾座椅通风1档" to Triple("Сиденья", "Seats", "座椅"),
-        "主驾座椅通风2档" to Triple("Сиденья", "Seats", "座椅"),
-        "主驾座椅通风3档" to Triple("Сиденья", "Seats", "座椅"),
-        "主驾座椅通风4档" to Triple("Сиденья", "Seats", "座椅"),
-        "主驾座椅通风5档" to Triple("Сиденья", "Seats", "座椅"),
-        "主驾座椅通风关闭" to Triple("Сиденья", "Seats", "座椅"),
-        "副驾座椅通风1档" to Triple("Сиденья", "Seats", "座椅"),
-        "副驾座椅通风2档" to Triple("Сиденья", "Seats", "座椅"),
-        "副驾座椅通风3档" to Triple("Сиденья", "Seats", "座椅"),
-        "副驾座椅通风4档" to Triple("Сиденья", "Seats", "座椅"),
-        "副驾座椅通风5档" to Triple("Сиденья", "Seats", "座椅"),
-        "副驾座椅通风关闭" to Triple("Сиденья", "Seats", "座椅"),
         "后视镜加热" to Triple("Зеркала", "Mirrors", "后视镜"),
         "关闭后视镜加热" to Triple("Зеркала", "Mirrors", "后视镜"),
+        "方向盘加热" to Triple("Климат", "Climate", "空调"),
+        "关闭方向盘加热" to Triple("Климат", "Climate", "空调"),
+        "ECO模式" to Triple("Режим движения", "Drive mode", "驾驶模式"),
+        "普通模式" to Triple("Режим движения", "Drive mode", "驾驶模式"),
+        "运动模式" to Triple("Режим движения", "Drive mode", "驾驶模式"),
+        "雪地模式" to Triple("Режим движения", "Drive mode", "驾驶模式"),
+        "沙地模式" to Triple("Режим движения", "Drive mode", "驾驶模式"),
+        "泥地模式" to Triple("Режим движения", "Drive mode", "驾驶模式"),
+        "山地模式" to Triple("Режим движения", "Drive mode", "驾驶模式"),
+        "岩石模式" to Triple("Режим движения", "Drive mode", "驾驶模式"),
+        "智能模式" to Triple("Режим движения", "Drive mode", "驾驶模式"),
         "氛围灯打开" to Triple("Свет", "Light", "灯光"),
         "氛围灯关闭" to Triple("Свет", "Light", "灯光"),
         "打开日行灯" to Triple("Свет", "Light", "灯光"),
@@ -185,6 +174,10 @@ class AutomationI18nGoldenTest {
         "双闪关闭" to Triple("Свет", "Light", "灯光"),
         "打开车内灯" to Triple("Свет", "Light", "灯光"),
         "关闭车内灯" to Triple("Свет", "Light", "灯光"),
+        "打开抬头显示" to Triple("Свет", "Light", "灯光"),
+        "关闭抬头显示" to Triple("Свет", "Light", "灯光"),
+        "打开电池预热" to Triple("Энергия", "Energy", "能源"),
+        "关闭电池预热" to Triple("Энергия", "Energy", "能源"),
         "车门上锁" to Triple("Замки", "Locks", "门锁"),
         "车门解锁" to Triple("Замки", "Locks", "门锁"),
         "天窗打开100" to Triple("Люк", "Sunroof", "天窗"),
@@ -202,15 +195,6 @@ class AutomationI18nGoldenTest {
         "冰箱制冷" to Triple("Холодильник", "Fridge", "冰箱"),
         "冰箱制热" to Triple("Холодильник", "Fridge", "冰箱"),
         "冰箱关闭" to Triple("Холодильник", "Fridge", "冰箱"),
-        "冰箱制冷-6度" to Triple("Холодильник", "Fridge", "冰箱"),
-        "冰箱制冷-3度" to Triple("Холодильник", "Fridge", "冰箱"),
-        "冰箱制冷0度" to Triple("Холодильник", "Fridge", "冰箱"),
-        "冰箱制冷3度" to Triple("Холодильник", "Fridge", "冰箱"),
-        "冰箱制冷6度" to Triple("Холодильник", "Fridge", "冰箱"),
-        "冰箱制热35度" to Triple("Холодильник", "Fridge", "冰箱"),
-        "冰箱制热40度" to Triple("Холодильник", "Fridge", "冰箱"),
-        "冰箱制热45度" to Triple("Холодильник", "Fridge", "冰箱"),
-        "冰箱制热50度" to Triple("Холодильник", "Fridge", "冰箱"),
     )
     private val parName = mapOf(
         "Speed" to Triple("Скорость", "Speed", "车速"),
@@ -219,22 +203,22 @@ class AutomationI18nGoldenTest {
         "TurnSignal" to Triple("Поворотник", "Turn signal", "转向灯"),
         "SOC" to Triple("SOC", "SOC", "电量百分比"),
         "ChargingStatus" to Triple("Статус зарядки", "Charging Status", "充电状态"),
-        "PowerState" to Triple("Питание", "Power State", "电源状态"),
         "Voltage12V" to Triple("12V аккумулятор", "12V Battery", "蓄电池电压"),
-        "MinCellVoltage" to Triple("Напряжение банки (min)", "Min Cell Voltage", "单体最低电压"),
-        "MaxCellVoltage" to Triple("Напряжение банки (max)", "Max Cell Voltage", "单体最高电压"),
-        "ExtTemp" to Triple("Темп. снаружи", "Outside Temp", "车外温度"),
+        "MinCellVoltage" to Triple("Мин. напряжение ячейки", "Min Cell Voltage", "单体最低电压"),
+        "MaxCellVoltage" to Triple("Макс. напряжение ячейки", "Max Cell Voltage", "单体最高电压"),
+        "RangeKm" to Triple("Запас хода", "Range", "续航里程"),
+        "ExtTemp" to Triple("Температура снаружи", "Outside Temperature", "车外温度"),
         "InsideTemp" to Triple("Темп. салона", "Cabin Temp", "车内温度"),
         "AvgBatTemp" to Triple("Темп. батареи", "Battery Temp", "平均电池温度"),
         "WindowFL" to Triple("Окно водителя", "Driver Window", "主驾车窗打开百分比"),
         "WindowFR" to Triple("Окно пассажира", "Passenger Window", "副驾车窗打开百分比"),
-        "WindowRL" to Triple("Окно ЛЗ", "Rear Left Window", "左后车窗打开百分比"),
-        "WindowRR" to Triple("Окно ПЗ", "Rear Right Window", "右后车窗打开百分比"),
+        "WindowRL" to Triple("Окно сзади слева", "Rear Left Window", "左后车窗"),
+        "WindowRR" to Triple("Окно сзади справа", "Rear Right Window", "右后车窗"),
         "Sunroof" to Triple("Люк", "Sunroof", "天窗打开百分比"),
         "DoorFL" to Triple("Дверь водителя", "Driver Door", "主驾车门"),
         "DoorFR" to Triple("Дверь пассажира", "Passenger Door", "副驾车门"),
-        "DoorRL" to Triple("Дверь ЛЗ", "Rear Left Door", "左后车门"),
-        "DoorRR" to Triple("Дверь ПЗ", "Rear Right Door", "右后车门"),
+        "DoorRL" to Triple("Дверь сзади слева", "Rear Left Door", "左后车门"),
+        "DoorRR" to Triple("Дверь сзади справа", "Rear Right Door", "右后车门"),
         "Hood" to Triple("Капот", "Hood", "引擎盖"),
         "LockFL" to Triple("Замок двери водителя", "Driver Door Lock", "主驾车门锁"),
         "Trunk" to Triple("Багажник", "Trunk", "后备箱门"),
@@ -244,6 +228,9 @@ class AutomationI18nGoldenTest {
         "FanLevel" to Triple("Вентилятор", "Fan Level", "风量档位"),
         "SeatbeltFL" to Triple("Ремень водителя", "Driver Seatbelt", "主驾驶安全带状态"),
         "SeatbeltFR" to Triple("Ремень пассажира", "Passenger Seatbelt", "副驾安全带"),
+        "SeatbeltRL" to Triple("Ремень сзади слева", "Rear Left Seatbelt", "左后安全带"),
+        "SeatbeltRM" to Triple("Ремень сзади в центре", "Rear Middle Seatbelt", "后中安全带"),
+        "SeatbeltRR" to Triple("Ремень сзади справа", "Rear Right Seatbelt", "右后安全带"),
         "OccupancyFL" to Triple("Место водителя", "Driver Seat", "主驾座椅占用"),
         "OccupancyFR" to Triple("Место переднего пассажира", "Front Passenger Seat", "副驾座椅占用"),
         "OccupancyRL" to Triple("Место сзади слева", "Rear Left Seat", "左后座椅占用"),
@@ -251,10 +238,10 @@ class AutomationI18nGoldenTest {
         "OccupancyRR" to Triple("Место сзади справа", "Rear Right Seat", "右后座椅占用"),
         "KeyBattery" to Triple("Батарейка ключа", "Key Fob Battery", "钥匙电池"),
         "LightLevel" to Triple("Освещённость", "Ambient Light", "光照等级"),
-        "TirePressFL" to Triple("Давление ЛП шины", "FL Tire Pressure", "左前轮气压"),
-        "TirePressFR" to Triple("Давление ПП шины", "FR Tire Pressure", "右前轮气压"),
-        "TirePressRL" to Triple("Давление ЛЗ шины", "RL Tire Pressure", "左后轮气压"),
-        "TirePressRR" to Triple("Давление ПЗ шины", "RR Tire Pressure", "右后轮气压"),
+        "TirePressFL" to Triple("Давление левой передней шины", "Front Left Tire Pressure", "左前轮气压"),
+        "TirePressFR" to Triple("Давление правой передней шины", "Front Right Tire Pressure", "右前轮气压"),
+        "TirePressRL" to Triple("Давление левой задней шины", "Rear Left Tire Pressure", "左后轮气压"),
+        "TirePressRR" to Triple("Давление правой задней шины", "Rear Right Tire Pressure", "右后轮气压"),
         "Rain" to Triple("Датчик дождя", "Rain Sensor", "雨量"),
         "LightLow" to Triple("Ближний свет", "Low Beam", "近光灯"),
         "DRL" to Triple("Дневные ходовые", "DRL", "日行灯"),
@@ -266,10 +253,10 @@ class AutomationI18nGoldenTest {
         "TurnSignal" to Triple("Движение", "Driving", "行驶"),
         "SOC" to Triple("Энергия", "Energy", "能源"),
         "ChargingStatus" to Triple("Энергия", "Energy", "能源"),
-        "PowerState" to Triple("Энергия", "Energy", "能源"),
         "Voltage12V" to Triple("Энергия", "Energy", "能源"),
         "MinCellVoltage" to Triple("Энергия", "Energy", "能源"),
         "MaxCellVoltage" to Triple("Энергия", "Energy", "能源"),
+        "RangeKm" to Triple("Энергия", "Energy", "能源"),
         "ExtTemp" to Triple("Температура", "Temperature", "温度"),
         "InsideTemp" to Triple("Температура", "Temperature", "温度"),
         "AvgBatTemp" to Triple("Температура", "Temperature", "温度"),
@@ -291,6 +278,9 @@ class AutomationI18nGoldenTest {
         "FanLevel" to Triple("Климат", "Climate", "空调"),
         "SeatbeltFL" to Triple("Безопасность", "Safety", "安全"),
         "SeatbeltFR" to Triple("Безопасность", "Safety", "安全"),
+        "SeatbeltRL" to Triple("Безопасность", "Safety", "安全"),
+        "SeatbeltRM" to Triple("Безопасность", "Safety", "安全"),
+        "SeatbeltRR" to Triple("Безопасность", "Safety", "安全"),
         "OccupancyFL" to Triple("Безопасность", "Safety", "安全"),
         "OccupancyFR" to Triple("Безопасность", "Safety", "安全"),
         "OccupancyRL" to Triple("Безопасность", "Safety", "安全"),
@@ -313,10 +303,10 @@ class AutomationI18nGoldenTest {
         "TurnSignal" to "",
         "SOC" to "%",
         "ChargingStatus" to "",
-        "PowerState" to "",
         "Voltage12V" to "В",
         "MinCellVoltage" to "В",
         "MaxCellVoltage" to "В",
+        "RangeKm" to "км",
         "ExtTemp" to "°C",
         "InsideTemp" to "°C",
         "AvgBatTemp" to "°C",
@@ -343,6 +333,9 @@ class AutomationI18nGoldenTest {
         "TirePressRR" to "кПа",
         "Rain" to "(0=сухо)",
         "SeatbeltFR" to "",
+        "SeatbeltRL" to "",
+        "SeatbeltRM" to "",
+        "SeatbeltRR" to "",
         "OccupancyFL" to "",
         "OccupancyFR" to "",
         "OccupancyRL" to "",
@@ -356,23 +349,29 @@ class AutomationI18nGoldenTest {
     // param -> list of (value, ru-label)
     private val parEnumRu = mapOf<String, List<Pair<String, String>>>(
         "Gear" to listOf("1" to "P", "2" to "R", "3" to "N", "4" to "D"),
-        // Live codes (Leopard 3 2026-07-30): 1=ECO, 2=SPORT, 3=NORMAL, 4=any off-road
-        // submode; 0 is the transient switching state and is not offered as a choice.
-        "DriveMode" to listOf("1" to "ECO", "2" to "SPORT", "3" to "NORMAL", "4" to "Внедорожный"),
+        // Live codes (Leopard 3 2026-07-30): 1=ECO, 2=SPORT, 3=NORMAL, 4=SNOW (ENERGY_OPERATION_SNOW,
+        // live 2026-09-27; sand/mud/mountain leave it at 3); 0 is the transient switching state
+        // and is not offered as a choice.
+        "DriveMode" to listOf(
+            "1" to "ECO", "2" to "SPORT", "3" to "NORMAL", "4" to "Снег",
+            "5" to "Песок", "6" to "Грязь", "7" to "Горы", "21" to "Умный",
+        ),
         // Live mask (Leopard 3 2026-07-31): 1=off, 2=left, 4=right, 6=hazard
         "TurnSignal" to listOf("1" to "Выключен", "2" to "Левый", "4" to "Правый", "6" to "Аварийка"),
         "ChargingStatus" to listOf("0" to "Нет", "1" to "Подключён", "2" to "Заряжается"),
-        "PowerState" to listOf("0" to "OFF", "1" to "ON", "2" to "DRIVE"),
         "DoorFL" to listOf("0" to "Закрыта", "1" to "Открыта"),
         "DoorFR" to listOf("0" to "Закрыта", "1" to "Открыта"),
         "DoorRL" to listOf("0" to "Закрыта", "1" to "Открыта"),
         "DoorRR" to listOf("0" to "Закрыта", "1" to "Открыта"),
         "Hood" to listOf("0" to "Закрыт", "1" to "Открыт"),
         "LockFL" to listOf("1" to "Разблокирован", "2" to "Заблокирован"),
-        "Trunk" to listOf("0" to "Закрыт", "1" to "Открыт"),
+        "Trunk" to listOf("2" to "Закрыт", "1" to "Открыт", "3" to "В движении"),
         "ACCirc" to listOf("0" to "Внешний воздух", "1" to "Внутренний воздух"),
         "SeatbeltFL" to listOf("0" to "Не пристёгнут", "1" to "Пристёгнут"),
         "SeatbeltFR" to listOf("0" to "Не пристёгнут", "1" to "Пристёгнут"),
+        "SeatbeltRL" to listOf("0" to "Не пристёгнут", "1" to "Пристёгнут"),
+        "SeatbeltRM" to listOf("0" to "Не пристёгнут", "1" to "Пристёгнут"),
+        "SeatbeltRR" to listOf("0" to "Не пристёгнут", "1" to "Пристёгнут"),
         "OccupancyFL" to listOf("1" to "Свободно", "2" to "Занято"),
         "OccupancyFR" to listOf("1" to "Свободно", "2" to "Занято"),
         "OccupancyRL" to listOf("1" to "Свободно", "2" to "Занято"),
@@ -383,13 +382,16 @@ class AutomationI18nGoldenTest {
     )
 
     @Test fun action_names_and_categories_match_baseline_all_locales() {
-        for (a in ACTION_COMMANDS) {
+        // The «… переключить» entries carry no command of their own; their names are built
+        // from the toggle-target baseline and checked in toggle_catalog_entries_*.
+        val commandOptions = ACTION_COMMANDS.filter { it.toggleTarget == null }
+        for (a in commandOptions) {
             val n = actName.getValue(a.command); val c = actCat.getValue(a.command)
             lang("ru"); assertEquals("name ru ${a.command}", n.first,  a.localizedName(ctx)); assertEquals("cat ru ${a.command}", c.first,  a.localizedCategory(ctx))
             lang("en"); assertEquals("name en ${a.command}", n.second, a.localizedName(ctx)); assertEquals("cat en ${a.command}", c.second, a.localizedCategory(ctx))
             lang("zh"); assertEquals("name zh ${a.command}", n.third,  a.localizedName(ctx)); assertEquals("cat zh ${a.command}", c.third,  a.localizedCategory(ctx))
         }
-        assertEquals(actName.size, ACTION_COMMANDS.size)
+        assertEquals(actName.size, commandOptions.size)
     }
 
     @Test fun param_names_and_categories_match_baseline_all_locales() {
@@ -400,6 +402,49 @@ class AutomationI18nGoldenTest {
             lang("zh"); assertEquals("pname zh ${t.param}", n.third,  t.localizedName(ctx)); assertEquals("pcat zh ${t.param}", c.third,  t.localizedCategory(ctx))
         }
         assertEquals(parName.size, TRIGGER_PARAMS.size)
+    }
+
+    // Toggle targets are picked in the editor and printed in the failure reason,
+    // so their names must exist in every locale the catalog is checked against.
+    private val toggleTargetName = mapOf(
+        "trunk" to Triple("Багажник", "Trunk", "后备箱"),
+        "front_trunk" to Triple("Передний багажник", "Front trunk", "前备箱"),
+        "sunroof" to Triple("Люк", "Sunroof", "天窗"),
+        "locks" to Triple("Замки дверей", "Door locks", "车门锁"),
+        "cluster" to Triple("Вывод на приборку", "Projection to cluster", "投射到仪表盘"),
+        "sentry" to Triple("Режим охраны", "Sentry mode", "哨兵模式"),
+        "hazard" to Triple("Аварийка", "Hazard lights", "双闪"),
+        "climate" to Triple("Климат", "Climate", "空调"),
+        "seat_heat_driver" to Triple("Подогрев сиденья водителя", "Driver seat heating", "主驾座椅加热"),
+        "seat_heat_passenger" to Triple("Подогрев сиденья пассажира", "Passenger seat heating", "副驾座椅加热"),
+        "seat_vent_driver" to Triple("Обдув сиденья водителя", "Driver seat ventilation", "主驾座椅通风"),
+        "seat_vent_passenger" to Triple("Обдув сиденья пассажира", "Passenger seat ventilation", "副驾座椅通风"),
+        "steering_heat" to Triple("Подогрев руля", "Steering wheel heating", "方向盘加热"),
+    )
+
+    private fun toggleName(target: String): String {
+        val res = ActionDispatcher.toggleTargetNameRes(target)!!
+        return ctx.appLocalizedContext().getString(res)
+    }
+
+    @Test fun toggle_target_names_match_baseline_all_locales() {
+        for (target in ActionDispatcher.TOGGLE_TARGETS) {
+            val n = toggleTargetName.getValue(target)
+            lang("ru"); assertEquals("toggle ru $target", n.first, toggleName(target))
+            lang("en"); assertEquals("toggle en $target", n.second, toggleName(target))
+            lang("zh"); assertEquals("toggle zh $target", n.third, toggleName(target))
+        }
+        assertEquals(toggleTargetName.size, ActionDispatcher.TOGGLE_TARGETS.size)
+    }
+
+    @Test fun toggle_catalog_entries_read_as_the_target_plus_toggle() {
+        val format = Triple("%s: переключить", "%s: toggle", "%s：切换")
+        for (option in ACTION_COMMANDS.filter { it.toggleTarget != null }) {
+            val n = toggleTargetName.getValue(option.toggleTarget!!)
+            lang("ru"); assertEquals(format.first.format(n.first), option.localizedName(ctx))
+            lang("en"); assertEquals(format.second.format(n.second), option.localizedName(ctx))
+            lang("zh"); assertEquals(format.third.format(n.third), option.localizedName(ctx))
+        }
     }
 
     @Test fun param_units_and_enum_labels_match_baseline_ru() {

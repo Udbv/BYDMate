@@ -22,6 +22,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.content.res.Resources
 import android.os.LocaleList
+import io.mockk.coVerify
 import io.mockk.every
 import java.util.Locale
 import kotlinx.coroutines.flow.Flow
@@ -65,6 +66,8 @@ class ChargesViewModelTest {
             SettingsRepository.KEY_CURRENCY to "BYN"
         )
         override suspend fun get(key: String): String? = map[key]
+        override suspend fun getMany(keys: List<String>): List<SettingEntity> =
+            keys.mapNotNull { k -> map[k]?.let { SettingEntity(k, it) } }
         override fun observe(key: String): Flow<String?> = flowOf(map[key])
         override suspend fun set(entity: SettingEntity) { map[entity.key] = entity.value ?: "" }
         override suspend fun setAll(settings: List<SettingEntity>) { settings.forEach { set(it) } }
@@ -90,7 +93,8 @@ class ChargesViewModelTest {
             lastUpdated = charge
         }
         override fun getAll(): Flow<List<ChargeEntity>> = chargesFlow
-        override suspend fun getById(id: Long): ChargeEntity? = null
+        override suspend fun getById(id: Long): ChargeEntity? =
+            chargesFlow.value.find { it.id == id }
         override fun getByDateRange(from: Long, to: Long): Flow<List<ChargeEntity>> =
             flowOf(chargesFlow.value.filter { it.startTs in from..to })
         override suspend fun getPeriodSummary(from: Long, to: Long): ChargeSummary =
@@ -109,6 +113,9 @@ class ChargesViewModelTest {
             chargesFlow.value = after
             return before.size - after.size
         }
+        override suspend fun getInRangeAsc(from: Long, to: Long): List<ChargeEntity> = emptyList()
+        override suspend fun getCompletedForPricing(until: Long): List<ChargeEntity> = emptyList()
+        override suspend fun getWithMeterReading(): List<ChargeEntity> = emptyList()
         override suspend fun deletePhantomAutoserviceRows(): Int = 0
         override suspend fun delete(charge: ChargeEntity) {
             chargesFlow.value = chargesFlow.value.filter { it.id != charge.id }
@@ -173,6 +180,9 @@ class ChargesViewModelTest {
 
     // ─── Factory ──────────────────────────────────────────────────────────────
 
+    /** Held as a field so a test can verify the re-pricing range without a new factory arg. */
+    private val costCalculator: com.bydmate.app.domain.cost.CostCalculator = mockk(relaxed = true)
+
     private fun buildViewModel(
         chargesFlow: MutableStateFlow<List<ChargeEntity>> = MutableStateFlow(emptyList()),
         autoserviceCharges: List<ChargeEntity> = emptyList(),
@@ -218,7 +228,9 @@ class ChargesViewModelTest {
         // appLocalizedContext() rebuilds a localized context via createConfigurationContext;
         // route it back to the same mock so locale ("ru") and getString stubs still apply.
         every { ctx.createConfigurationContext(any()) } returns ctx
-        return ChargesViewModel(ctx, chargeRepo, snapshotDao, settingsRepo, batteryStateRepo) to chargeDao
+        return ChargesViewModel(
+            ctx, chargeRepo, snapshotDao, settingsRepo, batteryStateRepo, costCalculator
+        ) to chargeDao
     }
 
     // ─── Helper ───────────────────────────────────────────────────────────────
@@ -506,6 +518,74 @@ class ChargesViewModelTest {
         assertEquals(1.0, vm.uiState.value.equivCycles, 0.01)
     }
 
+    /**
+     * The BMS counter covers the whole life of the car, the app's own sum only what it saw since
+     * install, so the cycles must come off the BMS wherever the car reports one (field 2026-09-18:
+     * 10 963 kWh counted against 1 557 kWh logged).
+     */
+    @Test
+    fun `loadLifetimeStats_bmsCounter_winsOverLoggedCharges`() = runTest {
+        val now = System.currentTimeMillis()
+        val vm = buildViewModel(
+            autoserviceCharges = listOf(makeCharge(1, now, kwhCharged = 1557.0, gunState = 2)),
+            batteryReading = BatteryReading(
+                sohPercent = null,
+                socPercent = null,
+                lifetimeKwh = 10963f,
+                lifetimeMileageKm = 55000f,
+                voltage12v = 14f,
+                readAtMs = 0L
+            ),
+            batteryCapacityKwh = "87"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(126.0, vm.uiState.value.equivCycles, 0.1)
+    }
+
+    /** #224: the BMS lifetime counter is divided by the average capacity nominal × (100 + SoH) / 200. */
+    @Test
+    fun `loadLifetimeStats_bmsCounter_divisorCorrectedForSoh`() = runTest {
+        val vm = buildViewModel(
+            autoserviceCharges = emptyList(),
+            batteryReading = BatteryReading(
+                sohPercent = 90f,
+                socPercent = null,
+                lifetimeKwh = 10963f,
+                lifetimeMileageKm = 55000f,
+                voltage12v = 14f,
+                readAtMs = 0L
+            ),
+            batteryCapacityKwh = "87"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(10963.0 / 82.65, vm.uiState.value.equivCycles, 0.1)
+    }
+
+    /**
+     * #224: the raw SoH reaches the divisor, as on «Техника». sohFactor drops SoH below 50 % to
+     * 1.0, which would have divided by the full nominal instead of nominal × (100 + 40) / 200.
+     */
+    @Test
+    fun `loadLifetimeStats_bmsCounter_lowSohStillCorrectsDivisor`() = runTest {
+        val vm = buildViewModel(
+            autoserviceCharges = emptyList(),
+            batteryReading = BatteryReading(
+                sohPercent = 40f,
+                socPercent = null,
+                lifetimeKwh = 10963f,
+                lifetimeMileageKm = 55000f,
+                voltage12v = 14f,
+                readAtMs = 0L
+            ),
+            batteryCapacityKwh = "87"
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(10963.0 / (87.0 * 140.0 / 200.0), vm.uiState.value.equivCycles, 0.1)
+    }
+
     @Test
     fun `loadLifetimeStats_acDcSplit_correct`() = runTest {
         val now = System.currentTimeMillis()
@@ -644,6 +724,22 @@ class ChargesViewModelTest {
         assertEquals("DC", dao.lastUpdated!!.type)
         assertEquals(null, dao.lastInserted)
         assertEquals(null, vm.uiState.value.editingCharge)
+    }
+
+    // Moving a session backwards changes the pack price between the two dates, so the trips
+    // in that gap must be re-priced as well: recalculation starts at the earlier date.
+    @Test
+    fun `onSaveEdit_movedDate_recalculatesFromTheEarlierDate`() = runTest {
+        val sep1 = 1_756_684_800_000L
+        val sep10 = sep1 + 9 * 24 * 60 * 60 * 1000L
+        val existing = makeCharge(id = 4, startTs = sep1, kwhCharged = 10.0)
+        val (vm, _) = buildViewModelAndDao(chargesFlow = MutableStateFlow(listOf(existing)))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.onSaveEdit(existing.copy(startTs = sep10))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify { costCalculator.recalculate(sep1, Long.MAX_VALUE) }
     }
 
     @Test

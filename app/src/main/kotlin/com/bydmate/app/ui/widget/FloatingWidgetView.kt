@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Battery6Bar
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.DirectionsCar
+import androidx.compose.material.icons.outlined.LocalGasStation
 import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Speed
@@ -61,9 +62,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bydmate.app.R
 import com.bydmate.app.domain.calculator.PowerSample
+import com.bydmate.app.data.nativestack.VehicleKind
 import com.bydmate.app.domain.calculator.Trend
 import com.bydmate.app.ui.components.socColor as componentsSocColor
 import com.bydmate.app.ui.theme.AccentGreen
+import com.bydmate.app.ui.theme.AccentOrange
 import com.bydmate.app.ui.theme.CardSurface
 import com.bydmate.app.ui.theme.SocRed
 import com.bydmate.app.ui.theme.SocYellow
@@ -82,6 +85,9 @@ import kotlinx.coroutines.delay
  *
  * Icons are muted gray, values are white in service rows. Km is always white
  * regardless of SOC status (only the border + SOC % + trend text colorize).
+ *
+ * DM-i hybrid (#184, [kind] HYBRID): the top right slot shows the tank level, the middle right
+ * slot the car's range on fuel; [rangeKm] then carries the car's range on battery.
  */
 @Composable
 fun FloatingWidgetView(
@@ -99,7 +105,11 @@ fun FloatingWidgetView(
     listening: Boolean = false,
     powerGraph: Boolean = false,
     powerSamples: List<PowerSample> = emptyList(),
+    kind: VehicleKind = VehicleKind.EV,
+    fuelPercent: Int? = null,
+    fuelRangeKm: Int? = null,
 ) {
+    val showFuel = widgetShowsFuel(kind)
     val status = widgetStatus(soc, voltage12v)
     val borderColor = when (status) {
         Status.OK -> AccentGreen
@@ -139,6 +149,8 @@ fun FloatingWidgetView(
                 tripDistanceKm = tripDistanceKm,
                 soc = soc,
                 rangeKm = rangeKm,
+                fuelPercent = if (showFuel) fuelPercent else null,
+                showFuel = showFuel,
             )
             WidgetDivider()
             // First 300 m of an active session: the trend stat is still based on the
@@ -153,7 +165,10 @@ fun FloatingWidgetView(
                 sessionStartedAt != null &&
                 (tripDistanceKm ?: 0.0) < TRIP_DISTANCE_TREND_THRESHOLD_KM
             ) Trend.NONE else trend
-            RowEnergy(soc = soc, rangeKm = rangeKm, consumption = consumption, trend = effectiveTrend)
+            RowEnergy(
+                soc = soc, rangeKm = rangeKm, consumption = consumption, trend = effectiveTrend,
+                fuelRangeKm = if (showFuel) fuelRangeKm else null, showFuel = showFuel,
+            )
             WidgetDivider()
             RowService(insideTemp = insideTemp, batTemp = batTemp, voltage12v = voltage12v)
             if (powerGraph) {
@@ -237,6 +252,8 @@ private fun RowEnergy(
     rangeKm: Double?,
     consumption: Double?,
     trend: Trend,
+    fuelRangeKm: Int? = null,
+    showFuel: Boolean = false,
 ) {
     val trendColor = when (trend) {
         Trend.DOWN -> AccentGreen
@@ -274,27 +291,47 @@ private fun RowEnergy(
                 modifier = Modifier.padding(bottom = 2.dp),
             )
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (trend != Trend.NONE) {
+        if (showFuel) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = when (trend) {
-                        Trend.DOWN -> Icons.Outlined.TrendingDown
-                        Trend.UP -> Icons.Outlined.TrendingUp
-                        else -> Icons.Outlined.TrendingFlat
-                    },
+                    imageVector = Icons.Outlined.LocalGasStation,
                     contentDescription = null,
-                    tint = trendColor,
+                    tint = AccentOrange,
                     modifier = Modifier.size(14.dp),
                 )
                 Spacer(Modifier.width(3.dp))
+                Text(
+                    text = widgetFuelRangeText(fuelRangeKm),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = FontFamily.Monospace,
+                    color = TextPrimary,
+                    maxLines = 1,
+                )
             }
-            Text(
-                text = consumption?.let { "%.1f".format(it) } ?: "—",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = FontFamily.Monospace,
-                color = if (trend == Trend.NONE) TextMuted else trendColor,
-            )
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (trend != Trend.NONE) {
+                    Icon(
+                        imageVector = when (trend) {
+                            Trend.DOWN -> Icons.Outlined.TrendingDown
+                            Trend.UP -> Icons.Outlined.TrendingUp
+                            else -> Icons.Outlined.TrendingFlat
+                        },
+                        contentDescription = null,
+                        tint = trendColor,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(3.dp))
+                }
+                Text(
+                    text = consumption?.let { "%.1f".format(it) } ?: "—",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = FontFamily.Monospace,
+                    color = if (trend == Trend.NONE) TextMuted else trendColor,
+                )
+            }
         }
     }
 }
@@ -305,6 +342,8 @@ private fun RowTrip(
     tripDistanceKm: Double?,
     soc: Int?,
     rangeKm: Double?,
+    fuelPercent: Int? = null,
+    showFuel: Boolean = false,
 ) {
     val context = LocalContext.current
     val durationText by produceState(initialValue = formatDurationShort(context, sessionStartedAt), sessionStartedAt) {
@@ -325,10 +364,14 @@ private fun RowTrip(
             IconText(icon = Icons.Outlined.Route, text = formatTripKm(context, tripDistanceKm))
         }
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-            IconText(
-                icon = Icons.Outlined.Speed,
-                text = formatKmPerPercent(context, widgetKmPerPercent(rangeKm, soc)),
-            )
+            if (showFuel) {
+                IconText(icon = Icons.Outlined.LocalGasStation, text = widgetFuelPercentText(fuelPercent))
+            } else {
+                IconText(
+                    icon = Icons.Outlined.Speed,
+                    text = formatKmPerPercent(context, widgetKmPerPercent(rangeKm, soc)),
+                )
+            }
         }
     }
 }
@@ -414,6 +457,15 @@ internal fun widgetKmPerPercent(rangeKm: Double?, soc: Int?): Double? {
     if (rangeKm.isNaN() || rangeKm.isInfinite() || rangeKm < 0.0) return null
     return rangeKm / soc
 }
+
+/** The fuel slots replace km/% and the consumption only on a confirmed hybrid. */
+internal fun widgetShowsFuel(kind: VehicleKind): Boolean = kind == VehicleKind.HYBRID
+
+/** Top right slot on a hybrid: the tank level as the car reports it. */
+internal fun widgetFuelPercentText(fuelPercent: Int?): String = fuelPercent?.let { "$it%" } ?: "—"
+
+/** Middle right slot on a hybrid: the car's range on fuel, km without the unit. */
+internal fun widgetFuelRangeText(fuelRangeKm: Int?): String = fuelRangeKm?.toString() ?: "—"
 
 internal fun formatKmPerPercent(context: Context, value: Double?): String {
     if (value == null) return "—"

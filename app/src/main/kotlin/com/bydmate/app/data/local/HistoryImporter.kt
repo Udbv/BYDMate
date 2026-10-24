@@ -2,15 +2,24 @@ package com.bydmate.app.data.local
 
 import android.content.Context
 import android.util.Log
+import com.bydmate.app.data.local.dao.CounterSnapshotDao
 import com.bydmate.app.data.local.dao.IdleDrainDao
+import com.bydmate.app.data.local.dao.LastStateDao
 import com.bydmate.app.data.local.dao.TripDao
 import com.bydmate.app.data.local.dao.TripPointDao
 import com.bydmate.app.data.local.dao.TripTombstoneDao
 import com.bydmate.app.data.local.entity.IdleDrainEntity
 import com.bydmate.app.data.local.entity.TripEntity
+import com.bydmate.app.data.nativestack.VehicleKind
+import com.bydmate.app.data.nativestack.VehicleKindMonitor
 import com.bydmate.app.data.repository.LastSessionRepository
+import com.bydmate.app.data.repository.OdometerMarks
 import com.bydmate.app.data.repository.SettingsRepository
 import com.bydmate.app.data.repository.TripRepository
+import com.bydmate.app.data.trips.CounterSnapshotWriter
+import com.bydmate.app.data.trips.TripFuel
+import com.bydmate.app.domain.cost.CostCalculator
+import com.bydmate.app.service.TrackingService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
@@ -19,7 +28,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class HistoryImporter @Inject constructor(
+class HistoryImporter @Inject @Suppress("LongParameterList") constructor( // Hilt-injected dependencies
     @ApplicationContext private val context: Context,
     private val energyDataReader: EnergyDataReader,
     private val tripRepository: TripRepository,
@@ -29,6 +38,12 @@ class HistoryImporter @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val lastSessionRepository: LastSessionRepository,
     private val tripTombstoneDao: TripTombstoneDao,
+    private val costCalculator: CostCalculator,
+    private val odometerMarks: OdometerMarks,
+    private val vehicleKind: VehicleKindMonitor,
+    private val counterSnapshotDao: CounterSnapshotDao,
+    private val counterSnapshotWriter: CounterSnapshotWriter,
+    private val lastStateDao: LastStateDao,
 ) {
     companion object {
         private const val TAG = "HistoryImporter"
@@ -37,6 +52,35 @@ class HistoryImporter @Inject constructor(
         // Mirror of TrackingService.SESSION_IDLE_CLOSE_MS — the idle gap after which an
         // open SOC session is considered finished and promotable to a completed bookmark.
         private const val PENDING_SESSION_IDLE_CLOSE_MS = 10_000L
+
+        /** A counter snapshot belongs to a trip edge only this close to it (DM-i, #184). */
+        internal const val COUNTER_EDGE_WINDOW_MS = 90_000L
+
+        /** Only trips this recent are offered counters; snapshots are kept 90 days, so it is safe. */
+        internal const val COUNTER_ATTACH_LOOKBACK_MS = 7L * 24 * 60 * 60 * 1000
+
+        /** A just-finished trip may borrow the live outside temperature; an older one may not. */
+        internal const val FRESH_TEMP_WINDOW_MS = 10 * 60 * 1000L
+
+        /**
+         * Outside temperature to store on an imported energydata trip. energydata itself
+         * carries no temperature, so the only honest source is the live snapshot — and only
+         * while the drive has just ended; anything older gets null instead of a wrong number.
+         */
+        internal fun importedExteriorTemp(endTsMs: Long, nowMs: Long, liveTemp: Int?): Int? =
+            liveTemp?.takeIf { nowMs >= endTsMs && nowMs - endTsMs <= FRESH_TEMP_WINDOW_MS }
+
+        /**
+         * End temperature for an imported trip: the reading the matched driving session
+         * recorded while the car was on, else the live-snapshot fallback above (which only
+         * fires for a drive that has just ended).
+         */
+        internal fun importedTempEnd(
+            sessionTemp: Int?,
+            endTsMs: Long,
+            nowMs: Long,
+            liveTemp: Int?,
+        ): Int? = sessionTemp ?: importedExteriorTemp(endTsMs, nowMs, liveTemp)
     }
 
     private val syncMutex = Mutex()
@@ -108,7 +152,15 @@ class HistoryImporter @Inject constructor(
         var tripsImported = 0
         var idleDrainsImported = 0
         var skippedDuplicate = 0
+        var implausibleKwh = 0
+        var tempFromSession = 0
         var maxTs = lastImportTs
+        val capacity = settingsRepository.getBatteryCapacity()
+        // One read of the live snapshot for the whole batch: the drive that just ended is the
+        // only one close enough in time for this temperature to belong to it.
+        val nowMs = System.currentTimeMillis()
+        val liveExteriorTemp = TrackingService.lastData.value?.exteriorTemp
+        val marks = odometerMarks.snapshot()
 
         for (byd in bydRecords) {
             val startTsMs = byd.startTimestamp * 1000L
@@ -139,13 +191,18 @@ class HistoryImporter @Inject constructor(
                 startTsMs + DEDUP_WINDOW_MS
             )
             if (existingByTime != null) {
-                // Update existing trip with byd_id so future syncs skip it instantly
-                val per100 = if (byd.tripKm > 0) byd.electricityKwh / byd.tripKm * 100.0 else null
+                // Update existing trip with byd_id so future syncs skip it instantly.
+                // The copy keeps its odometer: the km changes, the readings do not.
+                val kwh = saneKwh(
+                    byd.id, byd.electricityKwh, byd.tripKm,
+                    existingByTime.socStart, existingByTime.socEnd, capacity)
+                if (kwh != byd.electricityKwh) implausibleKwh++
+                val per100 = TripEnergySanity.per100For(kwh, byd.tripKm)
                 tripRepository.updateTrip(existingByTime.copy(
                     source = "energydata",
                     bydId = byd.id,
                     distanceKm = byd.tripKm,
-                    kwhConsumed = byd.electricityKwh,
+                    kwhConsumed = kwh,
                     kwhPer100km = per100
                 ))
                 skippedDuplicate++
@@ -155,20 +212,28 @@ class HistoryImporter @Inject constructor(
             val isIdleDrain = byd.tripKm == 0.0
 
             if (isIdleDrain) {
+                // Same bound as the trip copy below; at zero km only the negative and absolute
+                // rules can fire, and a drain record has no SOC pair to fall back on. The
+                // parking window is kept either way (the hours statistics live off the
+                // timestamps) — only the impossible kWh is dropped, exactly as the one-time
+                // repair does for records already on disk.
+                val drainKwh = if (TripEnergySanity.isPlausible(byd.electricityKwh, 0.0)) {
+                    byd.electricityKwh
+                } else {
+                    Log.w(TAG, "energydata kwh implausible: id=${byd.id} " +
+                        "kwh=${byd.electricityKwh} km=0 -> cleared (idle)")
+                    implausibleKwh++
+                    null
+                }
                 idleDrainDao.insert(
                     IdleDrainEntity(
                         startTs = startTsMs,
                         endTs = endTsMs,
-                        kwhConsumed = byd.electricityKwh
+                        kwhConsumed = drainKwh
                     )
                 )
                 idleDrainsImported++
             }
-
-            // Insert all records (including zero-km) as trips for visibility
-            val kwhPer100km = if (byd.tripKm > 0) {
-                byd.electricityKwh / byd.tripKm * 100.0
-            } else null
 
             // avgSpeedKmh: pure computation from energydata distance + duration.
             val avgSpeed = if (byd.duration > 0 && byd.tripKm > 0) {
@@ -183,17 +248,38 @@ class HistoryImporter @Inject constructor(
             val sessionMatch = lastSessionRepository.takeMatch(endTsMs)
             val socStart = sessionMatch?.startSoc
             val socEnd = sessionMatch?.endSoc
+            // The session bookmark carries the outside temperature too — energydata has
+            // none, and the live fid is only readable while the car is on.
+            val tempStart = sessionMatch?.startExteriorTemp
+            val tempEnd = importedTempEnd(
+                sessionMatch?.endExteriorTemp, endTsMs, nowMs, liveExteriorTemp)
+            if (tempStart != null || sessionMatch?.endExteriorTemp != null) tempFromSession++
+
+            // energydata has no odometer either: the finish comes from the live marks.
+            val odo = OdometerMarks.match(marks, startTsMs, endTsMs, byd.tripKm)
+            Log.i(TAG, "import odo: byd=${byd.id} end=$endTsMs mark=${odo.markChangeTs ?: "-"} " +
+                "finish=${odo.finishKm ?: "-"} start=${odo.startKm ?: "-"} (${odo.reason})")
+
+            // Insert all records (including zero-km) as trips for visibility. The SOC pair
+            // read above is what the sanity bound falls back on when BYD's own kWh is impossible.
+            val kwh = saneKwh(byd.id, byd.electricityKwh, byd.tripKm, socStart, socEnd, capacity)
+            if (kwh != byd.electricityKwh) implausibleKwh++
+            val kwhPer100km = TripEnergySanity.per100For(kwh, byd.tripKm)
 
             tripRepository.insertTrip(
                 TripEntity(
                     startTs = startTsMs,
                     endTs = endTsMs,
                     distanceKm = byd.tripKm,
-                    kwhConsumed = byd.electricityKwh,
+                    kwhConsumed = kwh,
                     kwhPer100km = kwhPer100km,
                     avgSpeedKmh = avgSpeed,
                     socStart = socStart,
                     socEnd = socEnd,
+                    exteriorTemp = tempStart,
+                    exteriorTempEnd = tempEnd,
+                    odometerStartKm = odo.startKm,
+                    odometerEndKm = odo.finishKm,
                     source = "energydata",
                     bydId = byd.id
                 )
@@ -203,7 +289,10 @@ class HistoryImporter @Inject constructor(
 
         settingsRepository.setLastEnergyImportTs(maxTs)
 
-        Log.d(TAG, "Sync done: $tripsImported trips, $idleDrainsImported idle, $skippedDuplicate dups")
+        Log.d(TAG, "Sync done: $tripsImported trips, $idleDrainsImported idle, $skippedDuplicate dups, " +
+            "$implausibleKwh implausible kwh")
+        Log.i(TAG, "import temp: from_session=$tempFromSession/$tripsImported " +
+            "live=${liveExteriorTemp ?: "-"} window=${FRESH_TEMP_WINDOW_MS / 60_000}min")
         return ImportResult(
             trips = tripsImported,
             idleDrains = idleDrainsImported,
@@ -212,18 +301,128 @@ class HistoryImporter @Inject constructor(
     }
 
     /**
-     * Calculate cost for trips that have kWh but no cost yet.
+     * Sanity gate for every energydata kWh copied into a trip: BYD sometimes writes a value
+     * this battery cannot deliver, and one such record blows up the week/month statistics
+     * (VadimV, 2026-09-12). Returns the value to store and logs each replacement.
      */
-    suspend fun calculateMissingCosts(tariff: Double) {
-        try {
-            val trips = tripDao.getTripsWithoutCost()
-            var calculated = 0
-            for (trip in trips) {
-                val kwh = trip.kwhConsumed ?: continue
-                tripRepository.updateTrip(trip.copy(cost = kwh * tariff))
-                calculated++
+    private fun saneKwh(
+        bydId: Long?,
+        raw: Double,
+        km: Double?,
+        socStart: Int?,
+        socEnd: Int?,
+        capacity: Double,
+    ): Double? {
+        // DM-i: the engine charges the pack on the way, so a SOC delta is no trip figure.
+        val sane = if (vehicleKind.kind.value == VehicleKind.HYBRID) {
+            raw.takeIf { TripEnergySanity.isPlausible(it, km) }
+        } else {
+            TripEnergySanity.kwhFor(raw, km, socStart, socEnd, capacity)
+        }
+        if (sane != raw) {
+            Log.w(TAG, "energydata kwh implausible: id=$bydId kwh=$raw km=$km " +
+                "soc=$socStart->$socEnd -> ${sane ?: "null"}")
+        }
+        return sane
+    }
+
+    /**
+     * One-time repair of trips stored before the plausibility bound existed: an impossible
+     * kWh value becomes the SOC-delta estimate, or is cleared when SOC is unknown. Cost is
+     * dropped so calculateMissingCosts() recomputes it. Idle drains keep their parking window
+     * (the hours statistics live off the timestamps) and only lose the impossible kWh.
+     * Runs once, sets the sanity flag.
+     */
+    suspend fun repairImplausibleKwh(): Int {
+        if (settingsRepository.isEnergyKwhSanityDone()) return 0
+
+        return try {
+            val allTrips = tripDao.getAllSnapshot()
+            val capacity = settingsRepository.getBatteryCapacity()
+            var repaired = 0
+            var examined = 0
+
+            for (trip in allTrips) {
+                // Only BYD's own records: a NATIVE_POLLING trip carries TripRecorder's own
+                // counter delta, which this bound knows nothing about.
+                if (trip.source != "energydata") continue
+                examined++
+                val raw = trip.kwhConsumed ?: continue
+                val sane = saneKwh(
+                    trip.bydId, raw, trip.distanceKm, trip.socStart, trip.socEnd, capacity)
+                if (sane == raw) continue
+                tripRepository.updateTrip(trip.copy(
+                    kwhConsumed = sane,
+                    kwhPer100km = TripEnergySanity.per100For(sane, trip.distanceKm),
+                    cost = null // will be recalculated by calculateMissingCosts()
+                ))
+                repaired++
             }
-            Log.d(TAG, "calculateMissingCosts: $calculated trips, tariff=$tariff")
+
+            var repairedIdle = 0
+            for (drain in idleDrainDao.getAll()) {
+                val raw = drain.kwhConsumed ?: continue
+                if (TripEnergySanity.isPlausible(raw, 0.0)) continue
+                Log.w(TAG, "energydata kwh implausible: id=${drain.id} kwh=$raw km=0 -> cleared (idle)")
+                idleDrainDao.update(drain.copy(kwhConsumed = null))
+                repairedIdle++
+            }
+
+            settingsRepository.setEnergyKwhSanityDone()
+            Log.i(TAG, "energydata kwh sanity: repaired $repaired/$examined trips, $repairedIdle idle")
+            repaired
+        } catch (e: Exception) {
+            Log.e(TAG, "energydata kwh sanity failed", e)
+            0
+        }
+    }
+
+    /**
+     * Fill the odometer of energydata trips imported before their marks were usable (an
+     * earlier sync in the same window). Only trips inside the marks window qualify, so old
+     * history is never backfilled; a known odometer is never overwritten.
+     */
+    suspend fun fillOdometerFromMarks() {
+        try {
+            val marks = odometerMarks.snapshot()
+            val since = marks.minOfOrNull { it.processStartTs } ?: return
+            var filled = 0
+            val candidates = tripDao.getAllSnapshot().filter {
+                it.source == "energydata" && (it.endTs ?: 0L) >= since &&
+                    it.odometerStartKm == null && it.odometerEndKm == null
+            }
+            for (trip in candidates) {
+                if (fillOdometer(trip, marks)) filled++
+            }
+            if (filled > 0) Log.i(TAG, "fillOdometerFromMarks: $filled trips")
+        } catch (e: Exception) {
+            Log.e(TAG, "fillOdometerFromMarks failed", e)
+        }
+    }
+
+    /** True when the row was actually written. */
+    private suspend fun fillOdometer(trip: TripEntity, marks: List<OdometerMarks.Mark>): Boolean {
+        val endTs = trip.endTs ?: return false
+        val odo = OdometerMarks.match(marks, trip.startTs, endTs, trip.distanceKm)
+        if (odo.finishKm == null) return false
+        // Conditional write: a sync or a cost recalculation since the snapshot is kept.
+        if (tripDao.fillOdometerIfEmpty(trip.id, odo.startKm, odo.finishKm) == 0) return false
+        Log.i(TAG, "fill odo: trip=${trip.id} end=$endTs mark=${odo.markChangeTs} " +
+            "finish=${odo.finishKm} start=${odo.startKm ?: "-"} (${odo.reason})")
+        return true
+    }
+
+    /**
+     * Calculate cost for trips that have kWh but no cost yet. Each trip is priced by the
+     * tariff period covering its own date, so a backfilled import lands at the rate that
+     * was in force back then, not at today's one.
+     */
+    suspend fun calculateMissingCosts() {
+        try {
+            val hybrid = vehicleKind.kind.value == VehicleKind.HYBRID
+            val trips = if (hybrid) tripDao.getHybridTripsWithoutCost() else tripDao.getTripsWithoutCost()
+            val calculated = costCalculator.priceUncostedTrips(trips)
+            Log.d(TAG, "calculateMissingCosts: $calculated trips")
         } catch (e: Exception) {
             Log.e(TAG, "calculateMissingCosts failed", e)
         }
@@ -248,6 +447,39 @@ class HistoryImporter @Inject constructor(
     }
 
     /**
+     * DM-i only: gives energydata trips the fuel counters of a snapshot pair taken at their own
+     * start and end (within ±[COUNTER_EDGE_WINDOW_MS]). No pair, no litres: a snapshot further
+     * away is never used and litres are never spread between trips.
+     */
+    suspend fun attachCounters() {
+        if (vehicleKind.kind.value != VehicleKind.HYBRID) return
+        try {
+            var attached = 0
+            val since = System.currentTimeMillis() - COUNTER_ATTACH_LOOKBACK_MS
+            for (trip in tripDao.getEnergyDataTripsWithoutCounters(since)) {
+                val endTs = trip.endTs ?: continue
+                val start = counterSnapshotDao.nearest(trip.startTs, COUNTER_EDGE_WINDOW_MS) ?: continue
+                val end = counterSnapshotDao.nearest(endTs, COUNTER_EDGE_WINDOW_MS) ?: continue
+                if (end.ts <= start.ts) continue
+                tripDao.update(
+                    trip.copy(
+                        fuelLiters = TripFuel.liters(start.fuelTotal, end.fuelTotal),
+                        hevKm = TripFuel.hevKm(start.mileageHev, end.mileageHev, trip.distanceKm),
+                        fuelTotalStart = start.fuelTotal,
+                        fuelTotalEnd = end.fuelTotal,
+                        mileageHevStart = start.mileageHev,
+                        mileageHevEnd = end.mileageHev,
+                    )
+                )
+                attached++
+            }
+            Log.d(TAG, "attachCounters: $attached trips")
+        } catch (e: Exception) {
+            Log.e(TAG, "attachCounters failed", e)
+        }
+    }
+
+    /**
      * Deduplicate existing v1.x live-tracked trips with energydata records.
      * Used during v1.x → v2.0 upgrade.
      */
@@ -255,6 +487,7 @@ class HistoryImporter @Inject constructor(
         try {
             val bydRecords = energyDataReader.readTrips()
             val liveTrips = tripDao.getLiveTrips()
+            val capacity = settingsRepository.getBatteryCapacity()
             var updated = 0
             var inserted = 0
 
@@ -277,26 +510,29 @@ class HistoryImporter @Inject constructor(
 
                 if (match != null) {
                     // Update existing trip with energydata ID + authoritative BMS values
-                    val per100 = if (byd.tripKm > 0) byd.electricityKwh / byd.tripKm * 100.0 else null
+                    val kwh = saneKwh(
+                        byd.id, byd.electricityKwh, byd.tripKm,
+                        match.socStart, match.socEnd, capacity)
+                    val per100 = TripEnergySanity.per100For(kwh, byd.tripKm)
                     tripRepository.updateTrip(match.copy(
                         source = "energydata",
                         bydId = byd.id,
                         distanceKm = byd.tripKm,
-                        kwhConsumed = byd.electricityKwh,
+                        kwhConsumed = kwh,
                         kwhPer100km = per100
                     ))
                     updated++
                 } else {
                     // Insert as new energydata trip
-                    val kwhPer100km = if (byd.tripKm > 0) {
-                        byd.electricityKwh / byd.tripKm * 100.0
-                    } else null
+                    val kwh = saneKwh(
+                        byd.id, byd.electricityKwh, byd.tripKm, null, null, capacity)
+                    val kwhPer100km = TripEnergySanity.per100For(kwh, byd.tripKm)
 
                     tripRepository.insertTrip(TripEntity(
                         startTs = startTsMs,
                         endTs = endTsMs,
                         distanceKm = byd.tripKm,
-                        kwhConsumed = byd.electricityKwh,
+                        kwhConsumed = kwh,
                         kwhPer100km = kwhPer100km,
                         source = "energydata",
                         bydId = byd.id
@@ -378,6 +614,12 @@ class HistoryImporter @Inject constructor(
      */
     suspend fun recalculateConsumptionFromEnergyData(): Int {
         if (settingsRepository.isConsumptionRecalcDone()) return 0
+        // No folder (Song, Atto: #301): nothing to recalculate, not a failure. The flag stays unset,
+        // so a Leopard 3 whose folder is only missing right now still gets its recalculation.
+        if (!energyDataReader.energyDataDir().exists()) {
+            Log.d(TAG, "recalculateConsumption: no energydata directory, skipped")
+            return 0
+        }
 
         return try {
             val bydRecords = energyDataReader.readTrips()
@@ -388,6 +630,7 @@ class HistoryImporter @Inject constructor(
             }
 
             val allTrips = tripDao.getAllSnapshot()
+            val capacity = settingsRepository.getBatteryCapacity()
             var updated = 0
 
             for (trip in allTrips) {
@@ -403,10 +646,10 @@ class HistoryImporter @Inject constructor(
                 } ?: continue
 
                 val oldKwh = trip.kwhConsumed
-                val newKwh = match.electricityKwh
-                val newPer100 = if ((trip.distanceKm ?: 0.0) > 0) {
-                    newKwh / trip.distanceKm!! * 100.0
-                } else null
+                val newKwh = saneKwh(
+                    match.id, match.electricityKwh, trip.distanceKm,
+                    trip.socStart, trip.socEnd, capacity)
+                val newPer100 = TripEnergySanity.per100For(newKwh, trip.distanceKm)
 
                 // Only update if values actually differ
                 if (oldKwh != newKwh) {
@@ -464,10 +707,24 @@ class HistoryImporter @Inject constructor(
      * Unified sync entry point — always uses energydata pipeline.
      */
     suspend fun runSync(): ImportResult {
+        // runSync starts at app and service start, before the poll loop has loaded the cached car
+        // type: an UNKNOWN kind would SOC-repair a hybrid trip's kWh for good. Then (DM-i) the end
+        // edge of the trip that ended at power-off, before attachCounters() looks for it.
+        runCatching { vehicleKind.awaitCache() }
+            .onFailure { Log.w(TAG, "vehicle kind cache load failed", it) }
+        val kind = vehicleKind.kind.value
+        if (kind == VehicleKind.HYBRID) {
+            runCatching { counterSnapshotWriter.onColdStart(lastStateDao.getCurrent(), kind) }
+                .onFailure { Log.w(TAG, "CounterSnapshotWriter.onColdStart failed", it) }
+        }
         cleanupIdleDrainV2()
         val r = syncFromEnergyData()
         recalculateConsumptionFromEnergyData()
-        calculateMissingCosts(settingsRepository.getTripCostTariff())
+        repairImplausibleKwh()
+        fillOdometerFromMarks()
+        // Before the costs: a trip priced without its litres is never priced again.
+        attachCounters()
+        calculateMissingCosts()
         attachGpsPoints()
         return r
     }

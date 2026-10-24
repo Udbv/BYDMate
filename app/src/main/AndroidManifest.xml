@@ -30,6 +30,12 @@
     <uses-permission
         android:name="android.permission.READ_LOGS"
         tools:ignore="ProtectedPermissions" />
+    <!-- Development permission, self-granted over ADB (pm grant) while the classic port is
+         still alive. Needed to turn Android's own wireless debugging back on after a reboot
+         on firmwares that no longer keep port 5555 open (see AdbRestoreManager). -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
 
     <!-- The camera permission is for the head unit's own cameras; the app runs fine without one. -->
     <uses-feature
@@ -133,6 +139,7 @@
             <intent-filter android:priority="9900">
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.USER_PRESENT" />
                 <!-- Sent by bydmate_helper (shell uid) after the Android 10 a11y recovery force-stop:
                      TrackingService is not exported, an explicit broadcast to this receiver is the
@@ -149,6 +156,16 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="${applicationId}.CLUSTER_PROBE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Diagnostic fid recorder (scripts/fid-record.sh). Exported like the cluster probe and
+             gated to -test/debug builds inside the receiver. -->
+        <receiver
+            android:name=".data.push.FidRecorderReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.bydmate.app.FID_RECORD" />
             </intent-filter>
         </receiver>
 

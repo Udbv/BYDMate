@@ -2,6 +2,10 @@ package com.bydmate.app.ui.tech
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bydmate.app.data.nativestack.VehicleKind
+import com.bydmate.app.data.nativestack.VehicleKindMonitor
+import com.bydmate.app.data.repository.ChargeRepository
+import com.bydmate.app.data.repository.SettingsRepository
 import com.bydmate.app.domain.battery.AvgSocProvider
 import com.bydmate.app.domain.battery.BatteryStateRepository
 import com.bydmate.app.service.TrackingService
@@ -24,8 +28,14 @@ data class TechPanelUiState(
     val autoserviceOnline: Boolean? = null,
     /** Key of the single open «?» hint, null when none is open. */
     val openHint: String? = null,
+    /** Cards in the order they are drawn, hidden ones included. */
+    val cardOrder: List<TechCard> = TechCardOrder.DEFAULT,
+    /** Shown until the driver drags a card for the first time. */
+    val showOrderHint: Boolean = false,
     // Батарея · сейчас
     val soc: Int? = null,
+    /** Energy left in the pack as the BMS reports it, kWh — not derived from SoC. */
+    val remainKwh: Double? = null,
     val soh: Float? = null,
     val batTemp: Int? = null,
     val hvVoltage: Int? = null,
@@ -36,6 +46,7 @@ data class TechPanelUiState(
     val insulationKohm: Int? = null,
     // Лимиты BMS + Ячейки
     val bmsMaxChargeKw: Double? = null,
+    val bmsMaxDischargeAllowKw: Double? = null,
     val bmsMaxDischargeKw: Int? = null,
     val cellMin: Double? = null,
     val cellMax: Double? = null,
@@ -46,6 +57,8 @@ data class TechPanelUiState(
     val inverterTempRear: Int? = null,
     val motorRpmFront: Int? = null,
     val motorRpmRear: Int? = null,
+    val motorCurrentFront: Float? = null,
+    val motorCurrentRear: Float? = null,
     val pedalAccel: Int? = null,
     val pedalBrake: Int? = null,
     // Климат
@@ -67,7 +80,23 @@ data class TechPanelUiState(
     val lifetimeKwh: Float? = null,
     val avgSocSinceCharge: Int? = null,
     val avgSocAllTime: Int? = null,
+    /** Everything the app has ever seen charged into the pack, kWh; null until the first session. */
+    val lifetimeChargedKwh: Double? = null,
+    /** Pack size from settings, the divisor of the full-cycle count. */
+    val nominalCapacityKwh: Double = 0.0,
+    // DM-i hybrid (#184): the car's own fuel readings, polled only on a confirmed hybrid.
+    val vehicleKind: VehicleKind = VehicleKind.UNKNOWN,
+    val engineRpm: Int? = null,
+    val fuelPercent: Int? = null,
+    val fuelRangeKm: Int? = null,
+    val evRangeKm: Int? = null,
+    val mileageHevKm: Int? = null,
+    val mileageEvKm: Int? = null,
+    val fuelTotalL: Double? = null,
 ) {
+    val isHybrid: Boolean
+        get() = vehicleKind == VehicleKind.HYBRID
+
     val cellDelta: Double?
         get() = if (cellMin != null && cellMax != null) cellMax - cellMin else null
 
@@ -82,27 +111,54 @@ data class TechPanelUiState(
         } else null
 
     val showBatteryNow: Boolean
-        get() = anyOf(soc, soh, batTemp, hvVoltage, powerKw, batteryPowerW, voltage12v, insulationKohm)
+        get() = anyOf(
+            soc, remainKwh, soh, batTemp, hvVoltage, powerKw, batteryPowerW,
+            voltage12v, insulationKohm,
+        )
     val showLimitsAndCells: Boolean
-        get() = anyOf(bmsMaxChargeKw, bmsMaxDischargeKw, cellMin, cellMax)
+        get() = anyOf(bmsMaxChargeKw, bmsMaxDischargeAllowKw, bmsMaxDischargeKw, cellMin, cellMax)
     val showMotors: Boolean
         get() = anyOf(
             motorTempFront, motorTempRear, inverterTempFront, inverterTempRear,
             motorRpmFront, motorRpmRear, pedalAccel, pedalBrake,
+            motorCurrentFront, motorCurrentRear, engineRpm,
         )
     val showClimate: Boolean
         get() = anyOf(compressorW, acStatus, insideTemp, exteriorTemp)
+    val showFuel: Boolean
+        get() = isHybrid && anyOf(
+            fuelPercent, fuelRangeKm, evRangeKm, engineRpm, mileageHevKm, mileageEvKm, fuelTotalL,
+        )
     val showTyres: Boolean
         get() = anyOf(
             tirePressFL, tirePressFR, tirePressRL, tirePressRR,
             tyreTempFL, tyreTempFR, tyreTempRL, tyreTempRR,
         )
     val showHistory: Boolean
-        get() = anyOf(lifetimeKm, lifetimeKwh, avgSocSinceCharge, avgSocAllTime)
+        get() = anyOf(
+            lifetimeKm, lifetimeKwh, avgSocSinceCharge, avgSocAllTime,
+            // The «Полных циклов» row lives here; a car that logged charges but answers no
+            // lifetime counter still has a number to show. A zero sum has nothing to divide.
+            lifetimeChargedKwh?.takeIf { it > 0.0 },
+        )
+
+    /** [cardOrder] without the cards this car has no data for. */
+    val visibleCards: List<TechCard>
+        get() = cardOrder.filter { isVisible(it) }
+
+    fun isVisible(card: TechCard): Boolean = when (card) {
+        TechCard.BATTERY_NOW -> showBatteryNow
+        TechCard.LIMITS -> showLimitsAndCells
+        TechCard.HISTORY -> showHistory
+        TechCard.MOTORS -> showMotors
+        TechCard.CLIMATE -> showClimate
+        TechCard.TYRES -> showTyres
+        TechCard.FUEL -> showFuel
+    }
 
     val hasAnyCard: Boolean
         get() = showBatteryNow || showLimitsAndCells || showMotors ||
-            showClimate || showTyres || showHistory
+            showClimate || showTyres || showHistory || showFuel
 
     private fun anyOf(vararg values: Any?): Boolean = values.any { it != null }
 }
@@ -114,10 +170,21 @@ data class TechPanelUiState(
  */
 internal fun rpmForDisplay(raw: Int?): Int? = raw?.let { if (it in -1..0) 0 else it }
 
+/**
+ * Some cars never fill the remaining-energy fid and answer a flat 0 (a hybrid at SoC 39%, no push
+ * event in 12 minutes). A pack that still holds charge cannot be empty, so 0 next to a SoC above
+ * zero is "no data" and renders as «—». Nothing is derived from SoC in its place.
+ */
+internal fun remainKwhForDisplay(remainKwh: Double?, soc: Int?): Double? =
+    remainKwh?.takeUnless { it <= 0.0 && soc != null && soc > 0 }
+
 @HiltViewModel
 class TechPanelViewModel @Inject constructor(
     private val batteryStateRepository: BatteryStateRepository,
     private val avgSocProvider: AvgSocProvider,
+    private val settingsRepository: SettingsRepository,
+    private val chargeRepository: ChargeRepository,
+    private val vehicleKindMonitor: VehicleKindMonitor,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TechPanelUiState())
@@ -127,11 +194,42 @@ class TechPanelViewModel @Inject constructor(
         observeLiveData()
         viewModelScope.launch { loadBatteryState() }
         viewModelScope.launch { loadAvgSoc() }
+        viewModelScope.launch { loadCardOrder() }
+        viewModelScope.launch { loadFullCycles() }
+        viewModelScope.launch {
+            vehicleKindMonitor.kind.collect { kind ->
+                _uiState.update { it.copy(vehicleKind = kind, cardOrder = TechCardOrder.forKind(it.cardOrder, kind)) }
+            }
+        }
     }
 
     /** One open hint at a time: tapping the open one closes it, any other replaces it. */
     fun toggleHint(key: String) {
         _uiState.update { it.copy(openHint = if (it.openHint == key) null else key) }
+    }
+
+    /**
+     * Drops [moved] into [target]'s place and persists the new order. The first completed drag
+     * also retires the hint: the driver has just proved they know the gesture. Later drags leave
+     * the flag alone — it is already set.
+     */
+    fun moveCard(moved: TechCard, target: TechCard) {
+        val next = TechCardOrder.move(_uiState.value.cardOrder, moved, target)
+        if (next == _uiState.value.cardOrder) return
+        val retireHint = _uiState.value.showOrderHint
+        _uiState.update { it.copy(cardOrder = next, showOrderHint = false) }
+        viewModelScope.launch {
+            settingsRepository.setTechCardOrder(TechCardOrder.serialize(next))
+            if (retireHint) settingsRepository.setTechOrderHintSeen()
+        }
+    }
+
+    private suspend fun loadCardOrder() {
+        val order = TechCardOrder.parse(settingsRepository.getTechCardOrder())
+        val hintSeen = settingsRepository.isTechOrderHintSeen()
+        _uiState.update {
+            it.copy(cardOrder = TechCardOrder.forKind(order, it.vehicleKind), showOrderHint = !hintSeen)
+        }
     }
 
     private fun observeLiveData() {
@@ -146,6 +244,7 @@ class TechPanelViewModel @Inject constructor(
                         it.copy(
                             autoserviceOnline = connected,
                             soc = data?.soc,
+                            remainKwh = remainKwhForDisplay(data?.batteryRemainKwh, data?.soc),
                             batTemp = data?.avgBatTemp,
                             hvVoltage = data?.hvVoltage,
                             powerKw = data?.power,
@@ -154,6 +253,7 @@ class TechPanelViewModel @Inject constructor(
                             voltage12v = data?.voltage12v,
                             insulationKohm = data?.insulationKohm,
                             bmsMaxChargeKw = data?.bmsMaxChargeKw,
+                            bmsMaxDischargeAllowKw = data?.bmsMaxDischargeAllowKw,
                             bmsMaxDischargeKw = data?.bmsMaxDischargeKw,
                             cellMin = data?.minCellVoltage,
                             cellMax = data?.maxCellVoltage,
@@ -163,6 +263,8 @@ class TechPanelViewModel @Inject constructor(
                             inverterTempRear = data?.inverterTempRear,
                             motorRpmFront = data?.motorRpmFront,
                             motorRpmRear = data?.motorRpmRear,
+                            motorCurrentFront = data?.motorCurrentFront,
+                            motorCurrentRear = data?.motorCurrentRear,
                             pedalAccel = data?.pedalAccel,
                             pedalBrake = data?.pedalBrake,
                             compressorW = data?.compressorW,
@@ -177,6 +279,13 @@ class TechPanelViewModel @Inject constructor(
                             tyreTempFR = data?.tyreTempFR,
                             tyreTempRL = data?.tyreTempRL,
                             tyreTempRR = data?.tyreTempRR,
+                            engineRpm = data?.engineRpm,
+                            fuelPercent = data?.fuelPercent,
+                            fuelRangeKm = data?.fuelRangeKm,
+                            evRangeKm = data?.evRangeKm,
+                            mileageHevKm = data?.mileageHevKm,
+                            mileageEvKm = data?.mileageEvKm,
+                            fuelTotalL = data?.fuelTotalL,
                         )
                     }
                 }
@@ -200,6 +309,19 @@ class TechPanelViewModel @Inject constructor(
                     lifetimeKwh = state.lifetimeKwh,
                 )
             }
+        }
+    }
+
+    /**
+     * Lifetime charged kWh for the «Полных циклов» row — the app's own sum of logged sessions,
+     * read once on open. Only the fallback divisor: a car that reports a BMS lifetime counter
+     * uses that instead, and one with neither keeps the dash.
+     */
+    private suspend fun loadFullCycles() {
+        val nominal = runCatching { settingsRepository.getBatteryCapacity() }.getOrNull() ?: return
+        val stats = runCatching { chargeRepository.getLifetimeStats() }.getOrNull()
+        _uiState.update {
+            it.copy(lifetimeChargedKwh = stats?.totalKwhAdded, nominalCapacityKwh = nominal)
         }
     }
 

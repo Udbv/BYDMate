@@ -8,6 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.location.Location
+import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -22,7 +24,10 @@ import com.bydmate.app.data.local.entity.RuleLogEntity
 import com.bydmate.app.data.local.entity.TriggerDef
 import com.bydmate.app.data.remote.DiParsData
 import com.bydmate.app.R
+import com.bydmate.app.util.AppStrings
 import com.bydmate.app.data.repository.PlaceRepository
+import com.bydmate.app.data.telegram.withReportRuleName
+import com.bydmate.app.diagnostics.Trace
 import com.bydmate.app.service.TrackingService
 import com.bydmate.app.ui.overlay.OverlayNotificationManager
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -32,6 +37,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
@@ -39,19 +46,23 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class AutomationEngine @Inject constructor(
+class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hilt-injected dependencies
     private val ruleDao: RuleDao,
     private val ruleLogDao: RuleLogDao,
     private val actionDispatcher: ActionDispatcher,
     private val placeRepository: PlaceRepository,
     private val networkAvailableMonitor: NetworkAvailableMonitor,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val appStrings: AppStrings,
 ) {
     companion object {
         private const val TAG = "AutomationEngine"
         private const val CONFIRM_CHANNEL_ID = "bydmate_automation_confirm"
         private const val CONFIRM_TIMEOUT_MS = 30_000L
         private const val NOTIF_BASE_ID = 5000
+        // Trace `src=` of the edges that do not come from a manual trigger kind.
+        private const val SRC_POLL = "poll"
+        private const val SRC_VOICE = "voice"
 
         // Prefixed with the real application id so the official and waze flavors never
         // answer each other's confirmation broadcasts.
@@ -59,14 +70,54 @@ class AutomationEngine @Inject constructor(
         val ACTION_CANCEL = "${com.bydmate.app.BuildConfig.APPLICATION_ID}.AUTOMATION_CANCEL"
         const val EXTRA_NOTIF_ID = "notif_id"
 
-        // How long after the first evaluate() the service_start trigger stays
-        // armed, giving cold-start params a few polls to warm up.
+        // How long after it fires the service_start trigger stays true, giving
+        // cold-start params a few polls to warm up (#51).
         const val SERVICE_START_WINDOW_MS = 30_000L
+
+        // Legacy service_start session keys of 3.17.x-3.18.0 (#177): no longer read or written,
+        // the stale values stay in prefs and are kept out of backups.
+        internal const val PREFS_NAME = "automation"
+        internal const val KEY_SERVICE_START_BOOT_ID = "service_start_boot_id"
+        internal const val KEY_SERVICE_START_LAST_SEEN_ELAPSED = "service_start_last_seen_elapsed"
+        internal const val KEY_SERVICE_START_LAST_SEEN_UPTIME = "service_start_last_seen_uptime"
+        internal const val KEY_SERVICE_START_CAR_OFF = "service_start_car_off"
+
+        // Android 10 a11y recovery force-stops our own process after service_start fired, and
+        // RECOVER_START brings a new one back (11-44 s on Atto 3 logs). The dying process stores
+        // its elapsedRealtime here; the next process skips service_start once if it starts within
+        // SELF_RESTART_MAX_GAP_MS of it. 120 s is about 3x the slowest restart seen; the restarted
+        // process consumes the mark, so a later car start never sees it.
+        internal const val KEY_SERVICE_START_SELF_RESTART_ELAPSED = "service_start_self_restart_elapsed"
+        const val SELF_RESTART_MAX_GAP_MS = 120_000L
+        // The mark holds elapsed and wall time; a reboot makes their gaps disagree, so a real
+        // start after a reboot is never taken for our restart.
+        private const val SELF_RESTART_CLOCK_TOLERANCE_MS = 5_000L
 
         // Steering-wheel key trigger: manual only, like button_press. Fires from
         // the a11y key filter through onSteeringKey(), never from the poll.
         const val TRIGGER_KIND_STEERING_KEY = "steering_key"
         const val TRIGGER_PARAM_STEERING_KEY = "steering_key"
+
+        /** An enabled rule with a steering_key trigger needs the a11y key filter bound (#262). */
+        fun hasEnabledSteeringKeyRule(rules: List<RuleEntity>): Boolean = rules.any { rule ->
+            rule.enabled && TriggerDef.listFromJson(rule.triggers).any { it.kind == TRIGGER_KIND_STEERING_KEY }
+        }
+
+        /**
+         * Creates the confirmation channel, or renames it: the same id updates the name and the
+         * description to [strings], a context in the app language.
+         */
+        fun createConfirmChannel(context: Context, strings: Context) {
+            val channel = NotificationChannel(
+                CONFIRM_CHANNEL_ID,
+                strings.getString(R.string.notif_channel_auto_confirm_name),
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = strings.getString(R.string.notif_channel_auto_confirm_desc)
+            }
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.createNotificationChannel(channel)
+        }
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -84,14 +135,54 @@ class AutomationEngine @Inject constructor(
     // already responded to, so a single VALIDATED edge fires the rule at most
     // once even if the rule's other AND-conditions delay the actual fire.
     private val lastSeenNetworkAvailableAt = ConcurrentHashMap<Long, Long>()
-    // Service-start trigger: active during a short window after the first
-    // evaluate() of the process, consumed per rule on fire. The previous
-    // one-shot flag raced cold-start nulls: the very first tick often carries
-    // incomplete data, so "запуск BYDMate AND темп > 22" silently missed the
-    // whole trip when ExtTemp was still null on tick one (issue #51).
-    @Volatile private var serviceStartWindowEnd = 0L
-    private val serviceStartConsumed = ConcurrentHashMap.newKeySet<Long>()
-
+    // Service-start trigger (#177): a new process is a car start. At car off the firmware
+    // force-stops every app and the process comes back through WorkManager, sometimes while the
+    // screen is still dark. So the trigger fires on the first evaluate() of this process with the
+    // screen on, then stays true for SERVICE_START_WINDOW_MS while the screen is on, and each
+    // rule fires on it once per process. The window keeps "запуск BYDMate AND темп > 22" from
+    // missing the trip when ExtTemp is still null on tick one (issue #51). Memory only: a new
+    // process starts over.
+    @Volatile private var serviceStartFiredAt: Long? = null
+    @Volatile private var serviceStartWaitLogged = false
+    // Whether this process is our own a11y recovery restart; read once, on the first evaluate.
+    @Volatile private var selfRestartVerdict: Boolean? = null
+    private val serviceStartConsumed: MutableSet<Long> = ConcurrentHashMap.newKeySet()
+    // evaluate() has two callers (the poll tick and every push event), and its per-rule gates are
+    // read-then-write across several steps: cooldown, once-per-trip, service_start consumption,
+    // updateLastTriggered. Two overlapping calls could pass the same rule and dispatch its actions
+    // twice, so callers run it under this lock. Actions are dispatched inside the engine's own
+    // scope, so the lock is held for the rule scan only.
+    val evaluateMutex = Mutex()
+    // Test seam: monotonic clock of the service_start window.
+    internal var elapsedMs: () -> Long = { SystemClock.elapsedRealtime() }
+    // Test seam: whether the head unit screen is on. Without a PowerManager the screen is taken
+    // as on, so service_start fires on the first evaluate().
+    internal var interactiveProvider: () -> Boolean = {
+        runCatching {
+            (context.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive
+        }.getOrElse {
+            if (!powerManagerWarned) {
+                powerManagerWarned = true
+                Log.w(TAG, "service_start: PowerManager unavailable, assuming screen on")
+            }
+            true
+        }
+    }
+    @Volatile private var powerManagerWarned = false
+    // Test seam: wall clock of evaluate().
+    internal var nowMs: () -> Long = { System.currentTimeMillis() }
+    // Test seam: the freshest poll, read before every step so a speed gate after a pause sees
+    // the car as it is then, not as it was when the rule fired.
+    internal var liveData: () -> DiParsData? = { TrackingService.lastData.value }
+    // Test seam: the range the Dashboard shows, for the RangeKm condition.
+    internal var rangeKm: () -> Double? = { TrackingService.lastRangeKm.value }
+    // «Why was the rule skipped» lines: one per rule and reason per minute.
+    private val skipLog = com.bydmate.app.data.autoservice.LogThrottle()
+    private val journal = RuleJournal(ruleLogDao, appStrings, skipLog) { nowMs() }
+    // The DriveMode condition value; trusts the target fid once it agreed with dev 1006.
+    private val driveModeCondition = DriveModeCondition { Log.i(TAG, it) }
+    // Rules already logged as «true at the first check» in this process.
+    private val firstCheckLogged: MutableSet<Long> = ConcurrentHashMap.newKeySet()
     // Keycodes bound to a steering_key trigger of an ENABLED rule. Kept as a
     // live cache so the a11y key filter can answer "is this key mine?" on the
     // key event itself — a DB read there would run on the input path.
@@ -128,6 +219,83 @@ class AutomationEngine @Inject constructor(
         }
     }
 
+    // Read from the DB, not steeringKeyCodes: that cache is filled asynchronously after start.
+    suspend fun steeringKeyRuleEnabled(): Boolean = hasEnabledSteeringKeyRule(ruleDao.getEnabled())
+
+    // One line for the diagnostics dump (#177).
+    fun serviceStartDumpLine(): String =
+        "service_start: interactive=${interactiveProvider()} fired=${serviceStartFiredAt != null}"
+
+    /**
+     * Whether service_start is true on this evaluate(): fires on the first one with the screen on,
+     * then stays true for [SERVICE_START_WINDOW_MS] while the screen is on. Runs under
+     * [evaluateMutex].
+     */
+    private fun serviceStartWindowOpen(): Boolean {
+        // Judged on the first evaluate of the process, whatever the screen: a recovery process
+        // can come up dark and see the screen only after the mark has aged.
+        val bySelf = selfRestartVerdict ?: restartedBySelf().also { selfRestartVerdict = it }
+        val lit = interactiveProvider()
+        val firedAt = serviceStartFiredAt
+        if (firedAt != null) return lit && elapsedMs() - firedAt <= SERVICE_START_WINDOW_MS
+        if (!lit) {
+            if (!serviceStartWaitLogged) {
+                serviceStartWaitLogged = true
+                Log.i(TAG, "service_start: screen off at start, waiting for screen on")
+            }
+            return false
+        }
+        if (bySelf) {
+            // Fired and expired: the start already fired in the process our recovery killed.
+            serviceStartFiredAt = elapsedMs() - SERVICE_START_WINDOW_MS - 1
+            return false
+        }
+        serviceStartFiredAt = elapsedMs()
+        Log.i(TAG, "service_start: fired (new process, screen on)")
+        return true
+    }
+
+    /** Reads and clears the self-restart mark; true when this process is our a11y recovery restart. */
+    private fun restartedBySelf(): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val raw = prefs.getString(KEY_SERVICE_START_SELF_RESTART_ELAPSED, null) ?: return false
+        prefs.edit().remove(KEY_SERVICE_START_SELF_RESTART_ELAPSED).apply()
+        val parts = raw.split(',').mapNotNull { it.toLongOrNull() }
+        if (parts.size != 2) {
+            Log.i(TAG, "service_start: self-restart mark ignored, unreadable: $raw")
+            return false
+        }
+        val gap = elapsedMs() - parts[0]
+        val wallGap = nowMs() - parts[1]
+        // After a reboot elapsed restarts and wall time does not, so the two gaps disagree.
+        val agree = abs(gap - wallGap) <= SELF_RESTART_CLOCK_TOLERANCE_MS
+        if (gap !in 0..SELF_RESTART_MAX_GAP_MS || wallGap !in 0..SELF_RESTART_MAX_GAP_MS || !agree) {
+            Log.i(TAG, "service_start: self-restart mark ignored, gap=${gap}ms wallGap=${wallGap}ms")
+            return false
+        }
+        Log.i(TAG, "service_start: suppressed, our own a11y recovery restart ${gap}ms ago")
+        return true
+    }
+
+    /**
+     * Called right before the a11y recovery force-stops this process: if service_start already
+     * fired here, the restarted process must not fire it again. Written synchronously, the process
+     * is about to die.
+     */
+    fun markSelfRestart() {
+        if (serviceStartFiredAt == null) return
+        val now = elapsedMs()
+        val saved = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(KEY_SERVICE_START_SELF_RESTART_ELAPSED, "$now,${nowMs()}").commit()
+        Log.i(TAG, "service_start: self-restart mark written at elapsed=$now saved=$saved")
+    }
+
+    /** The recovery call returned, so this process survived: the next one is a real start. */
+    fun clearSelfRestartMark() {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .remove(KEY_SERVICE_START_SELF_RESTART_ELAPSED).commit()
+    }
+
     // Called every 3s from TrackingService poll loop.
     // tripStartedAt is passed explicitly (not read from TrackingService.tripStartedAt)
     // because the latter mirrors TripTracker via an async collect, which lags by a
@@ -139,10 +307,9 @@ class AutomationEngine @Inject constructor(
         val placesById = placeRepository.getAllSnapshot().associateBy { it.id }
 
         val rules = ruleDao.getEnabled()
-        val now = System.currentTimeMillis()
+        val now = nowMs()
 
-        // Arm the service_start window on the very first evaluate() of the process.
-        if (serviceStartWindowEnd == 0L) serviceStartWindowEnd = now + SERVICE_START_WINDOW_MS
+        val serviceStartWindow = serviceStartWindowOpen()
 
         // Prune per-rule state for rules that have been deleted (or disabled
         // and removed from the active set). Without this, `lastEvalResults`,
@@ -153,12 +320,18 @@ class AutomationEngine @Inject constructor(
         lastEvalResults.keys.retainAll(activeIds)
         lastFiredTripByRule.keys.retainAll(activeIds)
         lastSeenNetworkAvailableAt.keys.retainAll(activeIds)
-        serviceStartConsumed.retainAll(activeIds)
+        // serviceStartConsumed is not pruned: a rule disabled for a tick must not fire twice.
 
         for (rule in rules) {
             try {
                 val triggers = TriggerDef.listFromJson(rule.triggers)
                 if (triggers.isEmpty()) continue
+                val oneShot = triggers.firstOrNull { it.kind == OneShotTrigger.KIND }
+                if (oneShot != null && OneShotTrigger.state(oneShot.value, now) == OneShotTrigger.State.EXPIRED) {
+                    ruleDao.setEnabled(rule.id, false)
+                    journal.oneShotExpired(rule, oneShot.value, now)
+                    continue
+                }
 
                 // network_available is an event trigger (like service_start) — fire when
                 // VALIDATED internet edge happened that this rule has not consumed yet.
@@ -192,9 +365,10 @@ class AutomationEngine @Inject constructor(
                     }
                 }
 
-                val serviceStartActive = now <= serviceStartWindowEnd && rule.id !in serviceStartConsumed
+                val serviceStartActive = serviceStartWindow && rule.id !in serviceStartConsumed
                 val perTrigger = evaluateEachTrigger(triggers, data, location, placesById, serviceStartActive, networkEdge)
                 val matched = combineByLogic(perTrigger, rule.triggerLogic)
+                if (!matched) logMissingData(rule, triggers, data)
 
                 // Event-style triggers (service_start, network_available) bypass edge
                 // detection ONLY when the matched=true was driven by the event itself.
@@ -216,6 +390,11 @@ class AutomationEngine @Inject constructor(
                     matched
                 } else {
                     val previous = lastEvalResults.put(rule.id, state)
+                    // Audit point 1: a condition already true when first seen is only remembered.
+                    if (previous == null && matched && firstCheckLogged.add(rule.id)) {
+                        Log.i(TAG, "rule ${rule.id} '${rule.name}': already true at first check, remembered without firing")
+                        AutoTrace.edge(rule.id, EdgeOutcome.SEED_FIRST_CHECK, SRC_POLL)
+                    }
                     // null = first observation, hash mismatch = rule just edited —
                     // either way seed only, do not fire on a synthetic transition.
                     previous != null && previous.triggersHash == triggersHash &&
@@ -225,14 +404,26 @@ class AutomationEngine @Inject constructor(
 
                 // Cooldown (the front above is already consumed, never deferred)
                 val lastFired = rule.lastTriggeredAt ?: 0L
-                if (now - lastFired < rule.cooldownSeconds * 1000L) continue
+                if (now - lastFired < rule.cooldownSeconds * 1000L) {
+                    logSkip(rule, "cooldown", "${rule.cooldownSeconds}s, last ${(now - lastFired) / 1000}s ago")
+                    AutoTrace.edge(rule.id, EdgeOutcome.SKIP_COOLDOWN, SRC_POLL)
+                    continue
+                }
 
                 // Park-only rule
-                if (rule.requirePark && data.gear != 1) continue
+                if (rule.requirePark && data.gear != 1) {
+                    logSkip(rule, "park only", "gear=${data.gear}")
+                    AutoTrace.edge(rule.id, EdgeOutcome.SKIP_PARK, SRC_POLL)
+                    continue
+                }
 
                 // Once-per-trip gate: skip if already fired in the current trip
                 if (rule.fireOncePerTrip && tripStartedAt != null &&
-                    lastFiredTripByRule[rule.id] == tripStartedAt) continue
+                    lastFiredTripByRule[rule.id] == tripStartedAt) {
+                    logSkip(rule, "once per trip", "trip=$tripStartedAt")
+                    AutoTrace.edge(rule.id, EdgeOutcome.SKIP_ONCE, SRC_POLL)
+                    continue
+                }
 
                 val actions = ActionDef.listFromJson(rule.actions)
                 if (actions.isEmpty()) continue
@@ -245,41 +436,20 @@ class AutomationEngine @Inject constructor(
                 if (rule.fireOncePerTrip && tripStartedAt != null) {
                     lastFiredTripByRule[rule.id] = tripStartedAt
                 }
+                // A one-shot rule is spent by this fire, even if its confirmation is cancelled.
+                if (oneShot != null) {
+                    ruleDao.setEnabled(rule.id, false)
+                    Log.i(TAG, "one-shot rule ${rule.id} '${rule.name}' fired (at=${oneShot.value}), switched off")
+                }
 
                 val snapshot = buildSnapshot(triggers, data)
 
                 if (rule.confirmBeforeExecute) {
-                    val shown = ConfirmOverlayManager.show(
-                        context = context,
-                        ruleName = rule.name,
-                        actionsSummary = actions.joinToString(", ") { it.displayName },
-                        onConfirm = {
-                            scope.launch {
-                                executeAndLog(rule, actions, snapshot, TrackingService.lastData.value)
-                            }
-                        },
-                        onCancel = {
-                            scope.launch {
-                                ruleLogDao.insert(
-                                    RuleLogEntity(
-                                        ruleId = rule.id,
-                                        ruleName = rule.name,
-                                        triggeredAt = now,
-                                        triggersSnapshot = snapshot,
-                                        actionsResult = """[{"result":"cancelled"}]""",
-                                        success = false,
-                                    )
-                                )
-                                Log.i(TAG, "Cancelled via overlay: '${rule.name}'")
-                            }
-                        },
-                    )
-                    if (!shown) {
-                        // Fallback: user hasn't granted SYSTEM_ALERT_WINDOW.
-                        showConfirmNotification(rule, actions, snapshot)
-                    }
+                    val edgeId = AutoTrace.edge(rule.id, EdgeOutcome.CONFIRM, SRC_POLL)
+                    confirmThenRun(rule, actions, snapshot, now, edgeId)
                 } else {
-                    scope.launch { executeAndLog(rule, actions, snapshot, data) }
+                    val edgeId = AutoTrace.edge(rule.id, EdgeOutcome.FIRE, SRC_POLL)
+                    scope.launch { executeAndLog(rule, actions, snapshot, data, edgeId) }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error evaluating rule '${rule.name}': ${e.message}")
@@ -332,12 +502,18 @@ class AutomationEngine @Inject constructor(
 
         val now = System.currentTimeMillis()
         val data = TrackingService.lastData.value
+        // The press itself (a key's trace line), when the caller runs us under it.
+        val pressId = Trace.cause()
         for (rule in matching) {
             try {
                 // Honor requirePark even on the manual path. Reuse the engine's
                 // existing parked-check semantics: parked = gear == 1. When data
                 // is null the park gate is closed (null?.gear != 1 → true).
-                if (rule.requirePark && data?.gear != 1) continue
+                if (rule.requirePark && data?.gear != 1) {
+                    journal.parkRequired(rule, JSONObject().put(kind, value).toString(), data?.gear)
+                    AutoTrace.edge(rule.id, EdgeOutcome.SKIP_PARK, kind, by = pressId)
+                    continue
+                }
 
                 val actions = ActionDef.listFromJson(rule.actions)
                 if (actions.isEmpty()) continue
@@ -349,35 +525,13 @@ class AutomationEngine @Inject constructor(
                 ruleDao.updateLastTriggered(rule.id, now)
 
                 if (rule.confirmBeforeExecute) {
-                    val shown = ConfirmOverlayManager.show(
-                        context = context,
-                        ruleName = rule.name,
-                        actionsSummary = actions.joinToString(", ") { it.displayName },
-                        onConfirm = {
-                            scope.launch {
-                                executeAndLog(rule, actions, snapshot, TrackingService.lastData.value)
-                            }
-                        },
-                        onCancel = {
-                            scope.launch {
-                                ruleLogDao.insert(
-                                    RuleLogEntity(
-                                        ruleId = rule.id,
-                                        ruleName = rule.name,
-                                        triggeredAt = now,
-                                        triggersSnapshot = snapshot,
-                                        actionsResult = """[{"result":"cancelled"}]""",
-                                        success = false,
-                                    )
-                                )
-                            }
-                        },
-                    )
-                    if (!shown) showConfirmNotification(rule, actions, snapshot)
+                    val edgeId = AutoTrace.edge(rule.id, EdgeOutcome.CONFIRM, kind, by = pressId)
+                    confirmThenRun(rule, actions, snapshot, now, edgeId)
                 } else {
+                    val edgeId = AutoTrace.edge(rule.id, EdgeOutcome.FIRE, kind, by = pressId)
                     // Awaited directly (not scope.launch) so the caller's
                     // coroutine observes dispatch completion deterministically.
-                    executeAndLog(rule, actions, snapshot, data)
+                    executeAndLog(rule, actions, snapshot, data, edgeId)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "$kind error for rule '${rule.name}': ${e.message}")
@@ -406,14 +560,15 @@ class AutomationEngine @Inject constructor(
             // Button-press triggers never match during the 3-second poll. They
             // fire only through the explicit onButtonPress() entry point, so a
             // rule built around a widget button can't be triggered by polling.
-            "button_press" -> false
             // Same for steering-wheel keys: only the a11y filter fires them,
-            // through onSteeringKey().
-            TRIGGER_KIND_STEERING_KEY -> false
-            "voice" -> false   // event trigger; fired on demand via fireVoiceRule, never polled
+            // through onSteeringKey(). Voice is fired on demand via fireVoiceRule.
+            "button_press", TRIGGER_KIND_STEERING_KEY, "voice" -> false
+            // One-shot: from its moment for a day, screen on. The rule is switched off once it fires.
+            OneShotTrigger.KIND ->
+                OneShotTrigger.state(trigger.value, nowMs()) == OneShotTrigger.State.DUE && interactiveProvider()
             else -> { // "param" (default)
                 val actual = getParamValue(data, trigger.param) ?: return@map false
-                val expected = trigger.value.toDoubleOrNull() ?: return@map false
+                val expected = TriggerNumber.parse(trigger.value) ?: return@map false
                 compare(actual, trigger.operator, expected)
             }
         }
@@ -437,7 +592,9 @@ class AutomationEngine @Inject constructor(
         perTrigger: List<Boolean>,
         logic: String
     ): Boolean {
-        val eventKinds = setOf("service_start", "network_available")
+        // A one-shot rule fires at its first check at or after the moment, not on a false->true
+        // front: a rule first seen after the moment would otherwise only be remembered.
+        val eventKinds = setOf("service_start", "network_available", OneShotTrigger.KIND)
         return when (logic) {
             // OR: at least one event-trigger must be true on its own.
             "OR" -> triggers.zip(perTrigger).any { (t, r) -> r && t.kind in eventKinds }
@@ -497,7 +654,6 @@ class AutomationEngine @Inject constructor(
         "ExtTemp" -> data.exteriorTemp?.toDouble()
         "InsideTemp" -> data.insideTemp?.toDouble()
         "ChargingStatus" -> data.chargingStatus?.toDouble()
-        "PowerState" -> data.powerState?.toDouble()
         "Gear" -> data.gear?.toDouble()
         "ACStatus" -> data.acStatus?.toDouble()
         "ACTemp" -> data.acTemp?.toDouble()
@@ -516,6 +672,9 @@ class AutomationEngine @Inject constructor(
         "Hood" -> data.hood?.toDouble()
         "SeatbeltFL" -> data.seatbeltFL?.toDouble()
         "SeatbeltFR" -> data.seatbeltFR?.toDouble()
+        "SeatbeltRL" -> data.seatbeltRL?.toDouble()
+        "SeatbeltRM" -> data.seatbeltRM?.toDouble()
+        "SeatbeltRR" -> data.seatbeltRR?.toDouble()
         "OccupancyFL" -> data.occupancyFL?.toDouble()
         "OccupancyFR" -> data.occupancyFR?.toDouble()
         "OccupancyRL" -> data.occupancyRL?.toDouble()
@@ -528,7 +687,7 @@ class AutomationEngine @Inject constructor(
         "TirePressFR" -> data.tirePressFR?.toDouble()
         "TirePressRL" -> data.tirePressRL?.toDouble()
         "TirePressRR" -> data.tirePressRR?.toDouble()
-        "DriveMode" -> data.driveMode?.toDouble()
+        "DriveMode" -> driveModeCondition.value(data.driveMode, data.driveModeTarget)?.toDouble()
         "WorkMode" -> data.workMode?.toDouble()
         "AutoPark" -> data.autoPark?.toDouble()
         "Rain" -> data.rain?.toDouble()
@@ -543,6 +702,7 @@ class AutomationEngine @Inject constructor(
         "Voltage12V" -> data.voltage12v
         "MinCellVoltage" -> data.minCellVoltage
         "MaxCellVoltage" -> data.maxCellVoltage
+        "RangeKm" -> rangeKm()
         else -> null
     }
 
@@ -552,7 +712,10 @@ class AutomationEngine @Inject constructor(
         rule: RuleEntity,
         actions: List<ActionDef>,
         snapshot: String,
-        data: DiParsData?
+        data: DiParsData?,
+        // Trace id of the edge that fired the rule: the cause of its step lines and of what the
+        // vehicle layer traces under them (a write's late check).
+        cause: Long = 0L,
     ): Boolean {
         // One chime per rule firing, regardless of action kinds (per-rule "Выполнять со звуком").
         if (rule.playSound) {
@@ -562,12 +725,20 @@ class AutomationEngine @Inject constructor(
         val results = JSONArray()
         var allSuccess = true
 
-        for (action in actions) {
-            val result = actionDispatcher.dispatch(action, data)
-            results.put(JSONObject().apply {
-                put("command", action.command)
-                put("displayName", action.displayName)
-                put("kind", action.kind)
+        for ((i, action) in actions.withIndex()) {
+            // Fresh data per step: a pause may lie between the fire and this step. A speed-gated
+            // step does not trust it either: the dispatcher reads the speed itself right before.
+            val stepData = liveData() ?: data
+            val result = withContext(Trace.causedBy(cause)) {
+                actionDispatcher.dispatch(action.withReportRuleName(rule.name), stepData)
+            }
+            AutoTrace.step(rule.id, i + 1, action, result, by = cause)
+            Log.i(
+                TAG,
+                "rule ${rule.id} step ${i + 1}/${actions.size} ${action.kind} speed=${stepData?.speed} " +
+                    "-> ${if (result.success) "ok" else "failed: ${result.reason}"}",
+            )
+            results.put(RuleJournal.recordedAction(action).apply {
                 put("success", result.success)
                 if (result.reason != null) put("reason", result.reason)
             })
@@ -593,6 +764,8 @@ class AutomationEngine @Inject constructor(
      * Honors requirePark and confirmBeforeExecute; bypasses cooldown / fireOncePerTrip
      * (anti-spam concepts for automatic triggers, irrelevant to a spoken command).
      * Param actions still pass through the per-action speed gate in ActionDispatcher.
+     * The non-confirm path launches execution in [scope] and returns [VoiceFireResult.Fired]
+     * as soon as the actions are handed off, not once they finish running.
      */
     suspend fun fireVoiceRule(ruleId: Long, data: DiParsData?): VoiceFireResult {
         val rule = ruleDao.getById(ruleId) ?: return VoiceFireResult.NotFound
@@ -601,7 +774,11 @@ class AutomationEngine @Inject constructor(
         if (actions.isEmpty()) return VoiceFireResult.NotFound
 
         // requirePark: gear 1 = P.
-        if (rule.requirePark && data?.gear != 1) return VoiceFireResult.ParkRequired
+        if (rule.requirePark && data?.gear != 1) {
+            journal.parkRequired(rule, JSONObject().put("voice", true).toString(), data?.gear)
+            AutoTrace.edge(rule.id, EdgeOutcome.SKIP_PARK, SRC_VOICE)
+            return VoiceFireResult.ParkRequired
+        }
 
         // Fail-closed: getBlockReason() allows window/sunroof-open when the whole snapshot
         // is missing. Guard here so voice automations can't open either at unknown speed
@@ -617,34 +794,19 @@ class AutomationEngine @Inject constructor(
         val snapshot = JSONObject().put("voice", true).toString()
 
         if (rule.confirmBeforeExecute) {
-            val shown = ConfirmOverlayManager.show(
-                context = context,
-                ruleName = rule.name,
-                actionsSummary = actions.joinToString(", ") { it.displayName },
-                // Re-read live vehicle data at confirm time (the overlay can sit
-                // open while the car accelerates); mirrors the polling confirm path
-                // so the >80km/h window gate runs against current speed, not speak-time.
-                onConfirm = { scope.launch { executeAndLog(rule, actions, snapshot, TrackingService.lastData.value) } },
-                onCancel = {
-                    scope.launch {
-                        ruleLogDao.insert(
-                            RuleLogEntity(
-                                ruleId = rule.id, ruleName = rule.name,
-                                triggeredAt = System.currentTimeMillis(),
-                                triggersSnapshot = snapshot,
-                                actionsResult = """[{"result":"cancelled"}]""",
-                                success = false,
-                            )
-                        )
-                    }
-                },
-            )
-            if (!shown) showConfirmNotification(rule, actions, snapshot)
+            val edgeId = AutoTrace.edge(rule.id, EdgeOutcome.CONFIRM, SRC_VOICE)
+            confirmThenRun(rule, actions, snapshot, System.currentTimeMillis(), edgeId)
             return VoiceFireResult.Confirming
         }
 
-        val success = executeAndLog(rule, actions, snapshot, data)
-        return VoiceFireResult.Fired(success)
+        // Run in the engine's own service-lifetime scope, not the caller's coroutine (mirrors
+        // the confirm branch above): a voice-fired rule can contain a delay action, and if we
+        // suspend here on the caller's routingJob, the assistant UI disappearing (button tap
+        // or timeout) cancels that job mid-sequence, aborting the rule with actions half-run.
+        Log.i(TAG, "voice fire: rule=${rule.id} actions=${actions.size} launched in engine scope")
+        val edgeId = AutoTrace.edge(rule.id, EdgeOutcome.FIRE, SRC_VOICE)
+        scope.launch { executeAndLog(rule, actions, snapshot, data, edgeId) }
+        return VoiceFireResult.Fired(true)
     }
 
     private fun buildSnapshot(triggers: List<TriggerDef>, data: DiParsData): String {
@@ -653,16 +815,58 @@ class AutomationEngine @Inject constructor(
             when (t.kind) {
                 "place_enter" -> json.put("place_enter", t.placeName ?: "?")
                 "place_exit" -> json.put("place_exit", t.placeName ?: "?")
-                "time_of_day" -> json.put("time_of_day", t.value)
-                "time_range" -> json.put("time_range", t.value)
+                "time_of_day", "time_range", "button_press", TRIGGER_KIND_STEERING_KEY, OneShotTrigger.KIND ->
+                    json.put(t.kind, t.value)
                 "service_start" -> json.put("service_start", true)
                 "network_available" -> json.put("network_available", true)
-                "button_press" -> json.put("button_press", t.value)
-                TRIGGER_KIND_STEERING_KEY -> json.put(TRIGGER_KIND_STEERING_KEY, t.value)
                 else -> json.put(t.param, getParamValue(data, t.param) ?: JSONObject.NULL)
             }
         }
         return json.toString()
+    }
+
+    /**
+     * Asks before running [actions]: the overlay, or the notification when overlays are not
+     * allowed. The steps run against the data at confirm time; a cancel or no answer goes to the
+     * journal with its reason.
+     */
+    private fun confirmThenRun(rule: RuleEntity, actions: List<ActionDef>, snapshot: String, at: Long, cause: Long) {
+        val shown = ConfirmOverlayManager.show(
+            context = context,
+            ruleName = rule.name,
+            actionsSummary = actions.joinToString(", ") { it.displayName },
+            onConfirm = { scope.launch { executeAndLog(rule, actions, snapshot, TrackingService.lastData.value, cause) } },
+            onCancel = CancelOrTimeout(
+                onCancel = { scope.launch { journal.cancelled(rule, snapshot, at) } },
+                onTimeout = { scope.launch { journal.timeout(rule, snapshot, at) } },
+            ),
+        )
+        // Fallback: user hasn't granted SYSTEM_ALERT_WINDOW.
+        if (!shown) showConfirmNotification(rule, actions, snapshot)
+    }
+
+    private fun logSkip(rule: RuleEntity, reason: String, detail: String) {
+        if (skipLog.shouldLog("${rule.id}:$reason", nowMs())) {
+            Log.i(TAG, "rule ${rule.id} '${rule.name}' skipped: $reason ($detail)")
+        }
+    }
+
+    /** A param condition the car gave no value for is false, whatever it compares: say which. */
+    private fun logMissingData(rule: RuleEntity, triggers: List<TriggerDef>, data: DiParsData) {
+        val missing = triggers.filter { it.kind == "param" && getParamValue(data, it.param) == null }
+        if (missing.isNotEmpty()) logSkip(rule, "no data", missing.joinToString(",") { it.param })
+    }
+
+    /** Journal retention, run at service start: 30 days, 2000 rows. */
+    suspend fun pruneJournal() = journal.prune(nowMs())
+
+    /** The `--- automation journal ---` dump section: the newest entries with their reasons. */
+    suspend fun journalDumpLines(): List<String> = journal.dumpLines()
+
+    /** Every one of [params] as a condition reads it now, for the dump. */
+    fun paramSnapshotLine(params: List<String>): String {
+        val data = liveData() ?: return "(no data yet)"
+        return params.joinToString(" ") { "$it=${getParamValue(data, it) ?: "-"}" }
     }
 
     // --- Confirmation notifications ---
@@ -697,8 +901,8 @@ class AutomationEngine @Inject constructor(
             .setContentTitle(rule.name)
             .setContentText(summary)
             .setStyle(NotificationCompat.BigTextStyle().bigText(summary))
-            .addAction(android.R.drawable.ic_menu_send, context.getString(R.string.service_confirm_action_yes), confirmPI)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, context.getString(R.string.service_confirm_action_no), cancelPI)
+            .addAction(android.R.drawable.ic_menu_send, appStrings.get(R.string.service_confirm_action_yes), confirmPI)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, appStrings.get(R.string.service_confirm_action_no), cancelPI)
             .setAutoCancel(true)
             .setTimeoutAfter(CONFIRM_TIMEOUT_MS)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -706,7 +910,10 @@ class AutomationEngine @Inject constructor(
 
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(notifId, notification)
-        Log.i(TAG, "Confirm requested: '${rule.name}' → $summary")
+        // Step kinds only, never the display name: it can carry a link, a phone number or a
+        // place name. A param step's own command is a fixed vehicle code, safe to log as-is.
+        val logSummary = actions.joinToString(", ") { if (it.kind == "param") "param ${it.command}" else it.kind }
+        Log.i(TAG, "Confirm requested: '${rule.name}' → $logSummary")
     }
 
     private fun cleanupExpired() {
@@ -718,19 +925,7 @@ class AutomationEngine @Inject constructor(
             pendingConfirmations.remove(notifId)
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.cancel(notifId)
-            scope.launch {
-                ruleLogDao.insert(
-                    RuleLogEntity(
-                        ruleId = pending.rule.id,
-                        ruleName = pending.rule.name,
-                        triggeredAt = pending.createdAt,
-                        triggersSnapshot = pending.snapshot,
-                        actionsResult = """[{"result":"timeout"}]""",
-                        success = false
-                    )
-                )
-            }
-            Log.i(TAG, "Confirm timeout: '${pending.rule.name}'")
+            scope.launch { journal.timeout(pending.rule, pending.snapshot, pending.createdAt) }
         }
     }
 
@@ -748,20 +943,8 @@ class AutomationEngine @Inject constructor(
                         val currentData = TrackingService.lastData.value
                         executeAndLog(pending.rule, pending.actions, pending.snapshot, currentData)
                     }
-                    ACTION_CANCEL -> {
-                        scope.launch {
-                            ruleLogDao.insert(
-                                RuleLogEntity(
-                                    ruleId = pending.rule.id,
-                                    ruleName = pending.rule.name,
-                                    triggeredAt = pending.createdAt,
-                                    triggersSnapshot = pending.snapshot,
-                                    actionsResult = """[{"result":"cancelled"}]""",
-                                    success = false
-                                )
-                            )
-                        }
-                        Log.i(TAG, "Cancelled by user: '${pending.rule.name}'")
+                    ACTION_CANCEL -> scope.launch {
+                        journal.cancelled(pending.rule, pending.snapshot, pending.createdAt)
                     }
                 }
             }
@@ -773,15 +956,5 @@ class AutomationEngine @Inject constructor(
         ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
-    private fun createConfirmChannel() {
-        val channel = NotificationChannel(
-            CONFIRM_CHANNEL_ID,
-            "Automation Confirmations",
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = "Confirmation dialogs for automation rules"
-        }
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(channel)
-    }
+    private fun createConfirmChannel() = createConfirmChannel(context, appStrings.context)
 }

@@ -35,8 +35,9 @@ class SetWindowingModeCompatTest {
             ""
         },
         getActivityType: (Int) -> Int = { _ -> -1 },
+        stateOf: (Int) -> TaskModeState? = { _ -> null },
     ) = setWindowingModeCompat(
-        36, mode, 4, desiredActivityType, reflectSet, resolveComponent, shell, getActivityType,
+        36, mode, 4, desiredActivityType, reflectSet, resolveComponent, shell, getActivityType, stateOf,
     ) { ops += "sleep:$it" }
 
     @Test
@@ -63,17 +64,24 @@ class SetWindowingModeCompatTest {
     }
 
     @Test
-    fun `missing binder API - fullscreen removes the stack and relaunches on the main display`() {
-        // Freeform sticks to a task on this ROM (`am start --windowingMode 1` is ignored);
-        // the only way back is removing the stack and relaunching (validated on-car).
+    fun `missing binder API - fullscreen falls back to remove and relaunch when unconfirmed`() {
+        // The light path runs first, but the default stateOf cannot read the task back — an
+        // unconfirmed pullback keeps the legacy remove+relaunch (validated on-car).
         // The plain relaunch must NOT carry --activityType so the task is restored as type=standard.
+        // #288: it does carry --windowingMode 1; without it a native split still active on display 0
+        // took the fresh task into its secondary pane (wm=4) and the next projection failed again.
         run(mode = WINDOWING_MODE_FULLSCREEN, reflectSet = { _, _ -> throw NoSuchMethodException("x") })
         assertEquals(
             listOf(
                 "resolve",
+                "shell:am start --windowingMode 1 --display 0 -n ru.yandex.yandexnavi/.core.NavigatorActivity",
+                "sleep:300",
+                "sleep:300",
+                "sleep:300",
+                "sleep:300",
                 "shell:am stack remove 36",
                 "sleep:500",
-                "shell:am start --display 0 -n ru.yandex.yandexnavi/.core.NavigatorActivity",
+                "shell:am start --windowingMode 1 --display 0 -n ru.yandex.yandexnavi/.core.NavigatorActivity",
             ),
             ops,
         )
@@ -113,7 +121,139 @@ class SetWindowingModeCompatTest {
                 },
             )
         }
-        assertEquals(listOf("resolve", "shell:am stack remove 36"), ops)
+        assertEquals(
+            listOf(
+                "resolve",
+                "shell:am start --windowingMode 1 --display 0 -n ru.yandex.yandexnavi/.core.NavigatorActivity",
+                "sleep:300",
+                "sleep:300",
+                "sleep:300",
+                "sleep:300",
+                "shell:am stack remove 36",
+            ),
+            ops,
+        )
+    }
+
+    // --- #134: the fullscreen pull-back tries the light path before removing the stack ---
+
+    @Test
+    fun `fullscreen light path keeps the task - no stack remove when the pullback is confirmed`() {
+        // A confirmed read (fullscreen on display 0) ends the switch at the first poll: no
+        // `am stack remove` is issued. Anti-vacuity: without the early return the remove+relaunch
+        // ops would follow.
+        run(
+            mode = WINDOWING_MODE_FULLSCREEN,
+            reflectSet = { _, _ -> throw NoSuchMethodException("x") },
+            stateOf = { _ -> TaskModeState(WINDOWING_MODE_FULLSCREEN, 0) },
+        )
+        assertEquals(
+            listOf(
+                "resolve",
+                "shell:am start --windowingMode 1 --display 0 -n ru.yandex.yandexnavi/.core.NavigatorActivity",
+                "sleep:300",
+            ),
+            ops,
+        )
+        assertFalse("a confirmed light pullback must not remove the stack", ops.any { "am stack remove" in it })
+    }
+
+    @Test
+    fun `fullscreen light path tolerates an unreadable then stale state before confirming`() {
+        // The reparent takes a moment: null (task momentarily invisible) and one stale read must
+        // not be mistaken for "the light path did not work". The am start is issued once.
+        var reads = 0
+        run(
+            mode = WINDOWING_MODE_FULLSCREEN,
+            reflectSet = { _, _ -> throw NoSuchMethodException("x") },
+            stateOf = {
+                reads++
+                when (reads) {
+                    1 -> null
+                    2 -> TaskModeState(WINDOWING_MODE_FREEFORM, 4)
+                    else -> TaskModeState(WINDOWING_MODE_FULLSCREEN, 0)
+                }
+            },
+        )
+        assertEquals(
+            listOf(
+                "resolve",
+                "shell:am start --windowingMode 1 --display 0 -n ru.yandex.yandexnavi/.core.NavigatorActivity",
+                "sleep:300",
+                "sleep:300",
+                "sleep:300",
+            ),
+            ops,
+        )
+        assertFalse("no stack remove once the state settles", ops.any { "am stack remove" in it })
+    }
+
+    @Test
+    fun `fullscreen light path that never confirms falls back to remove exactly once`() {
+        // Still freeform on the cluster display after the full settle budget: the destructive
+        // path runs, and neither the light am start nor the remove is repeated.
+        run(
+            mode = WINDOWING_MODE_FULLSCREEN,
+            reflectSet = { _, _ -> throw NoSuchMethodException("x") },
+            stateOf = { _ -> TaskModeState(WINDOWING_MODE_FREEFORM, 4) },
+        )
+        assertEquals(
+            listOf(
+                "resolve",
+                "shell:am start --windowingMode 1 --display 0 -n ru.yandex.yandexnavi/.core.NavigatorActivity",
+                "sleep:300",
+                "sleep:300",
+                "sleep:300",
+                "sleep:300",
+                "shell:am stack remove 36",
+                "sleep:500",
+                "shell:am start --windowingMode 1 --display 0 -n ru.yandex.yandexnavi/.core.NavigatorActivity",
+            ),
+            ops,
+        )
+        assertEquals(
+            "the light am start must be issued once",
+            1, ops.takeWhile { "am stack remove" !in it }.count { "am start --windowingMode 1" in it },
+        )
+        assertEquals("one remove", 1, ops.count { "am stack remove" in it })
+    }
+
+    @Test
+    fun `an unreadable state through the whole budget still falls back to remove`() {
+        run(
+            mode = WINDOWING_MODE_FULLSCREEN,
+            reflectSet = { _, _ -> throw NoSuchMethodException("x") },
+            stateOf = { _ -> null },
+        )
+        assertEquals(
+            "the light am start must be issued once",
+            1, ops.takeWhile { "am stack remove" !in it }.count { "am start --windowingMode 1" in it },
+        )
+        assertEquals("one remove", 1, ops.count { "am stack remove" in it })
+        assertEquals(
+            "one fullscreen relaunch",
+            1, ops.dropWhile { "am stack remove" !in it }.count { it == "shell:am start --windowingMode 1 --display 0 -n ru.yandex.yandexnavi/.core.NavigatorActivity" },
+        )
+    }
+
+    @Test
+    fun `cluster send of a live STANDARD task is one am start with no remove`() {
+        // #134: the cluster asks for STANDARD now, which is what a live navigator task already
+        // is, so the desired type matches and no `am stack remove` is issued.
+        run(
+            mode = WINDOWING_MODE_FREEFORM,
+            desiredActivityType = ACTIVITY_TYPE_STANDARD,
+            reflectSet = { _, _ -> throw NoSuchMethodException("x") },
+            getActivityType = { _ -> ACTIVITY_TYPE_STANDARD },
+            stateOf = { _ -> TaskModeState(WINDOWING_MODE_FULLSCREEN, 0) },
+        )
+        assertEquals(
+            listOf(
+                "resolve",
+                "shell:am start --windowingMode 5 --display 4 -n ru.yandex.yandexnavi/.core.NavigatorActivity",
+            ),
+            ops,
+        )
     }
 
     @Test

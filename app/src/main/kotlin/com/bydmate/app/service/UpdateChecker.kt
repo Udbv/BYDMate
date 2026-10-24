@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Environment
 import androidx.core.content.FileProvider
 import com.bydmate.app.R
+import com.bydmate.app.util.AppStrings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -20,7 +21,8 @@ import javax.inject.Singleton
 
 @Singleton
 class UpdateChecker @Inject constructor(
-    private val httpClient: OkHttpClient
+    private val httpClient: OkHttpClient,
+    private val appStrings: AppStrings,
 ) {
     companion object {
         /** GitHub repository whose releases feed this build (per distribution flavor). */
@@ -198,7 +200,7 @@ class UpdateChecker @Inject constructor(
 
         val request = DownloadManager.Request(Uri.parse(update.downloadUrl))
             .setTitle("BYDMate ${update.version}")
-            .setDescription(context.getString(R.string.update_download_notification_description))
+            .setDescription(appStrings.get(R.string.update_download_notification_description))
             .setDestinationInExternalPublicDir(
                 Environment.DIRECTORY_DOWNLOADS,
                 "BYDMate-${update.version}.apk"
@@ -206,7 +208,7 @@ class UpdateChecker @Inject constructor(
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
 
         val downloadId = downloadManager.enqueue(request)
-        onProgress(context.getString(R.string.update_downloading_start))
+        onProgress(appStrings.get(R.string.update_downloading_start))
 
         // Poll download progress
         var finished = false
@@ -229,22 +231,22 @@ class UpdateChecker @Inject constructor(
                         )
                         if (total > 0) {
                             val pct = (downloaded * 100 / total).toInt()
-                            onProgress(context.getString(R.string.update_downloading_progress, pct))
+                            onProgress(appStrings.get(R.string.update_downloading_progress, pct))
                         }
                     }
                     DownloadManager.STATUS_SUCCESSFUL -> {
                         finished = true
-                        onProgress(context.getString(R.string.update_downloading_done))
+                        onProgress(appStrings.get(R.string.update_downloading_done))
                     }
                     DownloadManager.STATUS_FAILED -> {
                         finished = true
                         val reason = cursor.getInt(
                             cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)
                         )
-                        throw Exception(context.getString(R.string.update_download_error, reason))
+                        throw Exception(appStrings.get(R.string.update_download_error, reason))
                     }
                     DownloadManager.STATUS_PAUSED -> {
-                        onProgress(context.getString(R.string.update_downloading_paused))
+                        onProgress(appStrings.get(R.string.update_downloading_paused))
                     }
                 }
                 true
@@ -252,7 +254,7 @@ class UpdateChecker @Inject constructor(
             // Download row vanished (query null or cleared by the user): stop instead of spinning
             // forever every 500 ms with no row that could ever flip `finished`.
             if (!rowPresent) {
-                throw Exception(context.getString(R.string.update_download_error, -1))
+                throw Exception(appStrings.get(R.string.update_download_error, -1))
             }
             if (!finished) {
                 kotlinx.coroutines.delay(500)

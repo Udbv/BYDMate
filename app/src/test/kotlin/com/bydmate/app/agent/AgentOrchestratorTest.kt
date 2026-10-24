@@ -76,7 +76,7 @@ class AgentOrchestratorTest {
         // System prompt injected + user message present.
         val msgs = backend.requests.single()
         assertTrue(msgs.first() is AgentMessage.System)
-        assertTrue(msgs.any { it is AgentMessage.User && it.content == "какой заряд?" })
+        assertTrue(msgs.any { it is AgentMessage.User && it.content.startsWith("какой заряд?") })
     }
 
     @Test fun tool_call_executes_and_result_feeds_back() = runTest {
@@ -117,7 +117,7 @@ class AgentOrchestratorTest {
         clock += 60_000  // within 5-min TTL
         orch.ask("открой окна")
         val second = backend.requests[1]
-        assertTrue(second.any { it is AgentMessage.User && it.content == "какой заряд?" })
+        assertTrue(second.any { it is AgentMessage.User && it.content.startsWith("какой заряд?") })
         assertTrue(second.any { it is AgentMessage.Assistant && it.content == "80%" })
     }
 
@@ -128,7 +128,7 @@ class AgentOrchestratorTest {
         clock += 300_001  // past 5-min TTL
         orch.ask("открой окна")
         val second = backend.requests[1]
-        assertTrue(second.none { it is AgentMessage.User && it.content == "какой заряд?" })
+        assertTrue(second.none { it is AgentMessage.User && it.content.startsWith("какой заряд?") })
     }
 
     @Test fun history_trims_to_cap_and_starts_with_user() = runTest {
@@ -136,10 +136,10 @@ class AgentOrchestratorTest {
         val orch = orchestrator(backend)
         repeat(15) { orch.ask("вопрос $it") }  // 30 history messages before trim
         val last = backend.requests.last()
-        // System + at most MAX_HISTORY history messages.
-        assertTrue(last.size <= 21)
-        // First message after System must be a User message (no orphan assistant/tool head).
-        assertTrue(last[1] is AgentMessage.User)
+        // Two system messages (static + dynamic) + at most MAX_HISTORY history messages.
+        assertTrue(last.size <= 22)
+        // First message after the system pair must be a User message (no orphan assistant/tool head).
+        assertTrue(last[2] is AgentMessage.User)
     }
 
     // --- Task 6: fast-path command memory + terse "moving" mode ---
@@ -187,7 +187,7 @@ class AgentOrchestratorTest {
         orch.noteAction("открыл окно")  // must clear the stale history first, not resurrect it
         orch.ask("а закрой")
         val msgs = backend.requests.last()
-        assertTrue(msgs.none { it is AgentMessage.User && it.content == "какой заряд?" })
+        assertTrue(msgs.none { it is AgentMessage.User && it.content.startsWith("какой заряд?") })
         assertTrue(msgs.none { it is AgentMessage.Assistant && it.content == "80%" })
         assertTrue(msgs.any { it is AgentMessage.Assistant && it.content == "[выполнено: открыл окно]" })
     }
@@ -226,7 +226,8 @@ class AgentOrchestratorTest {
             clear(); set(2026, java.util.Calendar.JULY, 5, 12, 0)
         }.timeInMillis
         orch.ask("что там с зарядом")
-        val system = backend.requests.single().first() as AgentMessage.System
+        // The date moved out of the cached static block into the second system message.
+        val system = backend.requests.single()[1] as AgentMessage.System
         assertTrue(system.content.contains("Сегодня 5 июля 2026 года"))
     }
 
@@ -247,7 +248,7 @@ class AgentOrchestratorTest {
         assertEquals(parkedSystem.content, movingSystem.content)
 
         val user = movingBackend.requests.single().last() as AgentMessage.User
-        assertEquals("что там с зарядом ${AgentOrchestrator.MOVING_TAG}", user.content)
+        assertEquals("что там с зарядом ${timeTag()} ${AgentOrchestrator.MOVING_TAG}", user.content)
     }
 
     @Test fun moving_false_by_default_leaves_the_user_message_untagged() = runTest {
@@ -255,7 +256,53 @@ class AgentOrchestratorTest {
         val orch = orchestrator(backend)
         orch.ask("что там с зарядом")
         val user = backend.requests.single().last() as AgentMessage.User
-        assertEquals("что там с зарядом", user.content)
+        assertEquals("что там с зарядом ${timeTag()}", user.content)
+    }
+
+    private fun localClock(hour: Int, minute: Int): Long = java.util.Calendar.getInstance().apply {
+        clear(); set(2026, java.util.Calendar.SEPTEMBER, 25, hour, minute)
+    }.timeInMillis
+
+    private fun timeTag(): String =
+        "(${AgentOrchestrator.TIME_TAG_PREFIX} " +
+            java.text.SimpleDateFormat("HH:mm", java.util.Locale.ROOT).format(java.util.Date(clock)) + ")"
+
+    // The on-car log had the model answer "полночь" at 16:35: it never got the clock.
+    @Test fun user_message_carries_local_time() = runTest {
+        clock = localClock(16, 35)
+        val backend = FakeBackend(replies = ArrayDeque(listOf(answer("16:35"))))
+        orchestrator(backend).ask("сколько времени")
+        val user = backend.requests.single().last() as AgentMessage.User
+        assertEquals("сколько времени (время 16:35)", user.content)
+    }
+
+    @Test fun time_tag_sits_before_the_moving_tag() = runTest {
+        clock = localClock(9, 5)
+        coEvery { repo.isAgentEnabled() } returns true
+        coEvery { tools.schemas() } returns JSONArray()
+        val backend = FakeBackend(replies = ArrayDeque(listOf(answer("Готово"))))
+        AgentOrchestrator(backend, tools, repo, isMoving = { true }).also { it.nowMs = { clock } }
+            .ask("какой заряд")
+        val user = backend.requests.single().last() as AgentMessage.User
+        assertEquals("какой заряд (время 09:05) ${AgentOrchestrator.MOVING_TAG}", user.content)
+    }
+
+    // The time changes every minute; the system messages must not, or the prompt cache misses.
+    // (The dynamic message still grows by the day-memory exchange; it just never carries a time.)
+    @Test fun system_messages_carry_no_time_across_turns_of_one_day() = runTest {
+        clock = localClock(16, 29)
+        val backend = FakeBackend(replies = ArrayDeque(listOf(answer("Готово"), answer("Готово"))))
+        val orch = orchestrator(backend)
+        orch.ask("какой заряд")
+        clock = localClock(16, 42)
+        orch.ask("а погода")
+        val first = backend.requests[0].filterIsInstance<AgentMessage.System>()
+        val second = backend.requests[1].filterIsInstance<AgentMessage.System>()
+        assertEquals(2, first.size)
+        assertEquals(first[0], second[0])
+        assertTrue(second[1].content.startsWith(first[1].content))
+        assertFalse((first + second).any { it.content.contains("16:29") || it.content.contains("16:42") })
+        assertEquals("а погода (время 16:42)", (backend.requests[1].last() as AgentMessage.User).content)
     }
 
     // --- Task 9: tool outcomes journal ---
@@ -376,7 +423,7 @@ class AgentOrchestratorTest {
         toolCallIds.forEach { id ->
             assertTrue("tool_call id $id has no paired Tool message in history", toolMsgIds.contains(id))
         }
-        assertTrue(sentHistory.none { it is AgentMessage.User && it.content == "закрой окна" })
+        assertTrue(sentHistory.none { it is AgentMessage.User && it.content.startsWith("закрой окна") })
     }
 
     @Test
@@ -403,7 +450,7 @@ class AgentOrchestratorTest {
         )
         val orch = orchestrator(backend)
         val sentences = mutableListOf<String>()
-        val r = orch.ask("заряд", { s -> sentences += s })
+        val r = orch.ask("заряд", onSentence = { s -> sentences += s })
         assertEquals(listOf("Заряд 80.", "Хватит до дома"), sentences)
         assertEquals("Заряд 80. Хватит до дома", (r as AgentResult.Answer).text)
     }
@@ -418,7 +465,7 @@ class AgentOrchestratorTest {
         )
         val orch = orchestrator(backend)
         val sentences = mutableListOf<String>()
-        orch.ask("проверь", { s -> sentences += s })
+        orch.ask("проверь", onSentence = { s -> sentences += s })
         assertEquals(listOf("Готово."), sentences)
     }
 
@@ -438,7 +485,9 @@ class AgentOrchestratorTest {
         val identity = { com.bydmate.app.voice.AgentIdentity("Лео", com.bydmate.app.voice.AgentPersona.SNARKY) }
         val orch = AgentOrchestrator(backend, tools, repo, identity = identity).also { it.nowMs = { clock } }
         orch.ask("привет")
-        val sys = backend.requests.single().first() as AgentMessage.System
+        assertEquals(AgentOrchestrator.SYSTEM_PROMPT,
+            (backend.requests.single().first() as AgentMessage.System).content)
+        val sys = backend.requests.single()[1] as AgentMessage.System
         assertTrue(sys.content.contains("ХАРАКТЕР:"))
         assertTrue(sys.content.contains("Тебя зовут Лео"))
         assertTrue(sys.content.contains("шутку или анекдот"))
@@ -456,11 +505,45 @@ class AgentOrchestratorTest {
         val orch = AgentOrchestrator(backend, tools, repo, memoryBlock = { memory.promptBlock() })
             .also { it.nowMs = { clock } }
         orch.ask("привет")
-        val sys = (backend.requests.single().first() as AgentMessage.System).content
+        val sys = (backend.requests.single()[1] as AgentMessage.System).content
         assertTrue(sys.contains("- Водителя зовут Андрей"))
-        assertTrue(sys.indexOf("ХАРАКТЕР:") > sys.indexOf(AgentOrchestrator.SYSTEM_PROMPT))
         // "О ВОДИТЕЛЕ" also occurs inside SYSTEM_PROMPT (the rule that points the model at the
         // section), so pin the section header itself, not the bare words.
         assertTrue(sys.indexOf("О ВОДИТЕЛЕ (факты") > sys.indexOf("ХАРАКТЕР:"))
+    }
+
+    // Wave 5: the live history dies five minutes after the last answer, so an exchange the
+    // driver refers to hours later can only come back through the day memory block.
+    @Test
+    fun `an answered turn comes back in the next prompt on the same day`() = runTest {
+        coEvery { repo.isAgentEnabled() } returns true
+        coEvery { tools.schemas() } returns JSONArray()
+        val day = DayMemory(prefs = null)
+        val backend = FakeBackend(replies = ArrayDeque(listOf(answer("Сто двадцать"), answer("Готово"))))
+        val orch = AgentOrchestrator(backend, tools, repo, dayMemory = day).also { it.nowMs = { clock } }
+
+        orch.ask("сколько до дома")
+        clock += 10 * 60 * 1000L
+        orch.ask("а теперь поехали")
+
+        val sys = (backend.requests.last()[1] as AgentMessage.System).content
+        assertTrue(sys, sys.contains("сколько до дома"))
+        assertTrue(sys, sys.contains("Сто двадцать"))
+    }
+
+    @Test
+    fun `an automation turn never carries the day memory`() = runTest {
+        coEvery { repo.isAgentEnabled() } returns true
+        coEvery { tools.schemas() } returns JSONArray()
+        coEvery { tools.schemas(includeAutomationTools = false) } returns JSONArray()
+        val day = DayMemory(prefs = null)
+            .also { it.record("сколько до дома", "Сто двадцать", 1_000_000L) }
+        val backend = FakeBackend(replies = ArrayDeque(listOf(answer("ок"))))
+        val orch = AgentOrchestrator(backend, tools, repo, dayMemory = day).also { it.nowMs = { clock } }
+
+        orch.askDetached("утренняя сводка")
+
+        val sys = (backend.requests.single()[1] as AgentMessage.System).content
+        assertFalse(sys, sys.contains("сколько до дома"))
     }
 }

@@ -33,7 +33,7 @@ data class DiParsData(
     val windowRL: Int?,
     val windowRR: Int?,
     val sunroof: Int?,            // 0-100%
-    val trunk: Int?,              // 0=closed, 1=open
+    val trunk: Int?,              // 2=closed, 1=open, 3=moving
     val hood: Int?,               // 0=closed, 1=open
     val seatbeltFL: Int?,         // 0=unbuckled, 1=buckled, 2=invalid
     val lockFL: Int?,             // 1=unlocked, 2=locked
@@ -41,7 +41,7 @@ data class DiParsData(
     val tirePressFR: Int?,
     val tirePressRL: Int?,
     val tirePressRR: Int?,
-    val driveMode: Int?,          // 1=ECO, 2=SPORT, 3=NORMAL, 4=off-road category; 0 (transient) suppressed in reader
+    val driveMode: Int?,          // 1=ECO, 2=SPORT, 3=NORMAL, 4=SNOW (sand/mud/mountain read 3); 0 (transient) suppressed in reader
     val workMode: Int?,           // 0=stop, 1=EV, 2=forced EV, 3=HEV
     val autoPark: Int?,           // 0=disabled, 1=standby, 2=active
     val rain: Int?,
@@ -81,9 +81,12 @@ data class DiParsData(
     val hvCurrent: Double? = null,       // traction battery current, A (negative = charging)
     val batteryPowerW: Double? = null,   // hvVoltage × hvCurrent, W (+ draw / − charge), #153
     val bmsMaxChargeKw: Double? = null,
+    val bmsMaxDischargeAllowKw: Double? = null,
     val bmsMaxDischargeKw: Int? = null,
     val motorRpmFront: Int? = null,
     val motorRpmRear: Int? = null,
+    val motorCurrentFront: Float? = null,  // drive motor current, A (bus voltage is shared, so the pair gives the power split)
+    val motorCurrentRear: Float? = null,
     val compressorW: Int? = null,        // AC / heat pump compressor draw, W
     val tyreTempFL: Int? = null,         // °C
     val tyreTempFR: Int? = null,
@@ -91,4 +94,30 @@ data class DiParsData(
     val tyreTempRR: Int? = null,
     val pedalAccel: Int? = null,         // 0-100%
     val pedalBrake: Int? = null,
+    // Front trunk position step (2026-09-15): read for the "toggle" automation action.
+    // Semantics unmeasured — 0 is assumed to be closed until a dump from the car confirms it.
+    val frontTrunk: Int? = null,
+    // Charging plug backup signals (2026-09-15): diagnostics only, nothing decides on them yet.
+    val chargerConnectState: Int? = null,     // Charging.CHARGING_CHARGER_CONNECT_STATE
+    val chargeConnectIndicator: Int? = null,  // instrument cluster charge-connect indicator
+    // Energy left in the pack straight from the BMS, kWh (2026-09-20). Not derived from SOC.
+    val batteryRemainKwh: Double? = null,
+    // Automation audit (2026-09-27). The drive mode the car runs, SETTING_TARGET_DRIVING_MODE
+    // encoding: 1=N, 2=E, 3=S, 4=SNOW, 5=SAND, 6=MUD, 7=MOUNTAIN, 21=SMART, 10=flotation.
+    val driveModeTarget: Int? = null,
+    val seatbeltRL: Int? = null,          // rear belts: 0=unbuckled, 1=buckled (by analogy with seatbeltFR)
+    val seatbeltRM: Int? = null,
+    val seatbeltRR: Int? = null,
+    // Second candidate set for the rear belts (dev 1023): the belt probe log line only.
+    val rearBeltSettingRL: Int? = null,
+    val rearBeltSettingRM: Int? = null,
+    val rearBeltSettingRR: Int? = null,
+    // DM-i hybrid readings (#184): polled only when the car is confirmed HYBRID, null otherwise.
+    val fuelPercent: Int? = null,         // tank level, %
+    val fuelRangeKm: Int? = null,         // range on fuel as the car reports it, km
+    val fuelTotalL: Double? = null,       // lifetime fuel used, L (0.1 L step)
+    val mileageHevKm: Int? = null,        // odometer driven on the engine, km
+    val mileageEvKm: Int? = null,         // odometer driven on the battery, km
+    val engineRpm: Int? = null,           // engine speed, rpm (0 = engine off)
+    val evRangeKm: Int? = null,           // range on battery as the car reports it, km (meaning unconfirmed)
 )
