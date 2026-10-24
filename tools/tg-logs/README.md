@@ -10,8 +10,8 @@ BYDMATE_TG_BOT_TOKEN=... BYDMATE_TG_CHAT_ID=... python3 tools/tg-logs/fetch.py /
 
 - `BYDMATE_TG_BOT_TOKEN` — the bot's token. Keep it in the environment's secrets, never in a
   chat or in the repository.
-- `BYDMATE_TG_CHAT_ID` — the linked chat. Without it the script takes the newest private chat
-  from the bot's pending updates, which Telegram keeps for 24 hours.
+- `BYDMATE_TG_CHAT_ID` — the linked chat. Without it the script takes the newest chat (private or a
+  group) from the bot's pending updates, which Telegram keeps for 24 hours.
 - `--keep` downloads the latest pinned file and leaves it pinned.
 
 Limits: the Bot API serves files up to 20 MB to a bot (the app uploads up to 50 MB). The script

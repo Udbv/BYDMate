@@ -2,14 +2,14 @@
 """Download the diagnostic files the car pinned in the BYDMate bot chat, oldest last.
 
 The app sends a FID dump or a log with sendDocument and pins it silently (TelegramBackupSink.
-sendDocumentPinned). A bot cannot list the messages it sent, but getChat returns the chat's latest
+sendDocument with pin = true). A bot cannot list the messages it sent, but getChat returns the chat's latest
 pinned message with its file. So: take the pinned file, download it, unpin it, and the next pinned
 file surfaces, until none is left. Nothing is deleted from the chat.
 
 Environment:
   BYDMATE_TG_BOT_TOKEN  the bot token (required; never printed)
-  BYDMATE_TG_CHAT_ID    the chat the app is linked to; when unset, the newest private chat in the
-                        bot's pending updates is used (Telegram keeps them for 24 h)
+  BYDMATE_TG_CHAT_ID    the chat the app is linked to; when unset, the newest chat (private or a
+                        group) in the bot's pending updates is used (Telegram keeps them for 24 h)
 
 Usage: fetch.py [OUT_DIR] [--keep]   (--keep leaves the files pinned)
 """
@@ -46,8 +46,10 @@ def call(token, method, **params):
 def find_chat(token):
     updates = call(token, "getUpdates", offset=-100, limit=100)
     for update in reversed(updates):
-        chat = (update.get("message") or {}).get("chat") or {}
-        if chat.get("type") == "private":
+        # A message, or the bot being added to / promoted in a group.
+        event = update.get("message") or update.get("my_chat_member") or {}
+        chat = event.get("chat") or {}
+        if chat.get("type") in ("private", "group", "supergroup"):
             return chat["id"]
     raise RuntimeError("no chat: set BYDMATE_TG_CHAT_ID or send the bot any message")
 
