@@ -1332,6 +1332,7 @@
     <string name="settings_trip_debug_auto_desc">Quando a próxima viagem começar, o registo da anterior vai sozinho para o seu bot.</string>
     <string name="settings_fid_recorder_title">Registrador de sensores</string>
     <string name="settings_fid_recorder_desc">Grava cada mudança dos sensores do carro num arquivo em Downloads, para análise. Com um bot vinculado, o arquivo vai para ele ao parar</string>
+    <string name="settings_fid_recorder_send_latest">Última gravação dos sensores</string>
     <string name="settings_fid_recorder_file">Arquivo: %1$s</string>
     <string name="settings_fid_recorder_error">Não está gravando: %1$s</string>
     <string name="settings_quiet_notification_title">Notificação silenciosa</string>

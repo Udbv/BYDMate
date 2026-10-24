@@ -1819,6 +1819,7 @@
     <string name="settings_agent_memory_forget_one">Забути</string>
     <string name="settings_fid_recorder_title">Реєстратор датчиків</string>
     <string name="settings_fid_recorder_desc">Записує всі зміни датчиків машини у файл у Завантаженнях, для розбору. Із прив\'язаним ботом після зупинки файл іде в нього</string>
+    <string name="settings_fid_recorder_send_latest">Останній запис датчиків</string>
     <string name="settings_fid_recorder_file">Файл: %1$s</string>
     <string name="settings_fid_recorder_error">Не записує: %1$s</string>
     <string name="donate_card_label">Карткою · ЮMoney</string>

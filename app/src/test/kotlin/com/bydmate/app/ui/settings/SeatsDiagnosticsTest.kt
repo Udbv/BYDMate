@@ -24,9 +24,9 @@ class SeatsDiagnosticsTest {
     }
 
     @Test fun `the table covers the diagnostic fids and the candidate families`() {
-        assertEquals(24, SeatsDiagnostics.FIDS.size)
+        assertEquals(39, SeatsDiagnostics.FIDS.size)
         val devs = SeatsDiagnostics.FIDS.map { it.dev }.toSet()
-        assertEquals(setOf(1000, 1023), devs)
+        assertEquals(setOf(1000, 1001, 1023), devs)
         assertEquals(
             "config flags must be present",
             listOf(715132952, 715132955),
@@ -35,8 +35,20 @@ class SeatsDiagnosticsTest {
         assertEquals(
             "dev=1023 trim flags must be present",
             listOf(-811597816, -811597813),
-            SeatsDiagnostics.FIDS.filter { it.dev == 1023 }.map { it.fid },
+            SeatsDiagnostics.FIDS.filter { it.name.startsWith("has_") }.map { it.fid },
         )
+    }
+
+    /** #3: the front-seat massage block reads mode and level for both seats in every family
+     *  the Tang L catalog has, so one dump with massage running shows which one is live. */
+    @Test fun `front-seat massage fids are sampled read-only`() {
+        val massage = SeatsDiagnostics.FIDS.filter { it.name.startsWith("massage_") }
+        assertEquals(15, massage.size)
+        assertEquals(
+            listOf(1335885872, 1335885876, 1335885880, 1335885884),
+            massage.filter { it.name.matches(Regex("massage_(mode|level)_f[lr]")) }.map { it.fid },
+        )
+        assertEquals(setOf(1001, 1023), massage.map { it.dev }.toSet())
     }
 
     /** The candidate families are the whole point of the next field dump: 3CE for the front

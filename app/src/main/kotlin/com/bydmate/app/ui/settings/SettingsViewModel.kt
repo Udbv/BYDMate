@@ -36,6 +36,8 @@ import com.bydmate.app.diagnostics.Trace
 import com.bydmate.app.BuildConfig
 import com.bydmate.app.data.push.fidRecorderSwitchVisible
 import com.bydmate.app.diagnostics.zipForUpload
+import com.bydmate.app.helper.push.FidRecLog
+import com.bydmate.app.helper.push.latestFidRecording
 import com.bydmate.app.helper.push.FID_REC_NO_ERROR
 import com.bydmate.app.helper.push.fidRecorderStatusLines
 import com.bydmate.app.data.remote.InsightsManager
@@ -511,9 +513,29 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
     private suspend fun sendFidRecording() {
         if (!settingsRepository.getTgBackupConfig().configured) return
         val path = helperClient.recStatus()?.filePath?.takeIf { it.isNotEmpty() } ?: return
+        uploadFidRecording(File(path))
+    }
+
+    /**
+     * «Надіслати останній запис»: the newest recording in Download, for one the switch never
+     * sent — the car powered off mid-run, or the daemon restarted and forgot its file.
+     */
+    fun sendLatestFidRecording() {
+        if (_uiState.value.logSending) return
+        viewModelScope.launch {
+            val file = withContext(Dispatchers.IO) { latestFidRecording(File(FidRecLog.DIR)) }
+            if (file == null) {
+                _uiState.update { it.copy(fidRecorderSendStatus = appStrings.get(R.string.settings_log_tg_missing)) }
+            } else {
+                uploadFidRecording(file)
+            }
+        }
+    }
+
+    private suspend fun uploadFidRecording(file: File) {
         _uiState.update { it.copy(fidRecorderSendStatus = appStrings.get(R.string.settings_log_tg_sending)) }
         val status = try {
-            val zip = withContext(Dispatchers.IO) { zipForUpload(File(path), appContext.cacheDir) }
+            val zip = withContext(Dispatchers.IO) { zipForUpload(file, appContext.cacheDir) }
             try {
                 logTelegramSender.sendQuietly(zip) ?: appStrings.get(R.string.settings_log_tg_busy)
             } finally {
@@ -1778,6 +1800,10 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
                 collected.set(collected.get().copy(hudSwitch = hudSwitch))
                 val batteryPreheat = runCatching { helper.readBatch(BatteryPreheatDiagnostics.batchItems()) }.getOrNull()
                 collected.set(collected.get().copy(batteryPreheat = batteryPreheat))
+                val ambient = runCatching { helper.readBatch(AmbientDiagnostics.batchItems()) }.getOrNull()
+                collected.set(collected.get().copy(ambient = ambient))
+                val motors = runCatching { helper.readBatch(MotorsDiagnostics.batchItems()) }.getOrNull()
+                collected.set(collected.get().copy(motors = motors))
             }
             withTimeoutOrNull(budgetMs) { probe.join() }
             return collected.get()
@@ -1793,6 +1819,8 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
         val hud: List<Pair<Int, Int>>? = null,
         val hudSwitch: List<Pair<Int, Int>>? = null,
         val batteryPreheat: List<Pair<Int, Int>>? = null,
+        val ambient: List<Pair<Int, Int>>? = null,
+        val motors: List<Pair<Int, Int>>? = null,
     )
 
     /** Liveness and the seat, steering heat and window fid snapshots under ONE shared budget. */
@@ -2488,6 +2516,12 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
 
             appendLine("--- steering heat ---")
             SteeringHeatDiagnostics.format(helperDiag.steeringHeat).forEach { appendLine(it) }
+
+            appendLine("--- ambient ---")
+            AmbientDiagnostics.format(helperDiag.ambient).forEach { appendLine(it) }
+
+            appendLine("--- motors ---")
+            MotorsDiagnostics.format(helperDiag.motors).forEach { appendLine(it) }
 
             appendLine("--- fid resolve ---")
             try {

@@ -67,6 +67,24 @@ internal object SeatsDiagnostics {
         SeatFid("cand_lrse_level_2", "seatCandLrseLevel2"),
         SeatFid("cand_lrse_level_3", "seatCandLrseLevel3"),
         SeatFid("cand_lrse_level_4", "seatCandLrseLevel4"),
+        // Front-seat massage (#3): mode, level and trim config per seat as the Tang L catalog
+        // names them, the 3CE/3D3 hal_only twins, and the Bodywork switch state. Read-only;
+        // one dump with massage on and one with it off tells which family is live.
+        SeatFid("massage_mode_fl", "massageModeFl"),
+        SeatFid("massage_level_fl", "massageLevelFl"),
+        SeatFid("massage_config_fl", "massageConfigFl"),
+        SeatFid("massage_mode_fr", "massageModeFr"),
+        SeatFid("massage_level_fr", "massageLevelFr"),
+        SeatFid("massage_config_fr", "massageConfigFr"),
+        SeatFid("massage_mode_3ce_fl", "massageMode3ceFl"),
+        SeatFid("massage_level_3ce_fl", "massageLevel3ceFl"),
+        SeatFid("massage_mode_3d3_fr", "massageMode3d3Fr"),
+        SeatFid("massage_level_3d3_fr", "massageLevel3d3Fr"),
+        SeatFid("massage_lf_work_mode", "massageLfWorkMode"),
+        SeatFid("massage_lf_intensity", "massageLfIntensity"),
+        SeatFid("massage_switch_fl", "massageSwitchDriver"),
+        SeatFid("massage_switch_fr", "massageSwitchPassenger"),
+        SeatFid("massage_buttons_config", "massageButtonsConfig"),
     )
 
     fun batchItems(): List<BatchReadItem> = FIDS.map {

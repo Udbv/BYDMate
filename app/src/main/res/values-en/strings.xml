@@ -1404,6 +1404,7 @@
     <string name="settings_trip_debug_auto_desc">When the next trip starts, the previous one\'s log goes to your bot by itself.</string>
     <string name="settings_fid_recorder_title">Sensor recorder</string>
     <string name="settings_fid_recorder_desc">Writes every change of the car sensors to a file in Downloads, for analysis. With a linked bot, the file goes to it when you stop</string>
+    <string name="settings_fid_recorder_send_latest">Latest sensor recording</string>
     <string name="settings_fid_recorder_file">File: %1$s</string>
     <string name="settings_fid_recorder_error">Not recording: %1$s</string>
     <string name="settings_quiet_notification_title">Quiet tracking notification</string>
