@@ -3056,6 +3056,17 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
     }
     SettingSubhead(stringResource(R.string.settings_diagnostics_header))
     val tripLogContext = LocalContext.current
+    // The full app log of every trip, started and sent by itself (on by default on -dev).
+    var fullTripLog by remember { mutableStateOf(com.bydmate.app.diagnostics.AutoTripLog.isEnabled(tripLogContext)) }
+    SettingToggleRow(
+        title = stringResource(R.string.settings_full_trip_log_title),
+        description = stringResource(R.string.settings_full_trip_log_desc),
+        checked = fullTripLog,
+        onCheckedChange = {
+            fullTripLog = it
+            com.bydmate.app.diagnostics.AutoTripLog.setEnabled(tripLogContext, it)
+        },
+    )
     // Trip debug log: the car keeps its own record because Wi-Fi is gone the moment it
     // leaves the driveway, so logcat is unreachable for the drive that matters.
     var tripDebug by remember { mutableStateOf(com.bydmate.app.diagnostics.TripDebugLog.isEnabled(tripLogContext)) }

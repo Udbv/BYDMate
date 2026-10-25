@@ -2287,4 +2287,6 @@
     <string name="tech_card_fuel">Топливо</string>
     <string name="settings_fuel_price_label">Цена литра</string>
     <string name="settings_fuel_price_hint">за литр, на поездки с этой даты</string>
+    <string name="settings_full_trip_log_title">Полный лог каждой поездки</string>
+    <string name="settings_full_trip_log_desc">Запись лога приложения стартует сама, когда машина включается, и заканчивается, когда выключается. Файл сохраняется в «Загрузки» и, если бот подключён, отправляется в Telegram. В сборках «Разработка» включено по умолчанию.</string>
 </resources>

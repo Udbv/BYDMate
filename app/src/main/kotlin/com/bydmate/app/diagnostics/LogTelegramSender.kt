@@ -156,18 +156,25 @@ class LogTelegramSender @Inject constructor(
         }
     }
 
-    private suspend fun recordingOutcome(context: Context, file: File): Outcome? {
+    private suspend fun recordingOutcome(context: Context, file: File): Outcome? =
+        sendZipped(context, file)?.also { outcome ->
+            // A permanent failure (too big) is not retried at every start either.
+            if (outcome.sent || !outcome.transient) markRecordingSent(context, file.name)
+        }
+
+    /**
+     * [file] zipped to the bot (a sensor recording, the automatic trip log). Null while another
+     * upload runs. Throws IOException when [file] cannot be read.
+     */
+    suspend fun sendZipped(context: Context, file: File): Outcome? {
         val zip = withContext(Dispatchers.IO) { zipForUpload(file, context.cacheDir) }
         try {
             if (!_sending.compareAndSet(expect = false, update = true)) return null
-            val outcome = try {
+            return try {
                 uploadOutcome(zip)
             } finally {
                 _sending.value = false
             }
-            // A permanent failure (too big) is not retried at every start either.
-            if (outcome.sent || !outcome.transient) markRecordingSent(context, file.name)
-            return outcome
         } finally {
             withContext(Dispatchers.IO) { zip.delete() }
         }
@@ -175,7 +182,8 @@ class LogTelegramSender @Inject constructor(
 
     private suspend fun upload(file: File): String = uploadOutcome(file).status
 
-    private class Outcome(val status: String, val sent: Boolean = false, val transient: Boolean = false)
+    /** [transient]: the failure may heal (no network, a server error); a retry is worth it. */
+    class Outcome(val status: String, val sent: Boolean = false, val transient: Boolean = false)
 
     private suspend fun uploadOutcome(file: File): Outcome {
         val config = settings.getTgBackupConfig()
