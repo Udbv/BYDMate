@@ -45,6 +45,26 @@ internal object FidRecorder {
 
         /** A change was throttled away; [tick] writes the current value once the gap allows it. */
         var pending = false
+
+        /** Set for the fast signals ([FID_REC_FAST_TOLERANCES]): full rate, linear compression, no throttle. */
+        var compressor: LineCompressor<RecEvent>? = null
+
+        /** When the compressor last got a sample: the fast signals are taken at most every [FAST_MIN_GAP_MS]. */
+        var lastOffered: Long? = null
+
+        /** The newest fast sample that came too soon; [tick] hands it over so a burst's end lands. */
+        var fastPending: RecEvent? = null
+
+        fun offerFast(e: RecEvent): RecEvent? {
+            lastOffered = e.atMs
+            fastPending = null
+            return compressor?.offer(e.atMs, fidRecValue(e.intValue, e.doubleValue), e)
+        }
+
+        fun adopt(name: String) {
+            symbol = name
+            if (compressor == null) compressor = FID_REC_FAST_TOLERANCES[name]?.let { LineCompressor(it) }
+        }
     }
 
     /** Internal rather than private so a test can assert it is free during a vendor call. */
@@ -114,6 +134,8 @@ internal object FidRecorder {
                 "bydmate fid recorder versionCode=${BuildConfig.VERSION_CODE} " +
                     "started=${FidRecLog.startedAtText(startedAt)}",
                 "devices=${targets.joinToString(",")}",
+                "fast=${FID_REC_FAST_TOLERANCES.size} signals at full rate, linear compression " +
+                    "(join consecutive lines with straight lines); others at most one line per ${MIN_LINE_INTERVAL_MS} ms",
             )
         )
         val round = Round(file)
@@ -162,7 +184,7 @@ internal object FidRecorder {
         val now = nowMs()
         val sink = log ?: return
         val due = synchronized(lock) {
-            counters.entries
+            val throttled = counters.entries
                 .filter { it.value.pending && now - it.value.lastWritten >= MIN_LINE_INTERVAL_MS }
                 .map { (fid, c) ->
                     c.pending = false
@@ -170,6 +192,14 @@ internal object FidRecorder {
                     c.written = true
                     RecEvent(now, c.dev, fid, c.symbol, c.lastInt, c.lastDouble)
                 }
+            // A fast signal that went quiet: its last value must land, not wait for the next change.
+            val quiet = counters.values.flatMap { c ->
+                val compressor = c.compressor ?: return@flatMap emptyList()
+                val late = c.fastPending?.let { c.offerFast(it) }
+                val heldAt = compressor.heldAt
+                listOfNotNull(late, if (heldAt != null && now - heldAt >= FAST_QUIET_MS) compressor.flush() else null)
+            }
+            (throttled + quiet).sortedBy { it.atMs }
         }
         due.forEach { sink.event(it) }
         sink.flushIfDue(now)
@@ -208,6 +238,13 @@ internal object FidRecorder {
         }
         val sink = log
         if (sink != null) {
+            val held = synchronized(lock) {
+                counters.values.flatMap { c ->
+                    if (c.compressor == null) return@flatMap emptyList()
+                    listOfNotNull(c.fastPending?.let { c.offerFast(it) }, c.compressor?.flush())
+                }
+            }
+            held.sortedBy { it.atMs }.forEach { sink.event(it) }
             val events = status().totalEvents
             sink.close("stopped: $reason events=$events")
             fileBytes = sink.bytes
@@ -271,8 +308,8 @@ internal object FidRecorder {
         // can only carry [UNKNOWN_SYMBOL].
         synchronized(lock) {
             wanted.forEach {
-                val c = counters.getOrPut(it.fid) { Counters(dev, it.symbol) }
-                if (c.symbol == UNKNOWN_SYMBOL) c.symbol = it.symbol
+                val c = counters.getOrPut(it.fid) { Counters(dev, it.symbol).also { n -> n.adopt(it.symbol) } }
+                if (c.symbol == UNKNOWN_SYMBOL) c.adopt(it.symbol)
             }
         }
         val error = registerDevice(device, register, listener, wanted)
@@ -316,7 +353,8 @@ internal object FidRecorder {
      * Vendor binder thread: count, then decide whether this change earns a line right now. A fid
      * that already got a line less than [MIN_LINE_INTERVAL_MS] ago is marked pending instead —
      * [tick] writes its current value as soon as the gap allows, so the last value of a burst
-     * always lands, and a window sweeping 1 % at a time cannot flood the file.
+     * always lands, and a window sweeping 1 % at a time cannot flood the file. The fast signals
+     * skip the throttle: their [LineCompressor] keeps every change that bends the line.
      */
     private fun record(dev: Int, fid: Int, intValue: Int, doubleValue: Double) {
         val now = nowMs()
@@ -327,8 +365,19 @@ internal object FidRecorder {
             c.seen = true
             c.lastInt = intValue
             c.lastDouble = doubleValue
+            val compressor = c.compressor
             when {
                 !changed -> null
+                compressor != null -> {
+                    val e = RecEvent(now, dev, fid, c.symbol, intValue, doubleValue)
+                    val last = c.lastOffered
+                    if (last != null && now - last < FAST_MIN_GAP_MS) {
+                        c.fastPending = e
+                        null
+                    } else {
+                        c.offerFast(e)
+                    }
+                }
                 !c.written || now - c.lastWritten >= MIN_LINE_INTERVAL_MS -> {
                     c.lastWritten = now
                     c.written = true
@@ -349,6 +398,12 @@ internal object FidRecorder {
 
     /** Minimum gap between two lines of the SAME fid — at most two lines per second per fid. */
     private const val MIN_LINE_INTERVAL_MS = 500L
+
+    /** A fast signal's held-back sample is written once no change came for this long. */
+    private const val FAST_QUIET_MS = 300L
+
+    /** 50 Hz per fast signal at most: enough for a bump, and a firmware flood cannot fill the file. */
+    private const val FAST_MIN_GAP_MS = 20L
 
     /** Caps that stop a forgotten recording: 400 MB and 3 hours. */
     private const val MAX_BYTES = 400L * 1024 * 1024

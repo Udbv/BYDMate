@@ -33,6 +33,7 @@ class FidRecorderTest {
         Bodywork.BODYWORK_WINDOW_FL=2000001
         Bodywork.BODYWORK_WINDOW_FR=2000002
         Bodywork.BODYWORK_FRUNK=2000003
+        Bodywork.BODYWORK_STEERING_WHEEL_ANGEL=2000004
         Cpu.CPU_TEMPRATURE=3000001
         Light.LIGHT_POSITION=4000001
     """.trimIndent()
@@ -71,8 +72,8 @@ class FidRecorderTest {
         assertEquals(listOf(2000001, 2000002), device.registered)
         val row = FidRecorder.status().devices.single()
         assertEquals(2, row.registered)
-        assertEquals(3, row.total)
-        assertEquals(1, row.filtered)
+        assertEquals(4, row.total)
+        assertEquals(2, row.filtered)
         assertEquals(FID_REC_NO_ERROR, row.error)
     }
 
@@ -88,7 +89,7 @@ class FidRecorderTest {
         val lines = recordedFile().readLines()
         assertTrue(lines[0].startsWith("bydmate fid recorder versionCode="))
         assertTrue(lines[1].startsWith("devices=1001"))
-        assertTrue(lines.any { it.contains("registered=1/3 filtered=2 err=-") })
+        assertTrue(lines.any { it.contains("registered=1/4 filtered=3 err=-") })
         val events = lines.filter { it.contains("fid=2000001") && it.contains("int=") }
         assertEquals(2, events.size)
         assertTrue(events[0].endsWith("dev=1001 fid=2000001 Bodywork.BODYWORK_WINDOW_FL int=43 dbl=0.0"))
@@ -115,6 +116,46 @@ class FidRecorderTest {
         val events = recordedFile().readLines().filter { it.contains("fid=2000001") && it.contains("int=") }
         assertEquals(listOf(43, 45), events.map { it.substringAfter("int=").substringBefore(" dbl").toInt() })
         assertEquals(4, FidRecorder.status().totalEvents)
+    }
+
+    @Test fun `a fast signal skips the throttle and keeps only the points that bend its line`() {
+        val device = start(setOf(2000004))
+        val listener = device.listener!!
+
+        // A steady ramp, one change every 20 ms: only its ends are needed.
+        for (i in 0..10) {
+            clock = i * 20L
+            listener.onDataEventChanged(2000004, angle(i * 1.0))
+        }
+        // A sharp bump: up and back down, every point bends the line.
+        clock = 220; listener.onDataEventChanged(2000004, angle(30.0))
+        clock = 240; listener.onDataEventChanged(2000004, angle(10.0))
+        clock = 600
+        FidRecorder.tick()                                // quiet for 300 ms: the last value lands
+        FidRecorder.stop()
+
+        val lines = recordedFile().readLines()
+        assertTrue(lines[2].startsWith("fast="))
+        val events = lines.filter { it.contains("fid=2000004") && it.contains("dbl=") }
+            .map { it.substringAfter("dbl=").toDouble() }
+        assertEquals(listOf(0.0, 10.0, 30.0, 10.0), events)
+    }
+
+    @Test fun `a fast signal flooding faster than 50 Hz is thinned but its last value lands`() {
+        val device = start(setOf(2000004))
+        val listener = device.listener!!
+
+        clock = 0; listener.onDataEventChanged(2000004, angle(0.0))
+        clock = 5; listener.onDataEventChanged(2000004, angle(50.0))   // too soon: held over
+        clock = 10; listener.onDataEventChanged(2000004, angle(7.0))   // too soon: replaces it
+        clock = 400
+        FidRecorder.tick()
+        FidRecorder.tick()
+        FidRecorder.stop()
+
+        val events = recordedFile().readLines().filter { it.contains("fid=2000004") && it.contains("dbl=") }
+            .map { it.substringAfter("dbl=").toDouble() }
+        assertEquals(listOf(0.0, 7.0), events)
     }
 
     /**
@@ -210,6 +251,8 @@ class FidRecorderTest {
     private fun recordedFile(): File = File(FidRecorder.status().filePath)
 
     private fun value(intValue: Int) = BYDAutoEventValue().apply { this.intValue = intValue }
+
+    private fun angle(degrees: Double) = BYDAutoEventValue().apply { this.doubleValue = degrees }
 
     /** Stands in for AbsBYDAutoDevice: keeps a listener map the recorder can read back. */
     private class FakeDevice(private val known: Set<Int>) {
