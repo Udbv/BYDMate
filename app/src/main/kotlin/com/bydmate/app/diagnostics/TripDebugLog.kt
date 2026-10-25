@@ -83,8 +83,9 @@ object TripDebugLog {
         if (on) startTrip(context, "switch on") else endTrip("switch off")
     }
 
+    /** On by default on the development channel, like the log itself; a stored choice wins. */
     fun isAutoSendEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_TG_AUTO, false)
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_TG_AUTO, DEFAULT_ENABLED)
 
     fun setAutoSendEnabled(context: Context, on: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean(KEY_TG_AUTO, on).apply()

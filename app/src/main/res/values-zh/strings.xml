@@ -2236,4 +2236,6 @@
     <string name="tech_card_fuel">燃油</string>
     <string name="settings_fuel_price_label">每升油价</string>
     <string name="settings_fuel_price_hint">每升价格，适用于此日期起的行程</string>
+    <string name="settings_full_trip_log_title">每次行程的完整日志</string>
+    <string name="settings_full_trip_log_desc">车辆启动时自动开始记录应用日志，熄火时结束。文件保存到“下载”，如已绑定机器人则发送到 Telegram。开发版默认开启。</string>
 </resources>

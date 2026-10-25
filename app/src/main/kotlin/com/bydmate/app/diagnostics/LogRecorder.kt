@@ -250,6 +250,9 @@ class LogRecorder internal constructor(
 
     private fun pendingPrefs() = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    /** The file an interrupted recording would resume into; null when none is pending. */
+    fun pendingPath(): String? = pendingPrefs().getString(KEY_FILE_PATH, null)
+
     private fun rememberPending(target: File, startedAtMs: Long) {
         pendingPrefs().edit()
             .putString(KEY_FILE_PATH, target.absolutePath)
@@ -507,6 +510,9 @@ class LogRecorder internal constructor(
             "DriveModeChannel:*",
             // Telegram reports: build (items taken / skipped, length), send, outbox add/drain/drop.
             "TgReport:*",
+            // 4.0.1-dev.5..dev.9: massage keeper, the cluster power card, the HUD lane strip and
+            // the automatic trip log itself.
+            "MassageKeeper:*", "ClusterPowerCard:*", "HudLaneWriter:*", "WazeLaneReader:*", "AutoTripLog:*",
             // Power-off report in the helper daemon: arm, power off/on, send attempts, outcome.
             "OffReport:*",
             // Agent tools (where_am_i steps, failed weather requests) and the two Overpass

@@ -94,6 +94,7 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var ambientNightController: com.bydmate.app.data.automation.AmbientNightController
     @Inject lateinit var massageKeeper: com.bydmate.app.data.automation.MassageKeeper
     @Inject lateinit var clusterPowerWidget: com.bydmate.app.cluster.ClusterPowerWidget
+    @Inject lateinit var autoTripLog: com.bydmate.app.diagnostics.AutoTripLog
     @Inject lateinit var networkAvailableMonitor: com.bydmate.app.data.automation.NetworkAvailableMonitor
     @Inject lateinit var alicePollingManager: AlicePollingManager
     @Inject lateinit var odometerBuffer: OdometerConsumptionBuffer
@@ -844,6 +845,8 @@ class TrackingService : Service(), LocationListener {
         // file, so the startup itself (launch automations, steering-wheel keys) is
         // in the log the user sends us.
         serviceScope.launch {
+            // The automatic trip log of the last trip is finished and sent, not resumed into this one.
+            if (runCatching { autoTripLog.onServiceStart() }.getOrDefault(false)) return@launch
             // Retried while nothing is recording: this early the storage holding the
             // log may still be unmounted, and a resumed logcat can die right away
             // when the READ_LOGS grant above has not landed yet.
@@ -1793,6 +1796,8 @@ class TrackingService : Service(), LocationListener {
                         .onFailure { Log.w(TAG, "MassageKeeper.onTick failed", it) }
                     runCatching { clusterPowerWidget.onTick(data) }
                         .onFailure { Log.w(TAG, "ClusterPowerWidget.onTick failed", it) }
+                    runCatching { autoTripLog.onTick(data.powerState?.let { it >= 1 } == true) }
+                        .onFailure { Log.w(TAG, "AutoTripLog.onTick failed", it) }
                     updateNotification(data)
                     maybeLogSessionSummary(nowMs, data, sessionId)
                     maybeSendIternioTelemetry(data, nowMs)

@@ -2274,4 +2274,6 @@
     <string name="tech_card_fuel">Паліва</string>
     <string name="settings_fuel_price_label">Цана літра</string>
     <string name="settings_fuel_price_hint">за літр, на паездкі з гэтай даты</string>
+    <string name="settings_full_trip_log_title">Поўны лог кожнай паездкі</string>
+    <string name="settings_full_trip_log_desc">Запіс логу праграмы пачынаецца сам, калі машына ўключаецца, і заканчваецца, калі выключаецца. Файл захоўваецца ў «Загрузкі» і, калі бот падключаны, адпраўляецца ў Telegram. У зборках «Распрацоўка» уключана па змаўчанні.</string>
 </resources>

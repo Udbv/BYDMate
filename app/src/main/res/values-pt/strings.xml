@@ -2118,4 +2118,6 @@
     <string name="tech_card_fuel">Combustível</string>
     <string name="settings_fuel_price_label">Preço por litro</string>
     <string name="settings_fuel_price_hint">por litro, para viagens a partir desta data</string>
+    <string name="settings_full_trip_log_title">Registo completo de cada viagem</string>
+    <string name="settings_full_trip_log_desc">A gravação do registo da aplicação começa sozinha quando o carro liga e termina quando desliga. O ficheiro fica em Transferências e, com um bot ligado, é enviado para o Telegram. Ativo por omissão nas versões de desenvolvimento.</string>
 </resources>

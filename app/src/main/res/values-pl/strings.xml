@@ -2274,4 +2274,6 @@
     <string name="tech_card_fuel">Paliwo</string>
     <string name="settings_fuel_price_label">Cena litra</string>
     <string name="settings_fuel_price_hint">za litr, dla podróży od tej daty</string>
+    <string name="settings_full_trip_log_title">Pełny log każdej podróży</string>
+    <string name="settings_full_trip_log_desc">Nagrywanie logu aplikacji startuje samo, gdy samochód się włącza, i kończy się, gdy się wyłącza. Plik trafia do «Pobrane», a gdy bot jest podłączony, jest wysyłany do Telegrama. W wersjach deweloperskich domyślnie włączone.</string>
 </resources>
