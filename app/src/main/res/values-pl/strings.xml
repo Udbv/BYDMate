@@ -1642,6 +1642,17 @@
     <string name="settings_massage_keeper_header">Masaż do końca jazdy</string>
     <string name="settings_massage_keeper_sub">Włączaj ponownie po timerze. %1$s</string>
     <string name="settings_massage_keeper_desc">Fabryczny masaż przednich foteli wyłącza się sam po 15 minutach. BYDMate włącza ten sam tryb i intensywność ponownie, dopóki auto jest włączone. Masaż wyłączony ręcznie wcześniej niż 14,5 minuty po ostatniej zmianie pozostaje wyłączony. Sprawdzone na razie tylko na nagraniu z Tang L.</string>
+    <string name="settings_cluster_power_header">Moc na zegarach</string>
+    <string name="settings_cluster_power_sub">Karta mocy i podziału przód/tył. %1$s</string>
+    <string name="settings_cluster_power_desc">Mała karta na zegarach: moc baterii (rekuperacja na zielono), podział między przednim i tylnym silnikiem w kW i procentach oraz wykres z 2 minut. Widoczna przez cały czas, gdy auto jest włączone. Zajmuje miejsce prawej fabrycznej karty (w UI7 boczne karty są ukryte). Położenie i rozmiar w procentach panelu.</string>
+    <string name="settings_cluster_power_x">Od lewej</string>
+    <string name="settings_cluster_power_y">Od góry</string>
+    <string name="settings_cluster_power_width">Szerokość</string>
+    <string name="settings_cluster_power_height">Wysokość</string>
+    <string name="cluster_power_kw">kW</string>
+    <string name="cluster_power_regen">rekup.</string>
+    <string name="cluster_power_front">Przód</string>
+    <string name="cluster_power_rear">Tył</string>
     <string name="settings_blindspot_title">Kamera przy kierunkowskazie</string>
     <string name="settings_blindspot_desc">Lewy kierunkowskaz - lewa kamera na wskaźnikach, prawy - okienko na ekranie głównym. Domyślnie wyłączone.</string>
     <string name="settings_blindspot_threshold_title">Próg prędkości</string>

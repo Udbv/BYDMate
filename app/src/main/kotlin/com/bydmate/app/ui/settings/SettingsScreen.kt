@@ -8,6 +8,7 @@ import android.widget.Toast
 import com.bydmate.app.camera.BlindSpotPositionOverlay
 import com.bydmate.app.data.automation.AmbientNightController
 import com.bydmate.app.data.automation.MassageKeeper
+import com.bydmate.app.cluster.ClusterPowerWidget
 import com.bydmate.app.camera.BlindSpotPreferences
 import com.bydmate.app.camera.blindSpotClusterDisplay
 import com.bydmate.app.cluster.ClusterEntryPoint
@@ -1565,6 +1566,7 @@ private fun DisplaySection() {
     }
     AmbientNightCard()
     MassageKeeperCard()
+    ClusterPowerCardSettings()
 }
 
 /**
@@ -1626,6 +1628,54 @@ private fun MassageKeeperCard() {
         },
     ) {
         SettingHint(text = stringResource(R.string.settings_massage_keeper_desc))
+    }
+}
+
+/**
+ * «Мощность на приборке» (#5): ClusterPowerWidget's own prefs, re-read every tick; a moved or
+ * resized card is put back in place on the next tick.
+ */
+@Composable
+private fun ClusterPowerCardSettings() {
+    val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences(ClusterPowerWidget.PREFS_NAME, Context.MODE_PRIVATE)
+    }
+    var enabled by remember { mutableStateOf(prefs.getBoolean(ClusterPowerWidget.KEY_ENABLED, false)) }
+
+    SettingCollapsibleCard(
+        title = stringResource(R.string.settings_cluster_power_header),
+        subtitle = stringResource(
+            R.string.settings_cluster_power_sub,
+            stringResource(
+                if (enabled) R.string.settings_display_state_on
+                else R.string.settings_display_state_off
+            ),
+        ),
+        checked = enabled,
+        onCheckedChange = {
+            enabled = it
+            prefs.edit().putBoolean(ClusterPowerWidget.KEY_ENABLED, it).apply()
+        },
+    ) {
+        SettingHint(text = stringResource(R.string.settings_cluster_power_desc))
+        listOf(
+            Triple(R.string.settings_cluster_power_x, ClusterPowerWidget.KEY_X_PCT, ClusterPowerWidget.DEFAULT_X_PCT),
+            Triple(R.string.settings_cluster_power_y, ClusterPowerWidget.KEY_Y_PCT, ClusterPowerWidget.DEFAULT_Y_PCT),
+            Triple(R.string.settings_cluster_power_width, ClusterPowerWidget.KEY_WIDTH_PCT, ClusterPowerWidget.DEFAULT_WIDTH_PCT),
+            Triple(R.string.settings_cluster_power_height, ClusterPowerWidget.KEY_HEIGHT_PCT, ClusterPowerWidget.DEFAULT_HEIGHT_PCT),
+        ).forEach { (title, key, default) ->
+            var pct by remember { mutableStateOf(prefs.getInt(key, default)) }
+            SettingSliderRow(
+                title = stringResource(title),
+                value = pct.toFloat(),
+                onValueChange = { pct = it.roundToInt() },
+                valueRange = 0f..100f,
+                valueLabel = "$pct%",
+                enabled = enabled,
+                onValueChangeFinished = { prefs.edit().putInt(key, pct).apply() },
+            )
+        }
     }
 }
 

@@ -1489,6 +1489,17 @@
     <string name="settings_massage_keeper_header">Massage until the end of the trip</string>
     <string name="settings_massage_keeper_sub">Turn back on after the timer. %1$s</string>
     <string name="settings_massage_keeper_desc">The stock front-seat massage switches itself off after 15 minutes. BYDMate turns the same mode and intensity back on while the car is on. A massage switched off by hand sooner than 14.5 minutes after its last change stays off. Checked so far only against a Tang L recording.</string>
+    <string name="settings_cluster_power_header">Power on the cluster</string>
+    <string name="settings_cluster_power_sub">Power and front/rear split card. %1$s</string>
+    <string name="settings_cluster_power_desc">A small card on the instrument cluster: battery power (regeneration in green), the split between the front and rear motor in kW and percent, and a 2-minute graph. Shown the whole time the car is on. It takes the place of the stock right card (on UI7 the side cards are hidden). Position and size are set in percent of the panel.</string>
+    <string name="settings_cluster_power_x">From left</string>
+    <string name="settings_cluster_power_y">From top</string>
+    <string name="settings_cluster_power_width">Width</string>
+    <string name="settings_cluster_power_height">Height</string>
+    <string name="cluster_power_kw">kW</string>
+    <string name="cluster_power_regen">regen</string>
+    <string name="cluster_power_front">Front</string>
+    <string name="cluster_power_rear">Rear</string>
     <string name="settings_blindspot_title">Camera on turn signal</string>
     <string name="settings_blindspot_desc">Left turn signal - left camera on the cluster, right one - a small window on the main screen. Off by default.</string>
     <string name="settings_blindspot_threshold_title">Speed threshold</string>

@@ -93,6 +93,7 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var automationEngine: AutomationEngine
     @Inject lateinit var ambientNightController: com.bydmate.app.data.automation.AmbientNightController
     @Inject lateinit var massageKeeper: com.bydmate.app.data.automation.MassageKeeper
+    @Inject lateinit var clusterPowerWidget: com.bydmate.app.cluster.ClusterPowerWidget
     @Inject lateinit var networkAvailableMonitor: com.bydmate.app.data.automation.NetworkAvailableMonitor
     @Inject lateinit var alicePollingManager: AlicePollingManager
     @Inject lateinit var odometerBuffer: OdometerConsumptionBuffer
@@ -1790,6 +1791,8 @@ class TrackingService : Service(), LocationListener {
                     ambientNightController.onTick(data, sessionId, lastLocation.value)
                     runCatching { massageKeeper.onTick(data) }
                         .onFailure { Log.w(TAG, "MassageKeeper.onTick failed", it) }
+                    runCatching { clusterPowerWidget.onTick(data) }
+                        .onFailure { Log.w(TAG, "ClusterPowerWidget.onTick failed", it) }
                     updateNotification(data)
                     maybeLogSessionSummary(nowMs, data, sessionId)
                     maybeSendIternioTelemetry(data, nowMs)

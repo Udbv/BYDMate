@@ -1486,6 +1486,17 @@
     <string name="settings_massage_keeper_header">Massagem até o fim da viagem</string>
     <string name="settings_massage_keeper_sub">Religar depois do temporizador. %1$s</string>
     <string name="settings_massage_keeper_desc">A massagem de fábrica dos bancos dianteiros desliga sozinha após 15 minutos. O BYDMate religa o mesmo modo e intensidade enquanto o carro estiver ligado. Uma massagem desligada à mão antes de 14,5 minutos desde a última mudança fica desligada. Verificado até agora só com uma gravação do Tang L.</string>
+    <string name="settings_cluster_power_header">Potência no painel</string>
+    <string name="settings_cluster_power_sub">Cartão de potência e divisão dianteira/traseira. %1$s</string>
+    <string name="settings_cluster_power_desc">Um pequeno cartão no painel de instrumentos: potência da bateria (regeneração em verde), a divisão entre o motor dianteiro e o traseiro em kW e percentagem e um gráfico de 2 minutos. Aparece o tempo todo com o carro ligado. Ocupa o lugar do cartão direito de fábrica (no UI7 os cartões laterais ficam ocultos). Posição e tamanho em percentagem do painel.</string>
+    <string name="settings_cluster_power_x">Da esquerda</string>
+    <string name="settings_cluster_power_y">Do topo</string>
+    <string name="settings_cluster_power_width">Largura</string>
+    <string name="settings_cluster_power_height">Altura</string>
+    <string name="cluster_power_kw">kW</string>
+    <string name="cluster_power_regen">regen.</string>
+    <string name="cluster_power_front">Frente</string>
+    <string name="cluster_power_rear">Trás</string>
     <string name="settings_blindspot_title">Câmera pela seta</string>
     <string name="settings_blindspot_desc">Seta à esquerda - câmera esquerda no painel de instrumentos, à direita - uma janelinha na tela principal. Desativado por padrão.</string>
     <string name="settings_blindspot_threshold_title">Limite de velocidade</string>
