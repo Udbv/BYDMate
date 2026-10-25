@@ -1642,6 +1642,17 @@
     <string name="settings_massage_keeper_header">Масаж да канца паездкі</string>
     <string name="settings_massage_keeper_sub">Уключаць зноў пасля таймера. %1$s</string>
     <string name="settings_massage_keeper_desc">Штатны масаж пярэдніх сядзенняў выключаецца сам праз 15 хвілін. BYDMate уключае той жа рэжым і інтэнсіўнасць зноў, пакуль машына ўключаная. Калі выключыць масаж уручную раней, чым праз 14,5 хвіліны пасля апошняга пераключэння, ён застанецца выключаным. Пакуль праверана толькі па запісе Tang L.</string>
+    <string name="settings_cluster_power_header">Магутнасць на прыборцы</string>
+    <string name="settings_cluster_power_sub">Картка магутнасці і размеркавання перад/зад. %1$s</string>
+    <string name="settings_cluster_power_desc">Невялікая картка на прыборнай панэлі: магутнасць батарэі (рэкуперацыя зялёным), размеркаванне паміж пярэднім і заднім маторам у кВт і працэнтах і графік за 2 хвіліны. Паказваецца ўвесь час, пакуль машына ўключаная. Становіцца на месца правай штатнай карткі (на UI7 бакавыя карткі хаваюцца). Становішча і памер задаюцца ў працэнтах панэлі.</string>
+    <string name="settings_cluster_power_x">Злева</string>
+    <string name="settings_cluster_power_y">Зверху</string>
+    <string name="settings_cluster_power_width">Шырыня</string>
+    <string name="settings_cluster_power_height">Вышыня</string>
+    <string name="cluster_power_kw">кВт</string>
+    <string name="cluster_power_regen">рэкуп.</string>
+    <string name="cluster_power_front">Перад</string>
+    <string name="cluster_power_rear">Зад</string>
     <string name="settings_blindspot_title">Камера па паваротніку</string>
     <string name="settings_blindspot_desc">Левы паваротнік - левая камера на прыборцы, правы - акенца на галоўным экране. Па змаўчанні выключана.</string>
     <string name="settings_blindspot_threshold_title">Парог хуткасці</string>
