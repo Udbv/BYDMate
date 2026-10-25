@@ -92,6 +92,7 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var insightsManager: com.bydmate.app.data.remote.InsightsManager
     @Inject lateinit var automationEngine: AutomationEngine
     @Inject lateinit var ambientNightController: com.bydmate.app.data.automation.AmbientNightController
+    @Inject lateinit var massageKeeper: com.bydmate.app.data.automation.MassageKeeper
     @Inject lateinit var networkAvailableMonitor: com.bydmate.app.data.automation.NetworkAvailableMonitor
     @Inject lateinit var alicePollingManager: AlicePollingManager
     @Inject lateinit var odometerBuffer: OdometerConsumptionBuffer
@@ -1787,6 +1788,8 @@ class TrackingService : Service(), LocationListener {
                     // Live power integration removed — motor power ≠ total battery drain.
                     automationEngine.evaluateMutex.withLock { automationEngine.evaluate(data, sessionId) }
                     ambientNightController.onTick(data, sessionId, lastLocation.value)
+                    runCatching { massageKeeper.onTick(data) }
+                        .onFailure { Log.w(TAG, "MassageKeeper.onTick failed", it) }
                     updateNotification(data)
                     maybeLogSessionSummary(nowMs, data, sessionId)
                     maybeSendIternioTelemetry(data, nowMs)

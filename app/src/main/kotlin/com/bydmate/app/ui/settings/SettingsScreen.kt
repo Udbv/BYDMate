@@ -7,6 +7,7 @@ import android.provider.Settings as AndroidSettings
 import android.widget.Toast
 import com.bydmate.app.camera.BlindSpotPositionOverlay
 import com.bydmate.app.data.automation.AmbientNightController
+import com.bydmate.app.data.automation.MassageKeeper
 import com.bydmate.app.camera.BlindSpotPreferences
 import com.bydmate.app.camera.blindSpotClusterDisplay
 import com.bydmate.app.cluster.ClusterEntryPoint
@@ -1563,6 +1564,7 @@ private fun DisplaySection() {
         }
     }
     AmbientNightCard()
+    MassageKeeperCard()
 }
 
 /**
@@ -1593,6 +1595,37 @@ private fun AmbientNightCard() {
         },
     ) {
         SettingHint(text = stringResource(R.string.settings_ambient_night_desc))
+    }
+}
+
+/**
+ * «Массаж до конца поездки» (#3): MassageKeeper's own SharedPreferences file, re-read on every
+ * tick like the ambient card above, so the switch lands without a restart.
+ */
+@Composable
+private fun MassageKeeperCard() {
+    val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences(MassageKeeper.PREFS_NAME, Context.MODE_PRIVATE)
+    }
+    var enabled by remember { mutableStateOf(prefs.getBoolean(MassageKeeper.KEY_ENABLED, false)) }
+
+    SettingCollapsibleCard(
+        title = stringResource(R.string.settings_massage_keeper_header),
+        subtitle = stringResource(
+            R.string.settings_massage_keeper_sub,
+            stringResource(
+                if (enabled) R.string.settings_display_state_on
+                else R.string.settings_display_state_off
+            ),
+        ),
+        checked = enabled,
+        onCheckedChange = {
+            enabled = it
+            prefs.edit().putBoolean(MassageKeeper.KEY_ENABLED, it).apply()
+        },
+    ) {
+        SettingHint(text = stringResource(R.string.settings_massage_keeper_desc))
     }
 }
 

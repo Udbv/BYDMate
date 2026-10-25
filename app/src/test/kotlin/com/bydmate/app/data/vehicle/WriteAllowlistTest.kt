@@ -486,7 +486,17 @@ class WriteAllowlistTest {
         assertTrue(WriteAllowlist.isBanned(1006, 734003229))
         assertTrue(WriteAllowlist.isBanned(1006, 555745294))
         val dev1023 = WriteAllowlist.BANNED_DEV_FID_EXCEPTIONS.filter { it.first == 1023 }.map { it.second }.toSet()
-        assertEquals(setOf(1330643002, 1069547536, 850427920, 850427928, 944767029, 1276260400, 1276174371), dev1023)
+        assertEquals(
+            setOf(
+                1330643002, 1069547536, 850427920, 850427928, 944767029, 1276260400, 1276174371,
+                // Front-seat massage mode and intensity, driver and passenger (#3).
+                1276190752, 1276190736, 1276190756, 1276190739,
+            ),
+            dev1023,
+        )
+        // The massage read fids stay banned: only the SET pair per seat is carved out.
+        assertTrue(WriteAllowlist.isBanned(1023, 1335885872))
+        assertTrue(WriteAllowlist.isBanned(1023, 1335885880))
     }
 
     @Test fun `drive mode entries are single allowed values, rock unvalidated`() {

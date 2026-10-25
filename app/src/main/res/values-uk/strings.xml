@@ -1258,6 +1258,9 @@
     <string name="settings_ambient_night_header">Амбієнт у темряві</string>
     <string name="settings_ambient_night_sub">Вмикати в темряві. %1$s</string>
     <string name="settings_ambient_night_desc">Авто гасить атмосферне підсвічування між поїздками. BYDMate вмикає його один раз за поїздку: одразу після ввімкнення авто, якщо вже темно, або коли стемніє в дорозі. Якщо вимкнути підсвічування вручну, воно залишиться вимкненим до наступного ввімкнення авто. Темрява визначається за положенням сонця за GPS, без GPS — за датчиком освітленості.</string>
+    <string name="settings_massage_keeper_header">Масаж до кінця поїздки</string>
+    <string name="settings_massage_keeper_sub">Вмикати знову після таймера. %1$s</string>
+    <string name="settings_massage_keeper_desc">Штатний масаж передніх сидінь вимикається сам через 15 хвилин. BYDMate вмикає той самий режим та інтенсивність знову, поки машина увімкнена. Якщо вимкнути масаж вручну раніше, ніж через 14,5 хвилини після останнього перемикання, він лишиться вимкненим. Поки перевірено лише за записом Tang L.</string>
     <string name="settings_blindspot_title">Камера за поворотником</string>
     <string name="settings_blindspot_desc">Лівий поворотник - ліва камера на приладовій панелі, правий - віконце на головному екрані. За замовчуванням вимкнено.</string>
     <string name="settings_blindspot_threshold_title">Поріг швидкості</string>
