@@ -1798,6 +1798,8 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
                 collected.set(collected.get().copy(ambient = ambient))
                 val motors = runCatching { helper.readBatch(MotorsDiagnostics.batchItems()) }.getOrNull()
                 collected.set(collected.get().copy(motors = motors))
+                val pedal = runCatching { helper.readBatch(PedalDiagnostics.batchItems()) }.getOrNull()
+                collected.set(collected.get().copy(pedal = pedal))
             }
             withTimeoutOrNull(budgetMs) { probe.join() }
             return collected.get()
@@ -1815,6 +1817,7 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
         val batteryPreheat: List<Pair<Int, Int>>? = null,
         val ambient: List<Pair<Int, Int>>? = null,
         val motors: List<Pair<Int, Int>>? = null,
+        val pedal: List<Pair<Int, Int>>? = null,
     )
 
     /** Liveness and the seat, steering heat and window fid snapshots under ONE shared budget. */
@@ -2516,6 +2519,9 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
 
             appendLine("--- motors ---")
             MotorsDiagnostics.format(helperDiag.motors).forEach { appendLine(it) }
+
+            appendLine("--- pedal ---")
+            PedalDiagnostics.format(helperDiag.pedal).forEach { appendLine(it) }
 
             appendLine("--- fid resolve ---")
             try {
