@@ -1601,6 +1601,9 @@
     <string name="settings_ambient_night_header">夜间氛围灯</string>
     <string name="settings_ambient_night_sub">天黑时开启。%1$s</string>
     <string name="settings_ambient_night_desc">车辆在两次行程之间会关闭氛围灯。BYDMate 每次行程开启一次：上电时如果天已黑立即开启，或在行驶途中天黑时开启。如果手动关闭，它会保持关闭直到下次上电。天黑依据 GPS 计算的太阳位置判断，没有 GPS 时使用光照传感器。</string>
+    <string name="settings_massage_keeper_header">按摩持续到行程结束</string>
+    <string name="settings_massage_keeper_sub">定时结束后重新开启。%1$s</string>
+    <string name="settings_massage_keeper_desc">原厂前排座椅按摩 15 分钟后会自动关闭。车辆开启期间，BYDMate 会以相同的模式和强度重新开启。若在上次调整后不到 14.5 分钟内手动关闭，按摩将保持关闭。目前仅根据唐 L 的记录验证。</string>
     <string name="settings_blindspot_title">转向灯触发摄像头</string>
     <string name="settings_blindspot_desc">左转向灯 - 仪表盘显示左侧摄像头，右转向灯 - 主屏幕上显示小窗。默认关闭。</string>
     <string name="settings_blindspot_threshold_title">速度阈值</string>

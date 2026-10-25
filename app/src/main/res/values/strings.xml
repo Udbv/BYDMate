@@ -1643,6 +1643,9 @@
     <string name="settings_ambient_night_header">Амбиент в темноте</string>
     <string name="settings_ambient_night_sub">Включать в темноте. %1$s</string>
     <string name="settings_ambient_night_desc">Машина гасит атмосферную подсветку между поездками. BYDMate включает её один раз за поездку: сразу после включения машины, если уже темно, или когда стемнеет в пути. Если выключить подсветку вручную, она останется выключенной до следующего включения машины. Темнота определяется по положению солнца по GPS, без GPS — по датчику освещённости.</string>
+    <string name="settings_massage_keeper_header">Массаж до конца поездки</string>
+    <string name="settings_massage_keeper_sub">Включать снова после таймера. %1$s</string>
+    <string name="settings_massage_keeper_desc">Штатный массаж передних сидений выключается сам через 15 минут. BYDMate включает тот же режим и интенсивность снова, пока машина включена. Если выключить массаж вручную раньше, чем через 14,5 минуты после последнего переключения, он останется выключенным. Проверено пока только по записи Tang L.</string>
     <string name="settings_blindspot_title">Камера по поворотнику</string>
     <string name="settings_blindspot_desc">Левый поворотник - левая камера на приборке, правый - окошко на главном экране. По умолчанию выключено.</string>
     <string name="settings_blindspot_threshold_title">Порог скорости</string>

@@ -87,7 +87,21 @@ class WriteAllowlist(private val map: Map<String, WriteEntry>) {
             // #311). Only 1 (on) and 2 (off) pass, see [RESTRICTED_VALUES]; the rest of the
             // charging device stays banned. Carve-out approved by the owner 2026-10-10.
             BATTERY_PREHEAT_DEV to BATTERY_PREHEAT_SET_FID,
+            // Front-seat massage (#3): working mode and intensity per seat, the same SET fids the
+            // stock seat buttons drive (Tang L catalog 2026-10-24). Only MassageKeeper writes
+            // them, and only the mode and level the seat itself had a moment before.
+            MASSAGE_DEV to MASSAGE_MODE_DRIVER_FID,
+            MASSAGE_DEV to MASSAGE_LEVEL_DRIVER_FID,
+            MASSAGE_DEV to MASSAGE_MODE_PASSENGER_FID,
+            MASSAGE_DEV to MASSAGE_LEVEL_PASSENGER_FID,
         )
+
+        /** Front-seat massage (#3), on the Setting device: mode 1 = off, 2..6 = programs; level 1..3. */
+        const val MASSAGE_DEV = 1023
+        const val MASSAGE_MODE_DRIVER_FID = 1276190752     // SET_MAIN_DRIVER_SEAT_MASSAGE_WORKING_MODE_SET
+        const val MASSAGE_LEVEL_DRIVER_FID = 1276190736    // SET_MAIN_DRIVING_SEAT_MASSAGE_WORK_INTENSUTY_SET
+        const val MASSAGE_MODE_PASSENGER_FID = 1276190756  // SET_CO_DRIVER_SEAT_MASSAGE_WORKING_MODE_SET
+        const val MASSAGE_LEVEL_PASSENGER_FID = 1276190739 // SET_CO_DRIVING_SEAT_MASSAGE_WORK_INTENSUTY_SET
 
         /** Drive mode: written and read back on the Setting device (dev=1023). */
         const val DRIVE_MODE_DEV = 1023
@@ -396,6 +410,14 @@ class WriteAllowlist(private val map: Map<String, WriteEntry>) {
             // the car refuses the warm-up on a warm battery.
             WriteEntry("battery_preheat_on",  1009, 1324617774, null, 1, 1, "energy", false, "byd-sdk carsetting ChargingPreheat"),
             WriteEntry("battery_preheat_off", 1009, 1324617774, null, 2, 2, "energy", false, "byd-sdk carsetting ChargingPreheat"),
+            // Front-seat massage (#3) — dev=1023 carve-out. Mode 2..6 only (1 = off is never
+            // written: the keeper only turns a massage back on), level 1..3. Values match the
+            // Tang L read fids (recorder 2026-10-25). No readbackFid: the keeper reads the seat's
+            // mode on its next tick. Not tried on a car yet.
+            WriteEntry("massage_mode_driver",     MASSAGE_DEV, MASSAGE_MODE_DRIVER_FID, null, 2, 6, "seats", false, "tang-l catalog + recorder 2026-10-25"),
+            WriteEntry("massage_level_driver",    MASSAGE_DEV, MASSAGE_LEVEL_DRIVER_FID, null, 1, 3, "seats", false, "tang-l catalog + recorder 2026-10-25"),
+            WriteEntry("massage_mode_passenger",  MASSAGE_DEV, MASSAGE_MODE_PASSENGER_FID, null, 2, 6, "seats", false, "tang-l catalog + recorder 2026-10-25"),
+            WriteEntry("massage_level_passenger", MASSAGE_DEV, MASSAGE_LEVEL_PASSENGER_FID, null, 1, 3, "seats", false, "tang-l catalog + recorder 2026-10-25"),
             WriteEntry("driver_seat_heat_fallback",    1001, 1125122068, null, 1, 6, "seats", false, "competitor-v80"),
             WriteEntry("driver_seat_vent_fallback",    1001, 1125122064, null, 1, 6, "seats", false, "competitor-v80"),
             WriteEntry("passenger_seat_heat_fallback", 1001, 1125122076, null, 1, 6, "seats", false, "competitor-v80"),

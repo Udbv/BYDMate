@@ -271,8 +271,18 @@ object CommandTranslator {
         WINDOW_POS_REGEX.matchEntire(stripped)?.let { m ->
             return windowsPct(m.groupValues[2].toInt(), WINDOW_DOORS.getValue(m.groupValues[1]))
         }
+        // Front-seat massage (#3): <seat>按摩模式<2..6>强度<1..3> → mode, then intensity. A
+        // composite, so dispatch writes both under NonCancellable.
+        MASSAGE_REGEX.matchEntire(stripped)?.let { m ->
+            val seat = MASSAGE_SEATS.getValue(m.groupValues[1])
+            return listOf(
+                Resolved("massage_mode_$seat", m.groupValues[2].toInt()),
+                Resolved("massage_level_$seat", m.groupValues[3].toInt()),
+            )
+        }
         return emptyList()
     }
+
 
     // Dynamic temperature command: 设置温度<N> (e.g. 设置温度24). Range-clamped in resolve().
     private val TEMP_REGEX = Regex("""设置温度(\d+)""")
@@ -294,6 +304,9 @@ object CommandTranslator {
 
     // Dynamic per-door window position: 主驾打开30 (door prefix + percent 1..99, no leading zero).
     private val WINDOW_POS_REGEX = Regex("""(主驾|副驾|后左|后右)打开([1-9]\d?)""")
+    // Front-seat massage: 主驾按摩模式6强度3 (seat, program 2..6, intensity 1..3); MassageKeeper builds it.
+    private val MASSAGE_REGEX = Regex("""(主驾|副驾)按摩模式([2-6])强度([1-3])""")
+    private val MASSAGE_SEATS = mapOf("主驾" to "driver", "副驾" to "passenger")
     private val WINDOW_DOORS = mapOf("主驾" to "driver", "副驾" to "passenger", "后左" to "rear_left", "后右" to "rear_right")
 
     // Vent = crack windows to this aperture % (validated per-door % path). Small

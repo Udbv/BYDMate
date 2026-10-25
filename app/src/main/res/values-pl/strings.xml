@@ -1639,6 +1639,9 @@
     <string name="settings_ambient_night_header">Oświetlenie ambientowe nocą</string>
     <string name="settings_ambient_night_sub">Włączaj po zmroku. %1$s</string>
     <string name="settings_ambient_night_desc">Samochód wyłącza oświetlenie ambientowe między jazdami. BYDMate włącza je raz na jazdę: zaraz po włączeniu auta, jeśli już jest ciemno, albo gdy ściemni się w trasie. Jeśli wyłączysz je ręcznie, zostanie wyłączone do następnego włączenia auta. Ciemność jest ustalana z położenia słońca wg GPS, a bez GPS z czujnika światła.</string>
+    <string name="settings_massage_keeper_header">Masaż do końca jazdy</string>
+    <string name="settings_massage_keeper_sub">Włączaj ponownie po timerze. %1$s</string>
+    <string name="settings_massage_keeper_desc">Fabryczny masaż przednich foteli wyłącza się sam po 15 minutach. BYDMate włącza ten sam tryb i intensywność ponownie, dopóki auto jest włączone. Masaż wyłączony ręcznie wcześniej niż 14,5 minuty po ostatniej zmianie pozostaje wyłączony. Sprawdzone na razie tylko na nagraniu z Tang L.</string>
     <string name="settings_blindspot_title">Kamera przy kierunkowskazie</string>
     <string name="settings_blindspot_desc">Lewy kierunkowskaz - lewa kamera na wskaźnikach, prawy - okienko na ekranie głównym. Domyślnie wyłączone.</string>
     <string name="settings_blindspot_threshold_title">Próg prędkości</string>

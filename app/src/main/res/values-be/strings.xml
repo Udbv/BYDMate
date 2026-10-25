@@ -1639,6 +1639,9 @@
     <string name="settings_ambient_night_header">Амбіент у цемры</string>
     <string name="settings_ambient_night_sub">Уключаць у цемры. %1$s</string>
     <string name="settings_ambient_night_desc">Машына гасіць атмасфернае падсвятленне паміж паездкамі. BYDMate уключае яго адзін раз за паездку: адразу пасля ўключэння машыны, калі ўжо цёмна, або калі сцямнее ў дарозе. Калі выключыць падсвятленне ўручную, яно застанецца выключаным да наступнага ўключэння машыны. Цемра вызначаецца па становішчы сонца па GPS, без GPS — па датчыку асветленасці.</string>
+    <string name="settings_massage_keeper_header">Масаж да канца паездкі</string>
+    <string name="settings_massage_keeper_sub">Уключаць зноў пасля таймера. %1$s</string>
+    <string name="settings_massage_keeper_desc">Штатны масаж пярэдніх сядзенняў выключаецца сам праз 15 хвілін. BYDMate уключае той жа рэжым і інтэнсіўнасць зноў, пакуль машына ўключаная. Калі выключыць масаж уручную раней, чым праз 14,5 хвіліны пасля апошняга пераключэння, ён застанецца выключаным. Пакуль праверана толькі па запісе Tang L.</string>
     <string name="settings_blindspot_title">Камера па паваротніку</string>
     <string name="settings_blindspot_desc">Левы паваротнік - левая камера на прыборцы, правы - акенца на галоўным экране. Па змаўчанні выключана.</string>
     <string name="settings_blindspot_threshold_title">Парог хуткасці</string>

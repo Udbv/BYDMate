@@ -1483,6 +1483,9 @@
     <string name="settings_ambient_night_header">Luz ambiente à noite</string>
     <string name="settings_ambient_night_sub">Ligar no escuro. %1$s</string>
     <string name="settings_ambient_night_desc">O carro desliga a luz ambiente entre as viagens. O BYDMate liga-a uma vez por viagem: logo após ligar o carro, se já estiver escuro, ou quando escurecer durante o trajeto. Se a desligar manualmente, fica desligada até o carro ser ligado de novo. A escuridão é avaliada pela posição do sol via GPS, ou pelo sensor de luz quando não há GPS.</string>
+    <string name="settings_massage_keeper_header">Massagem até o fim da viagem</string>
+    <string name="settings_massage_keeper_sub">Religar depois do temporizador. %1$s</string>
+    <string name="settings_massage_keeper_desc">A massagem de fábrica dos bancos dianteiros desliga sozinha após 15 minutos. O BYDMate religa o mesmo modo e intensidade enquanto o carro estiver ligado. Uma massagem desligada à mão antes de 14,5 minutos desde a última mudança fica desligada. Verificado até agora só com uma gravação do Tang L.</string>
     <string name="settings_blindspot_title">Câmera pela seta</string>
     <string name="settings_blindspot_desc">Seta à esquerda - câmera esquerda no painel de instrumentos, à direita - uma janelinha na tela principal. Desativado por padrão.</string>
     <string name="settings_blindspot_threshold_title">Limite de velocidade</string>
