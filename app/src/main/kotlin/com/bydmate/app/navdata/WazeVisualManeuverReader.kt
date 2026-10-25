@@ -349,14 +349,17 @@ object WazeVisualManeuverReader {
                         arrow = segmented.mainArrow?.let {
                             classifyPixels(it.width, it.height, it.pixels, exitNumber)
                         },
-                    )
+                    ).apply { allMatched = segmented.matched.all { it } }
                 }
             }
             ) ?: return null
 
         val distance = runCatching { NavGuidanceHub.snapshot().distanceMeters }.getOrDefault(0)
+        // An arrow the table does not know classifies as code 0, which the panel draws as
+        // "straight": a strip with one unknown lane is a wrong strip (drive 2026-10-25: straight
+        // arrows where Waze showed turns). Nothing on the glass beats a wrong arrow there.
         NavLaneState.updateFromPixels(
-            NavLanes.ofCodes(result.codes, result.fronts, distance),
+            if (result.allMatched) NavLanes.ofCodes(result.codes, result.fronts, distance) else NavLanes.NONE,
         )
         val classification = result.arrow ?: Classification(0, null, null, "")
         logLanes(geometry, result, distance, classification, fromTree)
@@ -371,7 +374,10 @@ object WazeVisualManeuverReader {
         val grids: List<String>,
         val mainIndex: Int,
         val arrow: Classification?,
-    )
+    ) {
+        /** Every lane's glyph matched a known drawable; otherwise the strip is not published. */
+        var allMatched: Boolean = false
+    }
 
     /**
      * The tree path: each cell rectangle is cropped as-is and classified at the donor's two
@@ -388,6 +394,11 @@ object WazeVisualManeuverReader {
     ): LaneOutcome? {
         val n = cells.size
         if (n == 0) return null
+        // The strip slides in: until it settles, the tree's cells (read a moment before the
+        // screenshot) reach past the container or are cut short, and every crop is a fragment
+        // (drive 2026-10-25: container 84..113 with cells to 164, all lanes invalid). Try again
+        // on the next screenshot instead of publishing fragments.
+        if (!treeCellsSettled(container, cells)) return null
         val codes = IntArray(n)
         val fronts = IntArray(n)
         val scores = FloatArray(n)
@@ -432,7 +443,16 @@ object WazeVisualManeuverReader {
             classifyPixels(widths[i], heights[i], crops[i]!!, exitNumber)
         }
         return LaneOutcome(codes, fronts, scores, grids.map { it ?: "" }, mainIndex, arrow)
+            .apply { allMatched = classes.all { it?.matched == true } }
     }
+
+    /** Every cell lies inside the container and is about as tall as it is wide (a full arrow). */
+    internal fun treeCellsSettled(container: NavLaneState.LaneRect, cells: List<NavLaneState.LaneRect>): Boolean =
+        cells.all { c ->
+            c.left >= container.left && c.right <= container.right &&
+                c.top >= container.top && c.bottom <= container.bottom &&
+                c.height * SETTLED_HEIGHT_DEN >= c.width * SETTLED_HEIGHT_NUM
+        }
 
     /** openbyd's `isValidBounds` (:488-494): the crop has to lie wholly inside the screenshot. */
     internal fun isValidBounds(
@@ -492,6 +512,10 @@ object WazeVisualManeuverReader {
 
     /** The donor's "this lane does not fit the crop" code (`processSegmentedLanes`: 13). */
     private const val LANE_CODE_INVALID = 13
+
+    /** A settled lane cell is at least 9/10 as tall as it is wide (78x78 on this Waze). */
+    private const val SETTLED_HEIGHT_NUM = 9
+    private const val SETTLED_HEIGHT_DEN = 10
 
     /** Crops [crop] out of [bitmap] and classifies the raw pixels - no resampling. */
     private fun classify(bitmap: Bitmap, crop: Rect, exitNumber: Int?): Classification? {
