@@ -85,7 +85,10 @@ object WazeLaneReader {
                 withDirections = lanes.count { it.directions.isNotEmpty() },
                 descriptions = cells.mapNotNull { it.label }.take(NavLanes.MAX_LANES),
             )
-            NavLanes(lanes)
+            // On the car the lane children carry no text, so every lane here is "?": sending them
+            // drew a row of empty lanes on the glass. The strip goes out only when every lane
+            // says where it leads; otherwise the pixel path (or nothing) decides.
+            if (lanes.any { it.directions.isEmpty() }) NavLanes.NONE else NavLanes(lanes)
         } finally {
             recycle(container, root)
         }
@@ -198,8 +201,22 @@ object WazeLaneReader {
             }
         }
         visit(container, 0)
-        return cells.sortedBy { it.left }.take(NavLanes.MAX_LANES)
+        return lanesOnly(cells).sortedBy { it.left }.take(NavLanes.MAX_LANES)
     }
+
+    /**
+     * Drops the dividers between lanes. This Waze draws a 1-px-wide leaf between two lane arrows
+     * (drive 2026-10-25: `120,84,198,149 319,123,320,149 441,84,…`), so three lanes came out as
+     * five and four as seven or eight. A real lane cell is as wide as the widest one; anything
+     * under a third of that is a divider.
+     */
+    internal fun lanesOnly(cells: List<Cell>): List<Cell> {
+        val widest = cells.maxOfOrNull { it.rect.width } ?: return cells
+        return cells.filter { it.rect.width * DIVIDER_FRACTION >= widest }
+    }
+
+    /** A cell narrower than 1/[DIVIDER_FRACTION] of the widest is a divider, not a lane. */
+    private const val DIVIDER_FRACTION = 3
 
     private fun label(node: AccessibilityNodeInfo): String? {
         val desc = runCatching { node.contentDescription?.toString() }.getOrNull()

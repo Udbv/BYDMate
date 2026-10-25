@@ -36,6 +36,8 @@ object WazeLaneSegmenter {
     class Result(
         val codes: IntArray,
         val fronts: IntArray,
+        /** Per lane: the glyph matched a known drawable. An unmatched lane's code 0 means nothing. */
+        val matched: BooleanArray,
         val scores: FloatArray,
         val mainArrow: Arrow?,
         val mainArrowIndex: Int,
@@ -144,6 +146,7 @@ object WazeLaneSegmenter {
 
         val codes = IntArray(segments.size)
         val fronts = IntArray(segments.size)
+        val matched = BooleanArray(segments.size)
         val scores = FloatArray(segments.size)
         var mainArrow: Arrow? = null
         var mainIndex = -1
@@ -161,10 +164,11 @@ object WazeLaneSegmenter {
                 continue
             }
             val crop = crop(px, w, x0, y0, cw, ch)
-            val classified = classifyLane(cw, ch, crop)
-            codes[i] = classified[0]
+            val classified = classifyLaneDetailed(cw, ch, crop)
+            codes[i] = classified.code
+            matched[i] = classified.matched
             if (cell.score >= max * f) {
-                fronts[i] = classified[1]
+                fronts[i] = classified.activeCode
                 if (mainIndex == -1) {
                     mainArrow = Arrow(crop, cw, ch)
                     mainIndex = i
@@ -173,7 +177,7 @@ object WazeLaneSegmenter {
                 fronts[i] = FRONT_NONE
             }
         }
-        return Result(codes, fronts, scores, mainArrow, mainIndex)
+        return Result(codes, fronts, matched, scores, mainArrow, mainIndex)
     }
 
     /**
