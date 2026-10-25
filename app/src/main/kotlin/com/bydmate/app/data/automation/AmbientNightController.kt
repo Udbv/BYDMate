@@ -30,9 +30,15 @@ class AmbientNightController @Inject constructor(
 
     private var state = AmbientNightState()
 
+    /** What the trip log last said about this cycle, so a quiet tick does not repeat it. */
+    private var lastNote: String? = null
+
     /** Called on every poll tick from TrackingService. [sessionId] is the widget session start. */
     suspend fun onTick(data: DiParsData, sessionId: Long?, location: Location?, now: Long = System.currentTimeMillis()) {
-        if (!prefs.getBoolean(KEY_ENABLED, false)) return
+        if (!prefs.getBoolean(KEY_ENABLED, false)) {
+            note("disabled")
+            return
+        }
         val dark = isDark(location, data.lightLevel, now)
         val step = ambientNightStep(
             state = state,
@@ -43,6 +49,11 @@ class AmbientNightController @Inject constructor(
             now = now,
         )
         state = step.state
+        note(
+            "power=${data.powerState} session=$sessionId dark=$dark " +
+                "(sun ${if (location != null) "by position" else "unknown"}, light=${data.lightLevel}) " +
+                "done=${step.state.done}",
+        )
         when (step.persist) {
             HandledChange.CLEAR ->
                 if (prefs.contains(KEY_HANDLED_SESSION)) prefs.edit().remove(KEY_HANDLED_SESSION).apply()
@@ -57,6 +68,12 @@ class AmbientNightController @Inject constructor(
         if (result.success || state.attempts >= MAX_ATTEMPTS) {
             prefs.edit().putLong(KEY_HANDLED_SESSION, sessionId).apply()
         }
+    }
+
+    private fun note(text: String) {
+        if (text == lastNote) return
+        lastNote = text
+        Log.i(TAG, text)
     }
 
     companion object {
