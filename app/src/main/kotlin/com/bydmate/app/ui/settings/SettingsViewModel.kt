@@ -35,7 +35,6 @@ import com.bydmate.app.diagnostics.LogRecorder
 import com.bydmate.app.diagnostics.Trace
 import com.bydmate.app.BuildConfig
 import com.bydmate.app.data.push.fidRecorderSwitchVisible
-import com.bydmate.app.diagnostics.zipForUpload
 import com.bydmate.app.helper.push.FidRecLog
 import com.bydmate.app.helper.push.latestFidRecording
 import com.bydmate.app.helper.push.FID_REC_NO_ERROR
@@ -535,12 +534,7 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
     private suspend fun uploadFidRecording(file: File) {
         _uiState.update { it.copy(fidRecorderSendStatus = appStrings.get(R.string.settings_log_tg_sending)) }
         val status = try {
-            val zip = withContext(Dispatchers.IO) { zipForUpload(file, appContext.cacheDir) }
-            try {
-                logTelegramSender.sendQuietly(zip) ?: appStrings.get(R.string.settings_log_tg_busy)
-            } finally {
-                withContext(Dispatchers.IO) { zip.delete() }
-            }
+            logTelegramSender.sendRecording(appContext, file) ?: appStrings.get(R.string.settings_log_tg_busy)
         } catch (e: java.io.IOException) {
             appStrings.get(R.string.settings_log_tg_failed, e.message ?: "?")
         }

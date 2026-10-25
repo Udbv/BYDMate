@@ -68,9 +68,10 @@ def main():
     seen = set()
     while True:
         pinned = call(token, "getChat", chat_id=chat_id).get("pinned_message")
-        # Right after an unpin getChat may still report that message for a while (seen >5 s).
-        for _ in range(20):
-            if not pinned or pinned["message_id"] not in seen:
+        # Right after an unpin getChat may still report that message, or no pin at all, for a
+        # while (seen >5 s), so wait up to 20 s for the next one once something was taken.
+        for _ in range(20 if seen else 0):
+            if pinned and pinned["message_id"] not in seen:
                 break
             time.sleep(1)
             pinned = call(token, "getChat", chat_id=chat_id).get("pinned_message")
