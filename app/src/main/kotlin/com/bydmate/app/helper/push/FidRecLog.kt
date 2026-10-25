@@ -29,6 +29,11 @@ internal class FidRecLog(val file: File, private val nowMs: () -> Long = System:
 
     /** One event line, stamped with the wall clock the caller measured the event at. */
     fun event(e: RecEvent) = synchronized(this) {
+        val note = e.note
+        if (note != null) {
+            append("${stamp.format(Date(e.atMs))} # $note")
+            return@synchronized
+        }
         append(
             "${stamp.format(Date(e.atMs))} dev=${e.dev} fid=${e.fid} ${e.symbol} " +
                 "int=${e.intValue} dbl=${e.doubleValue}"

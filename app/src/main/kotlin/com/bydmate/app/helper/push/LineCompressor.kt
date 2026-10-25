@@ -60,6 +60,9 @@ internal class LineCompressor<P>(private val tolerance: Double) {
         return previous
     }
 
+    /** Starts a new line at a point the caller wrote itself, dropping whatever was held. */
+    fun restartAt(t: Long, v: Double) = anchor(t, v)
+
     /** Writes out the held sample, if any: the signal went quiet or the run is ending. */
     fun flush(): P? {
         val previous = held ?: return null
@@ -83,38 +86,3 @@ internal class LineCompressor<P>(private val tolerance: Double) {
         high = (v + tolerance - anchorV) / dt
     }
 }
-
-/**
- * The fast signals of a drive, recorded at the firmware's own rate instead of two lines a second,
- * with [LineCompressor] at the tolerance given here (the signal's own unit). These are what a
- * speed bump, a brake or a lane change shows in: body motion, wheel speeds, steering, pedals,
- * motors and the suspension's own accelerometers. Matched on the catalog symbol.
- */
-internal val FID_REC_FAST_TOLERANCES: Map<String, Double> = mapOf(
-    "Adas.ADAS_X_AXIS_ACCELERATION" to 0.02,
-    "Adas.ADAS_Y_AXIS_ACCELERATION" to 0.02,
-    "Adas.ADAS_WX_ROLL_RATE" to 0.3,
-    "Adas.ADAS_WY_PITCH_RATE" to 0.3,
-    "Adas.ADAS_WZ_YAW_RATE" to 0.3,
-    "Sensor.SENSOR_AX_223" to 5.0,
-    "Bodywork.BODYWORK_DISUS_IMU_MAX_VERTICAL_ACCELERATION" to 0.0,
-    "Bodywork.BODYWORK_DISUS_IMU_MAX_DIFFERENCE_VERTICAL_ACCELERATION" to 0.0,
-    "Bodywork.BODYWORK_DISUS_FLANK_VERTICAL_ACCELERATION" to 0.0,
-    "Special.SPECIAL_CMD_WHEEL_SPEED_FL" to 0.2,
-    "Special.SPECIAL_CMD_WHEEL_SPEED_FR" to 0.2,
-    "Special.SPECIAL_CMD_WHEEL_SPEED_RL" to 0.2,
-    "Special.SPECIAL_CMD_WHEEL_SPEED_RR" to 0.2,
-    "Speed.SPEED_AUTO_SPEED_121" to 0.1,
-    "Bodywork.BODYWORK_STEERING_WHEEL_ANGEL" to 0.5,
-    "Speed.SPEED_ACCELERATOR_S" to 0.5,
-    "Speed.SPEED_BRAKE_S" to 0.5,
-    "Engine.ENGINE_FRONT_MOTOR_SPEED" to 20.0,
-    "Engine.ENGINE_REAR_MOTOR_SPEED" to 20.0,
-    "Engine.ENGINE_FRONT_MOTOR_TORQUE" to 1.0,
-    "Engine.ENGINE_REAR_MOTOR_TORQUE_F" to 1.0,
-    "Charging.CHARGING_CHARGE_CURRENT" to 1.0,
-)
-
-/** The number a fast fid's line is compressed on: its double, or its int when the double is unused. */
-internal fun fidRecValue(intValue: Int, doubleValue: Double): Double =
-    if (doubleValue != 0.0) doubleValue else intValue.toDouble()

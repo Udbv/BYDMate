@@ -46,24 +46,9 @@ internal object FidRecorder {
         /** A change was throttled away; [tick] writes the current value once the gap allows it. */
         var pending = false
 
-        /** Set for the fast signals ([FID_REC_FAST_TOLERANCES]): full rate, linear compression, no throttle. */
-        var compressor: LineCompressor<RecEvent>? = null
-
-        /** When the compressor last got a sample: the fast signals are taken at most every [FAST_MIN_GAP_MS]. */
-        var lastOffered: Long? = null
-
-        /** The newest fast sample that came too soon; [tick] hands it over so a burst's end lands. */
-        var fastPending: RecEvent? = null
-
-        fun offerFast(e: RecEvent): RecEvent? {
-            lastOffered = e.atMs
-            fastPending = null
-            return compressor?.offer(e.atMs, fidRecValue(e.intValue, e.doubleValue), e)
-        }
-
-        fun adopt(name: String) {
+        fun adopt(fid: Int, name: String) {
             symbol = name
-            if (compressor == null) compressor = FID_REC_FAST_TOLERANCES[name]?.let { LineCompressor(it) }
+            fast.adopt(fid, name)
         }
     }
 
@@ -72,6 +57,7 @@ internal object FidRecorder {
     private val registrations = mutableListOf<Registration>()
     private val rows = linkedMapOf<Int, FidRecDeviceRow>()
     private val counters = linkedMapOf<Int, Counters>()
+    private val fast = FastTrack()
 
     @Volatile private var running = false
     @Volatile private var log: FidRecLog? = null
@@ -109,6 +95,7 @@ internal object FidRecorder {
         synchronized(lock) {
             rows.clear()
             counters.clear()
+            fast.clear()
             startedAtMs = startedAt
             lastSummaryMs = startedAt
             fileBytes = 0L
@@ -134,8 +121,10 @@ internal object FidRecorder {
                 "bydmate fid recorder versionCode=${BuildConfig.VERSION_CODE} " +
                     "started=${FidRecLog.startedAtText(startedAt)}",
                 "devices=${targets.joinToString(",")}",
-                "fast=${FID_REC_FAST_TOLERANCES.size} signals at full rate, linear compression " +
-                    "(join consecutive lines with straight lines); others at most one line per ${MIN_LINE_INTERVAL_MS} ms",
+                "fast=${FID_REC_FAST_TOLERANCES.size} signals: raw up to 50 Hz in detail windows " +
+                    "(-${FastTrack.PRE_MS}..+${FastTrack.POST_MS} ms around a '#detail' note), elsewhere " +
+                    "compressed (join a fid's consecutive lines with straight lines); " +
+                    "others at most one line per $MIN_LINE_INTERVAL_MS ms",
             )
         )
         val round = Round(file)
@@ -192,13 +181,7 @@ internal object FidRecorder {
                     c.written = true
                     RecEvent(now, c.dev, fid, c.symbol, c.lastInt, c.lastDouble)
                 }
-            // A fast signal that went quiet: its last value must land, not wait for the next change.
-            val quiet = counters.values.flatMap { c ->
-                val compressor = c.compressor ?: return@flatMap emptyList()
-                val late = c.fastPending?.let { c.offerFast(it) }
-                val heldAt = compressor.heldAt
-                listOfNotNull(late, if (heldAt != null && now - heldAt >= FAST_QUIET_MS) compressor.flush() else null)
-            }
+            val quiet = mutableListOf<RecEvent>().also { fast.tick(now, it) }
             (throttled + quiet).sortedBy { it.atMs }
         }
         due.forEach { sink.event(it) }
@@ -238,12 +221,7 @@ internal object FidRecorder {
         }
         val sink = log
         if (sink != null) {
-            val held = synchronized(lock) {
-                counters.values.flatMap { c ->
-                    if (c.compressor == null) return@flatMap emptyList()
-                    listOfNotNull(c.fastPending?.let { c.offerFast(it) }, c.compressor?.flush())
-                }
-            }
+            val held = synchronized(lock) { mutableListOf<RecEvent>().also { fast.drain(it) } }
             held.sortedBy { it.atMs }.forEach { sink.event(it) }
             val events = status().totalEvents
             sink.close("stopped: $reason events=$events")
@@ -308,8 +286,8 @@ internal object FidRecorder {
         // can only carry [UNKNOWN_SYMBOL].
         synchronized(lock) {
             wanted.forEach {
-                val c = counters.getOrPut(it.fid) { Counters(dev, it.symbol).also { n -> n.adopt(it.symbol) } }
-                if (c.symbol == UNKNOWN_SYMBOL) c.adopt(it.symbol)
+                val c = counters.getOrPut(it.fid) { Counters(dev, it.symbol).also { n -> n.adopt(it.fid, it.symbol) } }
+                if (c.symbol == UNKNOWN_SYMBOL) c.adopt(it.fid, it.symbol)
             }
         }
         val error = registerDevice(device, register, listener, wanted)
@@ -354,43 +332,35 @@ internal object FidRecorder {
      * that already got a line less than [MIN_LINE_INTERVAL_MS] ago is marked pending instead —
      * [tick] writes its current value as soon as the gap allows, so the last value of a burst
      * always lands, and a window sweeping 1 % at a time cannot flood the file. The fast signals
-     * skip the throttle: their [LineCompressor] keeps every change that bends the line.
+     * skip the throttle and go to [FastTrack].
      */
     private fun record(dev: Int, fid: Int, intValue: Int, doubleValue: Double) {
         val now = nowMs()
-        val event = synchronized(lock) {
+        val lines = synchronized(lock) {
             val c = counters.getOrPut(fid) { Counters(dev, UNKNOWN_SYMBOL) }
             val changed = !c.seen || c.lastInt != intValue || c.lastDouble != doubleValue
             c.events++
             c.seen = true
             c.lastInt = intValue
             c.lastDouble = doubleValue
-            val compressor = c.compressor
+            val out = mutableListOf<RecEvent>()
+            if (!changed) return@synchronized out
+            val e = RecEvent(now, dev, fid, c.symbol, intValue, doubleValue)
+            if (c.symbol in FID_REC_EVENT_SYMBOLS) fast.trigger(now, "${c.symbol}=$intValue", out)
             when {
-                !changed -> null
-                compressor != null -> {
-                    val e = RecEvent(now, dev, fid, c.symbol, intValue, doubleValue)
-                    val last = c.lastOffered
-                    if (last != null && now - last < FAST_MIN_GAP_MS) {
-                        c.fastPending = e
-                        null
-                    } else {
-                        c.offerFast(e)
-                    }
-                }
+                fast.isFast(fid) -> fast.sample(e, out)
                 !c.written || now - c.lastWritten >= MIN_LINE_INTERVAL_MS -> {
                     c.lastWritten = now
                     c.written = true
                     c.pending = false
-                    RecEvent(now, dev, fid, c.symbol, intValue, doubleValue)
+                    out += e
                 }
-                else -> {
-                    c.pending = true
-                    null
-                }
+                else -> c.pending = true
             }
-        } ?: return
-        log?.event(event)
+            out
+        }
+        val sink = log ?: return
+        lines.forEach { sink.event(it) }
     }
 
     /** Housekeeping period: four times per [MIN_LINE_INTERVAL_MS] window. */
@@ -399,11 +369,6 @@ internal object FidRecorder {
     /** Minimum gap between two lines of the SAME fid — at most two lines per second per fid. */
     private const val MIN_LINE_INTERVAL_MS = 500L
 
-    /** A fast signal's held-back sample is written once no change came for this long. */
-    private const val FAST_QUIET_MS = 300L
-
-    /** 50 Hz per fast signal at most: enough for a bump, and a firmware flood cannot fill the file. */
-    private const val FAST_MIN_GAP_MS = 20L
 
     /** Caps that stop a forgotten recording: 400 MB and 3 hours. */
     private const val MAX_BYTES = 400L * 1024 * 1024
@@ -503,7 +468,10 @@ internal class RecEvent(
     val symbol: String,
     val intValue: Int,
     val doubleValue: Double,
-)
+) {
+    /** Set on a note line (why a detail window opened) instead of a value. */
+    var note: String? = null
+}
 
 /** Registration outcomes belong in both places: the file explains itself, logcat keeps them. */
 private fun reportRegistration(file: FidRecLog?, line: String) {
