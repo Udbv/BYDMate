@@ -22,6 +22,7 @@ import com.bydmate.app.data.local.decideLanguage
 import com.bydmate.app.data.automation.DriveModeRuleMigration
 import com.bydmate.app.data.automation.PowerStateRuleMigration
 import com.bydmate.app.data.automation.TrunkRuleMigration
+import com.bydmate.app.data.automation.WinterStartRuleMigration
 import com.bydmate.app.data.local.dao.ChargeDao
 import com.bydmate.app.data.remote.InsightsManager
 import com.bydmate.app.data.repository.SettingsRepository
@@ -60,6 +61,7 @@ class BYDMateApp : Application(), Configuration.Provider {
     @Inject lateinit var defaultRulesSeeder: com.bydmate.app.data.automation.DefaultRulesSeeder
     @Inject lateinit var trunkRuleMigration: TrunkRuleMigration
     @Inject lateinit var powerStateRuleMigration: PowerStateRuleMigration
+    @Inject lateinit var winterStartRuleMigration: WinterStartRuleMigration
     @Inject lateinit var traceJournal: TraceJournal
 
     /**
@@ -140,6 +142,8 @@ class BYDMateApp : Application(), Configuration.Provider {
             startupStep("trunk rules") { trunkRuleMigration.runOnce() }
             // One-shot: move rules off the removed PowerState condition.
             startupStep("power state rules") { powerStateRuleMigration.runOnce() }
+            // One-shot: the «Зимний старт» template warms fast and steps down instead of staying on.
+            startupStep("winter start rule") { winterStartRuleMigration.runOnce() }
             // One-shot: the two start-up rules almost every car wants, so an update never
             // means adding them again by hand. Edits and deletions afterwards are respected.
             startupStep("default rules") { defaultRulesSeeder.runOnce() }

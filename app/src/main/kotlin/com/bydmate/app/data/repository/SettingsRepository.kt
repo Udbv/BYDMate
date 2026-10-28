@@ -60,6 +60,7 @@ open class SettingsRepository @Inject constructor(
         const val KEY_TRUNK_RULE_MIGRATION = "trunk_rule_migration_v1"
         /** PowerState conditions rewritten to the BYDMate start or gear D, rules needing the car off removed. */
         const val KEY_POWERSTATE_RULE_MIGRATION = "powerstate_rule_migration_v1"
+        const val KEY_WINTER_START_MIGRATION = "winter_start_migration_v1"
         const val KEY_OPENROUTER_API_KEY = "openrouter_api_key"
         const val KEY_OPENROUTER_MODEL = "openrouter_model"
         /** Exa (api.exa.ai) BYOK for the web_search tool. Blank = openrouter:web_search server tool
@@ -432,6 +433,12 @@ open class SettingsRepository @Inject constructor(
 
     suspend fun setPowerStateRuleMigrationDone() =
         setString(KEY_POWERSTATE_RULE_MIGRATION, "true")
+
+    suspend fun isWinterStartMigrationDone(): Boolean =
+        getString(KEY_WINTER_START_MIGRATION, "false") == "true"
+
+    suspend fun setWinterStartMigrationDone() =
+        setString(KEY_WINTER_START_MIGRATION, "true")
 
     suspend fun getDataSource(): DataSource = DataSource.ENERGYDATA
 
