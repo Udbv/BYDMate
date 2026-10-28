@@ -14,7 +14,8 @@ import javax.inject.Singleton
  * at [LIVE_WEIGHT_FULL_KM], capped at [LIVE_WEIGHT_CAP] beyond.
  *
  * The blend is then held within [ConsumptionBounds] of the car's own history (the lowest and the
- * highest average of 100 km stretches in the last months), refreshed every [BOUNDS_REFRESH_MS].
+ * highest average of 100 km stretches in the last months). [ConsumptionBoundsCache] recomputes them
+ * once a day or every few trips; this only asks it every [BOUNDS_CHECK_MS].
  *
  * Always returns a positive number — UI must display a value, never a dash.
  */
@@ -33,6 +34,7 @@ class RangeAvgSource(
     @Inject constructor(
         tripRepository: TripRepository,
         liveBuffer: LiveTripBuffer,
+        boundsCache: ConsumptionBoundsCache,
     ) : this(
         historicalProvider = {
             tripRepository.getWeightedHistoricalAvg(
@@ -43,7 +45,7 @@ class RangeAvgSource(
         },
         liveAvgProvider = { liveBuffer.avgOverLastKm(LIVE_WINDOW_KM) },
         sessionKmProvider = { liveBuffer.sessionKm() },
-        boundsProvider = { tripRepository.getConsumptionBounds() },
+        boundsProvider = { boundsCache.get() },
     )
 
     override suspend fun recentAvgConsumption(): Double {
@@ -57,7 +59,7 @@ class RangeAvgSource(
     private suspend fun withinBounds(avg: Double): Double {
         val now = clock()
         val at = boundsAt
-        if (at == null || now - at >= BOUNDS_REFRESH_MS) {
+        if (at == null || now - at >= BOUNDS_CHECK_MS) {
             bounds = boundsProvider()
             boundsAt = now
         }
@@ -86,10 +88,7 @@ class RangeAvgSource(
         const val FALLBACK_KWH_PER_100KM = 18.0
         val HISTORICAL_WEIGHTS = listOf(0.5, 0.3, 0.2)
 
-        /**
-         * 100 km stretches over months move slowly: once a day is plenty. The process restarts
-         * with every power cycle, so each trip also starts from a fresh read.
-         */
-        const val BOUNDS_REFRESH_MS = 24 * 60 * 60 * 1000L
+        /** A trip count and a stored row: cheap, so a finished trip reaches the bounds within this. */
+        const val BOUNDS_CHECK_MS = 10 * 60 * 1000L
     }
 }

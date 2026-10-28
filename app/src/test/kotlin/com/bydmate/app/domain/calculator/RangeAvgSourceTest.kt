@@ -81,10 +81,10 @@ class RangeAvgSourceTest {
             clock = { now },
         )
         assertEquals(38.0, s.recentAvgConsumption(), 0.01)
-        now = RangeAvgSource.BOUNDS_REFRESH_MS - 1
+        now = RangeAvgSource.BOUNDS_CHECK_MS - 1
         s.recentAvgConsumption()
         assertEquals(1, reads)
-        now = RangeAvgSource.BOUNDS_REFRESH_MS
+        now = RangeAvgSource.BOUNDS_CHECK_MS
         s.recentAvgConsumption()
         assertEquals(2, reads)
     }
