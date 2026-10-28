@@ -69,4 +69,28 @@ class RangeAvgSourceTest {
         val s = newSource(historical = 18.0, live = null, sessionKm = 0.0)
         assertEquals(18.0, s.recentAvgConsumption(), 0.01)
     }
+
+    @Test fun `blend is held within the car's own stretch bounds`() = runBlocking {
+        var reads = 0
+        var now = 0L
+        val s = RangeAvgSource(
+            historicalProvider = { 55.0 },
+            liveAvgProvider = { null },
+            sessionKmProvider = { 0.0 },
+            boundsProvider = { reads++; 22.0..38.0 },
+            clock = { now },
+        )
+        assertEquals(38.0, s.recentAvgConsumption(), 0.01)
+        now = RangeAvgSource.BOUNDS_REFRESH_MS - 1
+        s.recentAvgConsumption()
+        assertEquals(1, reads)
+        now = RangeAvgSource.BOUNDS_REFRESH_MS
+        s.recentAvgConsumption()
+        assertEquals(2, reads)
+    }
+
+    @Test fun `no bounds leaves the blend as is`() = runBlocking {
+        val s = newSource(historical = 55.0, live = null, sessionKm = 0.0)
+        assertEquals(55.0, s.recentAvgConsumption(), 0.01)
+    }
 }
