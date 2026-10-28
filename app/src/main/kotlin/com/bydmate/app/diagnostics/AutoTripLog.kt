@@ -24,8 +24,10 @@ import javax.inject.Singleton
  * default on the development channel, where the drive nobody watched is the one that matters;
  * off on stable. A stored choice wins either way.
  *
- * - Car on for [START_DELAY_MS] (the startup resume of a button recording goes first) and nothing
- *   recording: a recording starts and is remembered as this class's own.
+ * - Car on and nothing recording: a recording starts after [EARLY_START_MS] and is remembered as
+ *   this class's own. The logcat buffer of the head unit holds only seconds, so a later start loses
+ *   the startup (the ambient light, launch automations). A button recording still pending from the
+ *   last trip resumes first: then the start waits [START_DELAY_MS], past the resume retries.
  * - Car off for [OFF_MS] with that recording running: it stops, and the file goes to the bot.
  * - The car usually kills the process sooner. Then at the next start the old file is neither
  *   resumed into the new trip nor lost: [onServiceStart] finishes it and sends it.
@@ -73,7 +75,7 @@ class AutoTripLog @Inject constructor(
         noteOwnerStop(state, own, carOn, now)
         if (carOn) {
             offSince = null
-            if (!state.isRecording && !stoppedByOwner && now - serviceStartedAt >= START_DELAY_MS) start()
+            if (!state.isRecording && !stoppedByOwner && now - serviceStartedAt >= startDelay()) start()
             return
         }
         val since = offSince ?: now.also { offSince = it }
@@ -85,6 +87,8 @@ class AutoTripLog @Inject constructor(
             own?.let { uploads.launch { send(File(it), waitForNetwork = false) } }
         }
     }
+
+    private fun startDelay(): Long = if (recorder.pendingPath() != null) START_DELAY_MS else EARLY_START_MS
 
     /** Our recording ended while the car is on and well short of the 2 h auto-stop: the owner stopped it. */
     private fun noteOwnerStop(state: LogRecorder.State, own: String?, carOn: Boolean, now: Long) {
@@ -155,6 +159,7 @@ class AutoTripLog @Inject constructor(
                 .edit().putBoolean(KEY_ENABLED, on).apply()
         }
 
+        const val EARLY_START_MS = 3_000L
         const val START_DELAY_MS = 45_000L
         const val OFF_MS = 60_000L
         private const val AUTO_STOP_MS = 2 * 60 * 60 * 1000L
