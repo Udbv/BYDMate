@@ -86,7 +86,10 @@ class RangeAvgSource(
         const val FALLBACK_KWH_PER_100KM = 18.0
         val HISTORICAL_WEIGHTS = listOf(0.5, 0.3, 0.2)
 
-        /** The bounds move with finished trips only: one read of the trip table per this. */
-        const val BOUNDS_REFRESH_MS = 10 * 60 * 1000L
+        /**
+         * 100 km stretches over months move slowly: once a day is plenty. The process restarts
+         * with every power cycle, so each trip also starts from a fresh read.
+         */
+        const val BOUNDS_REFRESH_MS = 24 * 60 * 60 * 1000L
     }
 }
