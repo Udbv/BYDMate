@@ -52,7 +52,16 @@ class AutoTripLogTest {
         runBlocking { log.onServiceStart(now = 0) }
     }
 
-    @Test fun `starts once the car has been on past the startup delay`() = runBlocking {
+    @Test fun `starts within seconds of the car coming on`() = runBlocking {
+        log.onTick(carOn = true, now = 1_000)
+        coVerify(exactly = 0) { recorder.start(any()) }
+        log.onTick(carOn = true, now = AutoTripLog.EARLY_START_MS)
+        coVerify(exactly = 1) { recorder.start(any()) }
+        assertTrue(state.value.isRecording)
+    }
+
+    @Test fun `waits past the resume of a pending button recording`() = runBlocking {
+        every { recorder.pendingPath() } returns "/sdcard/Download/bydmate_logs_button.txt"
         log.onTick(carOn = true, now = 10_000)
         coVerify(exactly = 0) { recorder.start(any()) }
         log.onTick(carOn = true, now = AutoTripLog.START_DELAY_MS)

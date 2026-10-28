@@ -510,9 +510,10 @@ class LogRecorder internal constructor(
             "DriveModeChannel:*",
             // Telegram reports: build (items taken / skipped, length), send, outbox add/drain/drop.
             "TgReport:*",
-            // 4.0.1-dev.5..dev.9: massage keeper, the cluster power card, the HUD lane strip and
-            // the automatic trip log itself.
+            // 4.0.1-dev.5..dev.10: massage keeper, the cluster power card, the HUD lane strip, the
+            // automatic trip log itself and the ambient light at night.
             "MassageKeeper:*", "ClusterPowerCard:*", "HudLaneWriter:*", "WazeLaneReader:*", "AutoTripLog:*",
+            "AmbientNight:*",
             // Power-off report in the helper daemon: arm, power off/on, send attempts, outcome.
             "OffReport:*",
             // Agent tools (where_am_i steps, failed weather requests) and the two Overpass

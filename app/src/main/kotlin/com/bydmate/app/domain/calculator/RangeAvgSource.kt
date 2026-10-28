@@ -13,6 +13,10 @@ import javax.inject.Singleton
  * Live weight scales linearly from 0 at [LIVE_WEIGHT_FLOOR_KM] to [LIVE_WEIGHT_CAP]
  * at [LIVE_WEIGHT_FULL_KM], capped at [LIVE_WEIGHT_CAP] beyond.
  *
+ * The blend is then held within [ConsumptionBounds] of the car's own history (the lowest and the
+ * highest average of 100 km stretches in the last months). [ConsumptionBoundsCache] recomputes them
+ * once a day or every few trips; this only asks it every [BOUNDS_CHECK_MS].
+ *
  * Always returns a positive number — UI must display a value, never a dash.
  */
 @Singleton
@@ -20,11 +24,17 @@ class RangeAvgSource(
     private val historicalProvider: suspend () -> Double,
     private val liveAvgProvider: suspend () -> Double?,
     private val sessionKmProvider: suspend () -> Double,
+    private val boundsProvider: suspend () -> ClosedFloatingPointRange<Double>? = { null },
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : ConsumptionAvgSource {
+
+    private var bounds: ClosedFloatingPointRange<Double>? = null
+    private var boundsAt: Long? = null
 
     @Inject constructor(
         tripRepository: TripRepository,
         liveBuffer: LiveTripBuffer,
+        boundsCache: ConsumptionBoundsCache,
     ) : this(
         historicalProvider = {
             tripRepository.getWeightedHistoricalAvg(
@@ -35,14 +45,25 @@ class RangeAvgSource(
         },
         liveAvgProvider = { liveBuffer.avgOverLastKm(LIVE_WINDOW_KM) },
         sessionKmProvider = { liveBuffer.sessionKm() },
+        boundsProvider = { boundsCache.get() },
     )
 
     override suspend fun recentAvgConsumption(): Double {
         val historical = historicalProvider()
-        val live = liveAvgProvider() ?: return sane(historical)
+        val live = liveAvgProvider() ?: return withinBounds(sane(historical))
         val sessionKm = sessionKmProvider()
         val w = liveWeight(sessionKm)
-        return sane(w * live + (1.0 - w) * historical)
+        return withinBounds(sane(w * live + (1.0 - w) * historical))
+    }
+
+    private suspend fun withinBounds(avg: Double): Double {
+        val now = clock()
+        val at = boundsAt
+        if (at == null || now - at >= BOUNDS_CHECK_MS) {
+            bounds = boundsProvider()
+            boundsAt = now
+        }
+        return bounds?.let { avg.coerceIn(it) } ?: avg
     }
 
     // Last-resort gate: historical/live are already filtered at their sources
@@ -66,5 +87,8 @@ class RangeAvgSource(
         const val MIN_HISTORICAL_KM = 3.0
         const val FALLBACK_KWH_PER_100KM = 18.0
         val HISTORICAL_WEIGHTS = listOf(0.5, 0.3, 0.2)
+
+        /** A trip count and a stored row: cheap, so a finished trip reaches the bounds within this. */
+        const val BOUNDS_CHECK_MS = 10 * 60 * 1000L
     }
 }

@@ -1271,12 +1271,10 @@ internal fun starterTemplates(lang: String): List<RuleEntity> {
                 TriggerDef("ServiceStart", "服务启动", "==", "true",
                     tName("BYDMate 启动", "BYDMate startup", "Запуск BYDMate"), kind = "service_start")
             )),
-            actions = ActionDef.listToJson(listOf(
-                ActionDef("主驾座椅加热2档",
-                    tName("主驾座椅加热2档", "Driver Heat 2", "Подогрев водителя 2")),
-                ActionDef("后视镜加热",
-                    tName("后视镜加热开", "Mirror Heat On", "Подогрев зеркал вкл"))
-            )),
+            // Warm fast, then step down: see WinterStartRuleMigration.
+            actions = ActionDef.listToJson(
+                com.bydmate.app.data.automation.WinterStartRuleMigration.stagedActions()
+            ),
             cooldownSeconds = 600
         ),
         RuleEntity(
