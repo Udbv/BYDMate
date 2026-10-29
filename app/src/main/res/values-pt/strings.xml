@@ -2153,4 +2153,11 @@
     <string name="trip_page_regen_saving">a regeneração poupou %1$.2f %2$s</string>
     <string name="trip_page_no_minutes">Sem dados por minuto para esta viagem: são registados a partir da versão 4.0.1-dev.12.</string>
     <string name="trip_page_not_found">Viagem não encontrada</string>
+    <string name="cluster_power_idle">motores parados</string>
+    <string name="cluster_power_trip_peak">pico da viagem</string>
+    <string name="cluster_power_not_motors">Não motores</string>
+    <string name="cluster_power_climate">clima</string>
+    <string name="cluster_power_other">outros</string>
+    <string name="cluster_power_minutes_ago">−%1$d min</string>
+    <string name="cluster_power_now">agora</string>
 </resources>

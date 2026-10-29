@@ -2322,4 +2322,11 @@
     <string name="trip_page_regen_saving">рекуперация сэкономила %1$.2f %2$s</string>
     <string name="trip_page_no_minutes">Поминутных данных для этой поездки нет: они записываются начиная с версии 4.0.1-dev.12.</string>
     <string name="trip_page_not_found">Поездка не найдена</string>
+    <string name="cluster_power_idle">моторы стоят</string>
+    <string name="cluster_power_trip_peak">пик за поездку</string>
+    <string name="cluster_power_not_motors">Не моторы</string>
+    <string name="cluster_power_climate">климат</string>
+    <string name="cluster_power_other">прочее</string>
+    <string name="cluster_power_minutes_ago">−%1$d мин</string>
+    <string name="cluster_power_now">сейчас</string>
 </resources>

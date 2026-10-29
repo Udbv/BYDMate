@@ -2309,4 +2309,11 @@
     <string name="trip_page_regen_saving">rekuperacja zaoszczędziła %1$.2f %2$s</string>
     <string name="trip_page_no_minutes">Brak danych minutowych dla tego przejazdu: są zapisywane od wersji 4.0.1-dev.12.</string>
     <string name="trip_page_not_found">Nie znaleziono przejazdu</string>
+    <string name="cluster_power_idle">silniki stoją</string>
+    <string name="cluster_power_trip_peak">szczyt przejazdu</string>
+    <string name="cluster_power_not_motors">Nie silniki</string>
+    <string name="cluster_power_climate">klima</string>
+    <string name="cluster_power_other">inne</string>
+    <string name="cluster_power_minutes_ago">−%1$d min</string>
+    <string name="cluster_power_now">teraz</string>
 </resources>

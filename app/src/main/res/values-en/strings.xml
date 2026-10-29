@@ -2157,4 +2157,11 @@
     <string name="trip_page_regen_saving">regen saved %1$.2f %2$s</string>
     <string name="trip_page_no_minutes">No per-minute data for this trip: it is recorded from version 4.0.1-dev.12 on.</string>
     <string name="trip_page_not_found">Trip not found</string>
+    <string name="cluster_power_idle">motors idle</string>
+    <string name="cluster_power_trip_peak">trip peak</string>
+    <string name="cluster_power_not_motors">Not motors</string>
+    <string name="cluster_power_climate">climate</string>
+    <string name="cluster_power_other">other</string>
+    <string name="cluster_power_minutes_ago">−%1$d min</string>
+    <string name="cluster_power_now">now</string>
 </resources>

@@ -2271,4 +2271,11 @@
     <string name="trip_page_regen_saving">能量回收节省 %1$.2f %2$s</string>
     <string name="trip_page_no_minutes">此行程没有每分钟数据：从 4.0.1-dev.12 版本开始记录。</string>
     <string name="trip_page_not_found">未找到行程</string>
+    <string name="cluster_power_idle">电机静止</string>
+    <string name="cluster_power_trip_peak">行程峰值</string>
+    <string name="cluster_power_not_motors">非电机</string>
+    <string name="cluster_power_climate">空调</string>
+    <string name="cluster_power_other">其他</string>
+    <string name="cluster_power_minutes_ago">−%1$d 分钟</string>
+    <string name="cluster_power_now">现在</string>
 </resources>
