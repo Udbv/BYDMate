@@ -319,7 +319,7 @@ object HelperBinderProtocol {
      * write on an empty parcel and answered -1. Numbering is now unique (see the distinctness
      * test in HelperBinderProtocolTest).
      */
-    val TX_WRITE_BYTES: Int = IBinder.FIRST_CALL_TRANSACTION + 60            // 61 (fork; after upstream's 41..59)
+    val TX_WRITE_BYTES: Int = IBinder.FIRST_CALL_TRANSACTION + 100           // 101 (fork range 101+, clear of upstream)
 
     /**
      * Recovers the steering-wheel accessibility service on Android 10 (DiLink 3.0/4.0) after the
@@ -364,7 +364,7 @@ object HelperBinderProtocol {
      * -2147482646 TIMEOUT, -2147482645 INVALID_VALUE); daemon-side -1 = class/method/field
      * missing or reflection threw, -3 = no system context, -4 = malformed arguments.
      */
-    val TX_SDK_SET: Int = IBinder.FIRST_CALL_TRANSACTION + 61               // 62 (fork; after upstream's 41..59)
+    val TX_SDK_SET: Int = IBinder.FIRST_CALL_TRANSACTION + 101              // 102 (fork range 101+)
 
     /**
      * Navigation methods of `android.hardware.bydauto.instrument.BYDAutoInstrumentDevice`, the
@@ -379,7 +379,7 @@ object HelperBinderProtocol {
      *   SDK_NAVI_CAMERA_GUIDANCE : int type, int distance, int state -> sendCameraGuidanceInfo(int,int,int)
      * Reply: [int status, int 0], status semantics as TX_SDK_SET.
      */
-    val TX_SDK_NAVI: Int = IBinder.FIRST_CALL_TRANSACTION + 62              // 63 (fork; after upstream's 41..59)
+    val TX_SDK_NAVI: Int = IBinder.FIRST_CALL_TRANSACTION + 102             // 103 (fork range 101+)
 
     /** Device selectors of TX_SDK_SET. Not autoservice device numbers: they name SDK classes. */
     const val SDK_DEV_INSTRUMENT = 1   // android.hardware.bydauto.instrument.BYDAutoInstrumentDevice
