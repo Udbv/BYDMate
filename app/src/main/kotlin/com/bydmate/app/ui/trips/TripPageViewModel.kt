@@ -12,7 +12,7 @@ import com.bydmate.app.data.nativestack.VehicleKind
 import com.bydmate.app.data.nativestack.VehicleKindMonitor
 import com.bydmate.app.data.repository.SettingsRepository
 import com.bydmate.app.data.repository.TripRepository
-import com.bydmate.app.domain.cost.CostCalculator
+import com.bydmate.app.domain.cost.BatteryPriceLookup
 import com.bydmate.app.domain.cost.TripEnergyPrice
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,7 +44,7 @@ class TripPageViewModel @Inject constructor(
     private val tripRepository: TripRepository,
     private val tripPointDao: TripPointDao,
     private val tripMinuteDao: TripMinuteDao,
-    private val costCalculator: CostCalculator,
+    private val batteryPrice: BatteryPriceLookup,
     private val settingsRepository: SettingsRepository,
     private val vehicleKindMonitor: VehicleKindMonitor,
 ) : ViewModel() {
@@ -78,7 +78,7 @@ class TripPageViewModel @Inject constructor(
                 points = tripPointDao.getByTripId(trip.id),
                 minutes = minutes,
                 summary = TripEnergySummary.of(minutes),
-                price = costCalculator.batteryPriceAt(trip.startTs),
+                price = batteryPrice.at(trip.startTs),
                 currencySymbol = settingsRepository.getCurrencySymbol(),
                 tileSource = settingsRepository.getMapTileSource(),
                 hybrid = vehicleKindMonitor.kind.value == VehicleKind.HYBRID,

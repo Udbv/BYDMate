@@ -406,9 +406,26 @@ object AppModule {
         }
     }
 
-    /** Trip page: one row per clock minute the car was on (power split, climate, 12 V, extremes). */
+    /** Start time on trip tombstones (#348): energydata ids are recycled when the car recreates its DB. */
     internal val MIGRATION_23_24 = object : Migration(23, 24) {
         override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE trip_tombstones ADD COLUMN start_ts INTEGER")
+        }
+    }
+
+    /**
+     * Trip page: one row per clock minute the car was on (power split, climate, 12 V, extremes).
+     * The fork's 4.0.1-dev.12 shipped this table as version 24 before upstream 4.1 took 24 for the
+     * tombstones' start time, so a database at 24 may hold either half: each is added only when
+     * missing.
+     */
+    internal val MIGRATION_24_25 = object : Migration(24, 25) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            val tombstoneColumns = db.query("PRAGMA table_info(trip_tombstones)").use { c ->
+                val name = c.getColumnIndex("name")
+                buildSet { while (c.moveToNext()) add(c.getString(name)) }
+            }
+            if ("start_ts" !in tombstoneColumns) db.execSQL("ALTER TABLE trip_tombstones ADD COLUMN start_ts INTEGER")
             db.execSQL("""
                 CREATE TABLE IF NOT EXISTS trip_minutes (
                     minute_ts INTEGER PRIMARY KEY NOT NULL,
@@ -444,7 +461,7 @@ object AppModule {
 
     /** Every production migration: the app database and a restored archive of an older schema share them. */
     fun withMigrations(builder: RoomDatabase.Builder<AppDatabase>): RoomDatabase.Builder<AppDatabase> =
-        builder.addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24)
+        builder.addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25)
 
     @Provides fun provideTripDao(db: AppDatabase): TripDao = db.tripDao()
     @Provides fun provideTripPointDao(db: AppDatabase): TripPointDao = db.tripPointDao()
@@ -607,6 +624,37 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideDtcScanRepository(
+        @ApplicationContext context: Context,
+        helper: com.bydmate.app.data.vehicle.HelperClient,
+        settings: SettingsRepository,
+        sink: com.bydmate.app.data.backup.TelegramBackupSink,
+        vehicleKindMonitor: com.bydmate.app.data.nativestack.VehicleKindMonitor,
+    ): com.bydmate.app.data.dtc.DtcScanRepository = com.bydmate.app.data.dtc.DtcScanRepository(
+        helper = helper,
+        prefs = context.getSharedPreferences(com.bydmate.app.data.dtc.DtcScanRepository.PREFS_NAME, Context.MODE_PRIVATE),
+        settings = settings,
+        sink = sink,
+        scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default),
+        liveSample = { com.bydmate.app.service.TrackingService.lastSample },
+        serviceRunning = { com.bydmate.app.service.TrackingService.isRunning.value },
+        elapsedNow = { android.os.SystemClock.elapsedRealtime() },
+        wallNow = { System.currentTimeMillis() },
+        describer = com.bydmate.app.data.dtc.DtcDescriber(
+            open = { name -> context.assets.open("dtc/$name").reader(Charsets.UTF_8) },
+            autoType = { com.bydmate.app.data.dtc.CarAutoType.read(helper) },
+            energy = {
+                when (vehicleKindMonitor.kind.value) {
+                    com.bydmate.app.data.nativestack.VehicleKind.EV -> com.bydmate.app.data.dtc.DtcEnergy.EV
+                    com.bydmate.app.data.nativestack.VehicleKind.HYBRID -> com.bydmate.app.data.dtc.DtcEnergy.DM
+                    com.bydmate.app.data.nativestack.VehicleKind.UNKNOWN -> com.bydmate.app.data.dtc.DtcEnergy.UNKNOWN
+                }
+            },
+        ),
+    )
+
+    @Provides
+    @Singleton
     fun provideWriteAllowlist(@ApplicationContext context: Context): com.bydmate.app.data.vehicle.WriteAllowlist =
         com.bydmate.app.data.vehicle.WriteAllowlist.loadProduction {
             context.assets.open("competitor-actions.json").bufferedReader().use { it.readText() }
@@ -638,6 +686,7 @@ object AppModule {
 
     @Provides
     @Singleton
+    @Suppress("LongParameterList") // Hilt-injected dependencies
     fun provideVehicleApi(
         parsReader: com.bydmate.app.data.nativestack.ParsReader,
         autoservice: com.bydmate.app.data.autoservice.AutoserviceClient,
@@ -647,10 +696,11 @@ object AppModule {
         seatChannelStore: com.bydmate.app.data.vehicle.SeatChannelStore,
         windowChannelStore: com.bydmate.app.data.vehicle.WindowChannelStore,
         seatCommandJournal: com.bydmate.app.data.vehicle.SeatCommandJournal,
+        fidCatalogManager: com.bydmate.app.data.nativestack.FidCatalogManager,
     ): com.bydmate.app.data.vehicle.VehicleApi =
         com.bydmate.app.data.vehicle.VehicleApiImpl(
             parsReader, autoservice, helper, allowlist, writeLogDao, seatChannelStore, windowChannelStore,
-            seatCommandJournal,
+            seatCommandJournal, rearCatalog = { fidCatalogManager.catalog },
         )
 
     @Provides

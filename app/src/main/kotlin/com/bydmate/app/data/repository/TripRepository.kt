@@ -49,7 +49,7 @@ class TripRepository @Inject constructor(
      */
     suspend fun deleteTrip(trip: TripEntity) {
         db.withTransaction {
-            trip.bydId?.let { tripTombstoneDao.insert(TripTombstoneEntity(it)) }
+            trip.bydId?.let { tripTombstoneDao.insert(TripTombstoneEntity(it, trip.startTs)) }
             tripPointDao.deleteByTripId(trip.id)
             tripDao.deleteById(trip.id)
         }

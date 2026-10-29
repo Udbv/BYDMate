@@ -45,6 +45,7 @@ import com.bydmate.app.data.remote.OpenRouterClient
 import com.bydmate.app.data.remote.OpenRouterModel
 import com.bydmate.app.data.local.dao.TariffPeriodDao
 import com.bydmate.app.data.local.entity.PlaceEntity
+import com.bydmate.app.data.local.entity.RuleEntity
 import com.bydmate.app.data.local.entity.TariffPeriodEntity
 import com.bydmate.app.domain.cost.CostCalculator
 import com.bydmate.app.domain.cost.MeasuredLosses
@@ -438,8 +439,12 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
     /** Forget the remembered seat write-channel; next seat command re-probes primary→fallback. */
     fun resetSeatChannel() = seatChannelStore.setWinner(SeatChannel.UNKNOWN)
 
-    /** Forget the dead-energydata verdict; the next drives re-detect the trip source (#63). */
-    fun resetTripSourceDetection() = energyDataDeadDetector.reset()
+    /** Forget the dead-energydata verdict; the next drives re-detect the trip source (#63).
+     *  The import watermark goes too, so the next sync re-reads energydata from the start (#348). */
+    fun resetTripSourceDetection() {
+        energyDataDeadDetector.reset()
+        viewModelScope.launch { historyImporter.resetImportWatermark() }
+    }
 
     private val _uiState = MutableStateFlow(SettingsUiState(
         appVersion = getVersion(),
@@ -1416,6 +1421,31 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
             .edit().putBoolean("close_after_command", enabled).apply()
     }
 
+    // --- Split screen: steering key ---
+
+    /** Rules for the split key's occupancy and conflict checks, read when its learn dialog opens. */
+    suspend fun automationRulesSnapshot(): List<RuleEntity> = ruleDao.getAllList()
+
+    /**
+     * Saves the split key with [companions] (other codes of the same press, always replacing the
+     * stored ones); [disableRuleIds] are the split rules on it the user chose to turn off.
+     */
+    fun saveSplitKey(keyCode: Int, companions: Set<Int>, disableRuleIds: List<Long>) {
+        splitPreferences.setSteeringKeyCode(keyCode)
+        splitPreferences.setSteeringKeyCompanions(companions)
+        Log.i(TAG, "split key=$keyCode companions=${voiceCompanionsToCsv(companions).ifEmpty { "-" }} " +
+            "rules_off=$disableRuleIds")
+        if (disableRuleIds.isNotEmpty()) {
+            viewModelScope.launch { disableRuleIds.forEach { ruleDao.setEnabled(it, false) } }
+        }
+    }
+
+    fun clearSplitKey() {
+        splitPreferences.setSteeringKeyCode(0)
+        splitPreferences.setSteeringKeyCompanions(emptySet())
+        Log.i(TAG, "split key cleared")
+    }
+
     // --- TTS (offline synthesis of agent replies) ---
 
     /**
@@ -1999,6 +2029,14 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
                 )
             }
 
+            // «Состояние машины» / «Диагностика»: the stock car status provider as read right now
+            // (raw keys and what the card makes of them). PM2.5 is read by the Tech screen only
+            // and logs its own `pm25 read:` lines under TechPanel.
+            appendLine("--- car status ---")
+            try {
+                appendLine(com.bydmate.app.data.carstatus.CarStatusReader(appContext).dumpLine())
+            } catch (e: Exception) { appendLine("error: ${e.message}") }
+
             // ICE-side addresses nothing in the app reads yet (#184). A DM-i owner sends this
             // dump with the engine running and the raw words say which of them are live there.
             appendLine("--- hybrid probe ---")
@@ -2010,6 +2048,9 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
             try {
                 appendLine(vehicleKindMonitor.dumpLine())
             } catch (e: Exception) { appendLine("vehicle_kind: error ${e.message}") }
+            try {
+                appendLine(com.bydmate.app.data.dtc.CarAutoType.dumpLine(helperClient))
+            } catch (e: Exception) { appendLine("car_autotype: error ${e.message}") }
 
             appendLine(automationEngine.serviceStartDumpLine())
             // Automation rules (#177): issue reports about a rule that "does nothing"
@@ -2090,6 +2131,7 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
                         files.forEach { appendLine("  ${it.name} (${it.length()}B, mtime=${it.lastModified()})") }
                     }
                     appendLine("liveness: ${energyDataDeadDetector.debugState()}")
+                    appendLine(historyImporter.importStateLine())
                 }
             } catch (e: Exception) {
                 appendLine("(failed to gather vehicle data sources: ${e.message})")
@@ -2106,9 +2148,14 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
                 val bttsMax = runCatching { am.getStreamMaxVolume(17) }.getOrNull()
                 val bttsVol = runCatching { am.getStreamVolume(17) }.getOrNull()
                 appendLine("byd_btts_stream17: " + if (bttsMax != null) "present vol=$bttsVol/$bttsMax" else "absent")
-                val preDuck = appContext.getSharedPreferences("voice", Context.MODE_PRIVATE)
-                    .getInt("pre_duck_volume", -1)
+                val voicePrefs = appContext.getSharedPreferences("voice", Context.MODE_PRIVATE)
+                val preDuck = voicePrefs.getInt("pre_duck_volume", -1)
                 appendLine("pre_duck_volume: " + if (preDuck >= 0) "$preDuck" else "(none)")
+                // #353: the firmware voice duck state; the amp type tells which cars needed it.
+                val ampType = com.bydmate.app.split.readSystemProperty("sys.ext.amp.type") ?: "(none)"
+                val autoVoiceMarker = voicePrefs.getBoolean(com.bydmate.app.voice.AutoVoiceDuck.KEY_MARKER, false)
+                val autoVoiceLast = voicePrefs.getString(com.bydmate.app.voice.AutoVoiceDuck.KEY_LAST, null) ?: "(none)"
+                appendLine("auto_voice: ext_amp_type=$ampType marker=${if (autoVoiceMarker) "set" else "none"} last=$autoVoiceLast")
             } catch (e: Exception) { appendLine("(failed to gather audio state: ${e.message})") }
 
             appendLine("--- displays ---")
@@ -2378,6 +2425,8 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
                     com.bydmate.app.cluster.ClusterProjectionManager.PREFS_NAME, Context.MODE_PRIVATE)
                 appendLine("mirror_enabled: ${clusterPrefs.getBoolean(
                     com.bydmate.app.cluster.ClusterProjectionManager.KEY_MIRROR_ENABLED, false)}")
+                appendLine("split_key: enabled=${splitPreferences.isFeatureEnabled()} " +
+                    "keycode=${splitPreferences.getSteeringKeyCode()}")
                 appendLine(com.bydmate.app.cluster.SteeringWheelKeyService.keyCounters.line())
             } catch (e: Exception) { appendLine("(failed to gather steering key state: ${e.message})") }
 
@@ -2479,6 +2528,12 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
                 val lastPair = splitPreferences.getLastPair()
                 appendLine("last_pair: " + if (lastPair == null) "(none)" else
                     "narrow=${lastPair.narrowPkg} wide=${lastPair.widePkg} side=${lastPair.narrowSide}")
+                // last_pair = what the next start-from-saved opens: the session pair, else the menu one.
+                val menuPair = splitPreferences.getMenuPair()
+                val sessionPair = splitPreferences.getSessionPair()
+                appendLine("menu_pair: " + if (menuPair == null) "(none)" else "${menuPair.narrowPkg}+${menuPair.widePkg}")
+                appendLine("session_pair: " + if (sessionPair == null) "(none)" else
+                    "${sessionPair.narrowPkg}+${sessionPair.widePkg}")
                 when (val session = splitSessionManager.state.value) {
                     is com.bydmate.app.split.SplitSessionState.Idle -> appendLine("session: idle")
                     is com.bydmate.app.split.SplitSessionState.Active -> {
@@ -2522,6 +2577,15 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
 
             appendLine("--- pedal ---")
             PedalDiagnostics.format(helperDiag.pedal).forEach { appendLine(it) }
+
+            // Rear seat heat (#327): the gate the editor's tiles follow, read only.
+            appendLine("--- rear seat heat ---")
+            try {
+                val catalog = fidCatalogManager.catalog
+                val items = RearSeatHeatDiagnostics.batchItems(RearSeatHeatDiagnostics.addresses(catalog))
+                val readings = if (items.isEmpty()) emptyList() else helperClient.readBatch(items)
+                RearSeatHeatDiagnostics.format(catalog, readings).forEach { appendLine(it) }
+            } catch (e: Exception) { appendLine("error: ${e.message}") }
 
             appendLine("--- fid resolve ---")
             try {
@@ -2577,6 +2641,16 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
                     !recorder.running && recorder.devices.isEmpty() -> appendLine("not running")
                     else -> fidRecorderStatusLines(recorder).forEach { appendLine(it) }
                 }
+            } catch (e: Exception) { appendLine("error: ${e.message}") }
+
+            // The last manual block-fault scan, raw per address, and the daemon's scan state. Never scans.
+            appendLine("--- dtc scan ---")
+            try {
+                val prefs = appContext.getSharedPreferences(
+                    com.bydmate.app.data.dtc.DtcScanRepository.PREFS_NAME, Context.MODE_PRIVATE,
+                )
+                com.bydmate.app.data.dtc.DtcScanRepository.dumpLines(prefs, helperClient.dtcScanStatus())
+                    .forEach { appendLine(it) }
             } catch (e: Exception) { appendLine("error: ${e.message}") }
 
             appendLine("--- last crash ---")

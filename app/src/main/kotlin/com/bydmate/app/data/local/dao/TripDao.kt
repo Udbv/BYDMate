@@ -46,6 +46,10 @@ interface TripDao {
     @Query("SELECT * FROM trips WHERE byd_id = :bydId LIMIT 1")
     suspend fun getByBydId(bydId: Long): TripEntity?
 
+    /** Frees a recycled energydata id (#348); conditional, so a stale full-row write cannot be undone by it. */
+    @Query("UPDATE trips SET byd_id = NULL WHERE id = :id AND byd_id = :bydId")
+    suspend fun unlinkBydId(id: Long, bydId: Long): Int
+
     @Query("SELECT * FROM trips WHERE soc_start IS NULL AND source = 'energydata'")
     suspend fun getTripsWithoutSoc(): List<TripEntity>
 
@@ -87,8 +91,19 @@ interface TripDao {
     @Query("SELECT * FROM trips WHERE source = 'live'")
     suspend fun getLiveTrips(): List<TripEntity>
 
-    @Query("SELECT * FROM trips WHERE start_ts >= :minTs AND start_ts <= :maxTs LIMIT 1")
-    suspend fun getByStartTsRange(minTs: Long, maxTs: Long): TripEntity?
+    /**
+     * The stored trip an energydata record starting at [startTs] already is: one without a byd id
+     * (a live or unlinked trip) within [windowMs], nearest first. A trip linked to another byd id is
+     * another record (two short drives minutes apart) unless it starts at the very same second.
+     */
+    @Query("""
+        SELECT * FROM trips
+        WHERE start_ts >= :startTs - :windowMs AND start_ts <= :startTs + :windowMs
+          AND (byd_id IS NULL OR start_ts = :startTs)
+        ORDER BY ABS(start_ts - :startTs)
+        LIMIT 1
+    """)
+    suspend fun getSameTripByTime(startTs: Long, windowMs: Long): TripEntity?
 
     @Query("SELECT * FROM trips ORDER BY start_ts")
     suspend fun getAllSnapshot(): List<TripEntity>

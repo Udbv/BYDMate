@@ -8,6 +8,10 @@ import com.bydmate.app.data.local.entity.TariffPeriodEntity
 import com.bydmate.app.data.local.entity.TripEntity
 import com.bydmate.app.data.local.entity.TariffPeriodEntity.Companion.TRIP_RULE_CHARGES
 import com.bydmate.app.data.repository.SettingsRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.roundToLong
@@ -52,6 +56,11 @@ class CostCalculator @Inject constructor(
     private val settingsRepository: SettingsRepository,
 ) {
 
+    private val _pricingVersion = MutableStateFlow(0L)
+
+    /** Bumped after every [recalculate], so a screen holding a rate knows to read it again. */
+    val pricingVersion: StateFlow<Long> = _pricingVersion.asStateFlow()
+
     /**
      * Current periods. A fresh install has none (the seeding migration only runs on an
      * upgrade), so the first read creates one out of the flat tariff settings.
@@ -69,18 +78,6 @@ class CostCalculator @Inject constructor(
         Log.i(TAG, "period seeded start=0 home=${seed.homeRate} dc=${seed.dcRate} " +
             "loss=${seed.acLossPct}/${seed.dcLossPct} rule=${seed.tripRule}")
         return TariffSchedule(tariffPeriodDao.getAllAsc())
-    }
-
-    /**
-     * What one kWh of a trip starting at [ts] really cost: the weighted price of the energy in the
-     * pack after the charges before it (the `charges` rule, whatever rule the settings use), with
-     * its DC share. Without a charge in the last 60 days, the home rate and an unknown share.
-     */
-    suspend fun batteryPriceAt(ts: Long): TripEnergyPrice? {
-        val period = schedule().periodAt(ts) ?: return null
-        val timeline = BatteryPriceTimeline(chargeDao.getCompletedForPricing(ts), settingsRepository.getBatteryCapacity())
-        val priced = timeline.tripPriceAt(ts)
-        return TripEnergyPrice(priced?.pricePerKwh ?: period.homeRate, priced?.dcShare)
     }
 
     /** Price for a charge that is being created right now (detector, agent, manual add). */
@@ -120,6 +117,7 @@ class CostCalculator @Inject constructor(
 
         Log.i(TAG, "recalc from=$fromTs to=$toTs charges=${chargePass.charges} trips=$tripsUpdated " +
             "skippedManual=${chargePass.skippedManual}")
+        _pricingVersion.update { it + 1 }
         return chargePass.copy(trips = tripsUpdated)
     }
 
@@ -213,6 +211,17 @@ class CostCalculator @Inject constructor(
         val liters = trip.fuelLiters
         if (pricePerLiter == null || liters == null || liters <= 0.0) return null
         return (liters * pricePerLiter * 100.0).roundToLong() / 100.0
+    }
+
+    /**
+     * Price per kWh for a trip starting at [ts], by the same rule a saved trip is priced with:
+     * the dashboard counters and the Telegram report put it on the trip under way.
+     */
+    suspend fun tripRateAt(ts: Long): Double {
+        val period = schedule().periodAt(ts) ?: return settingsRepository.getHomeTariff()
+        TariffSchedule.fixedTripRate(period)?.let { return it }
+        val timeline = BatteryPriceTimeline(chargeDao.getCompletedForPricing(ts), settingsRepository.getBatteryCapacity())
+        return tripRate(period, ts, timeline)
     }
 
     /** Price per kWh for one trip under [period]; logs the `charges` rule decision. */
