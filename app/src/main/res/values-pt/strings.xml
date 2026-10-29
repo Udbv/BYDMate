@@ -2202,6 +2202,8 @@
     <string name="forecast_value">%1$.1f kWh · %2$.1f /100</string>
     <string name="forecast_diff">%1$+d%%</string>
     <string name="forecast_temp">%1$d °C</string>
+    <string name="forecast_temp_range">%1$d…%2$d °C</string>
+    <string name="forecast_ascent">subida +%1$d m, descida %2$d m</string>
     <string name="forecast_climb">desnível %1$+d m</string>
     <string name="forecast_climb_share">dos quais desnível: %1$+.1f kWh</string>
     <string name="forecast_basis_full">Viagens semelhantes: %1$d (temperatura, velocidade, tempo)</string>

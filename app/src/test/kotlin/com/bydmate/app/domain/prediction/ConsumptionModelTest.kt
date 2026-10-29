@@ -103,4 +103,19 @@ class ConsumptionModelTest {
         assertEquals(15.0, p.per100, 1e-9)
         assertEquals(3.0 + climbKwh(100.0), p.kwhFor(km, 100.0), 1e-9)
     }
+
+    @Test
+    fun `a drive that warmed up on the way teaches each band its own part`() {
+        // Half of every drive at -8 °C using 24/100, half at +18 °C using 14/100.
+        val history = (1..10L).map { i ->
+            val cold = Segment(10.0, 2.4, TripConditions(-8.0, TripWeather.DRY, 50.0))
+            val warm = Segment(10.0, 1.4, TripConditions(18.0, TripWeather.DRY, 50.0))
+            TripSample(i, 20.0, 3.8, TripConditions(5.0, TripWeather.DRY, 50.0), listOf(cold, warm))
+        }
+        val model = ConsumptionModel(history)
+        assertTrue(model.predict(TripConditions(-8.0, TripWeather.DRY, 50.0))!!.per100 > 23.0)
+        assertTrue(model.predict(TripConditions(18.0, TripWeather.DRY, 50.0))!!.per100 < 15.0)
+        val trip = model.predictTrip(listOf(Segment(30.0, 0.0, TripConditions(-8.0, TripWeather.DRY, 50.0))))!!
+        assertTrue(trip.kwh > 6.9)
+    }
 }

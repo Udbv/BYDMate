@@ -11,11 +11,16 @@ data class TripWeatherRow(
     val extTemp: Double?,
 )
 
-/** GPS altitude at a trip's two ends, metres: each the mean of the fixes in its first or last 30 s. */
-data class TripEndsAltitude(
+/**
+ * One minute of a trip's track: mean GPS height (m) and outside temperature (°C) of the minute's
+ * points, and whether the wipers ran at any of them. Each is null where the points lack it.
+ */
+data class TripMinuteTrack(
     val tripId: Long,
-    val startAlt: Double?,
-    val endAlt: Double?,
+    val minuteTs: Long,
+    val altitude: Double?,
+    val extTemp: Double?,
+    val wiping: Int?,
 )
 
 /** The conditions of trips the consumption forecast reads: weather from the minutes, height from the track. */
@@ -40,20 +45,14 @@ interface TripConditionsDao {
     )
     suspend fun tripWeather(since: Long): List<TripWeatherRow>
 
-    /**
-     * [TripEndsAltitude] of every trip that has fixes with an altitude. GPS height jumps by metres
-     * fix to fix, so each end averages its first or last 30 s.
-     */
+    /** [TripMinuteTrack] of every trip minute whose points carry a height, a temperature or the wipers. */
     @Query(
         """
-        SELECT e.trip_id AS tripId,
-            (SELECT AVG(p.altitude) FROM trip_points p WHERE p.trip_id = e.trip_id AND p.altitude IS NOT NULL
-                AND p.timestamp <= e.first_ts + 30000) AS startAlt,
-            (SELECT AVG(p.altitude) FROM trip_points p WHERE p.trip_id = e.trip_id AND p.altitude IS NOT NULL
-                AND p.timestamp >= e.last_ts - 30000) AS endAlt
-        FROM (SELECT trip_id, MIN(timestamp) AS first_ts, MAX(timestamp) AS last_ts FROM trip_points
-            WHERE altitude IS NOT NULL GROUP BY trip_id) e
+        SELECT trip_id AS tripId, (timestamp / 60000) * 60000 AS minuteTs, AVG(altitude) AS altitude,
+            AVG(ext_temp) AS extTemp, MAX(wiping) AS wiping
+        FROM trip_points WHERE altitude IS NOT NULL OR ext_temp IS NOT NULL OR wiping IS NOT NULL
+        GROUP BY trip_id, timestamp / 60000
         """
     )
-    suspend fun endsAltitude(): List<TripEndsAltitude>
+    suspend fun minuteTracks(): List<TripMinuteTrack>
 }

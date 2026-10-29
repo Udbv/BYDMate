@@ -2358,6 +2358,8 @@
     <string name="forecast_value">%1$.1f kWh · %2$.1f /100</string>
     <string name="forecast_diff">%1$+d%%</string>
     <string name="forecast_temp">%1$d °C</string>
+    <string name="forecast_temp_range">%1$d…%2$d °C</string>
+    <string name="forecast_ascent">podjazd +%1$d m, zjazd %2$d m</string>
     <string name="forecast_climb">różnica wysokości %1$+d m</string>
     <string name="forecast_climb_share">w tym różnica wysokości: %1$+.1f kWh</string>
     <string name="forecast_basis_full">Podobne przejazdy: %1$d (temperatura, prędkość, pogoda)</string>

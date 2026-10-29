@@ -2320,6 +2320,8 @@
     <string name="forecast_value">%1$.1f 千瓦时 · %2$.1f /100</string>
     <string name="forecast_diff">%1$+d%%</string>
     <string name="forecast_temp">%1$d °C</string>
+    <string name="forecast_temp_range">%1$d…%2$d °C</string>
+    <string name="forecast_ascent">爬升 +%1$d 米，下降 %2$d 米</string>
     <string name="forecast_climb">海拔变化 %1$+d 米</string>
     <string name="forecast_climb_share">其中海拔变化：%1$+.1f 千瓦时</string>
     <string name="forecast_basis_full">相似行程：%1$d（温度、速度、天气）</string>

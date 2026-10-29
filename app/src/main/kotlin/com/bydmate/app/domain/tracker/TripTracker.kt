@@ -69,7 +69,7 @@ class TripTracker @Inject constructor(
                         speedAboveThresholdSince = null
                         Log.d(TAG, "Driving started (GPS collection)")
                         // Record first point
-                        recordPoint(location, speed, now)
+                        recordPoint(location, speed, now, data)
                     }
                 } else {
                     speedAboveThresholdSince = null
@@ -77,7 +77,7 @@ class TripTracker @Inject constructor(
             }
             TripState.DRIVING -> {
                 // Record GPS point
-                recordPoint(location, speed, now)
+                recordPoint(location, speed, now, data)
 
                 if (pendingPoints.size >= POINT_BATCH_SIZE) {
                     flushPoints()
@@ -102,7 +102,7 @@ class TripTracker @Inject constructor(
         }
     }
 
-    private fun recordPoint(location: Location?, speed: Int, now: Long) {
+    private fun recordPoint(location: Location?, speed: Int, now: Long, data: DiParsData) {
         if (location != null) {
             pendingPoints.add(
                 TripPointEntity(
@@ -111,8 +111,9 @@ class TripTracker @Inject constructor(
                     lat = location.latitude,
                     lon = location.longitude,
                     speedKmh = speed.toDouble(),
-                    // Elevation is stored for a later climb correction; nothing reads it yet.
                     altitude = if (location.hasAltitude()) location.altitude else null,
+                    extTemp = data.exteriorTemp,
+                    wiping = data.wiperRelay?.let { if (it != 0) 1 else 0 },
                 )
             )
             if (pendingPoints.size % 10 == 1) {
