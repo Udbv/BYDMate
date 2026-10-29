@@ -79,6 +79,7 @@ private fun RowScope.TripAnalysis(state: TripPageUiState, tripKwh: Double?, onSe
     ) {
         val summary = state.summary
         CostCard(state, summary, tripKwh)
+        state.forecast?.let { ForecastCard(it) }
         if (summary == null) {
             Panel { Text(stringResource(R.string.trip_page_no_minutes), color = TextSecondary, fontSize = 14.sp) }
             return@Column
@@ -95,7 +96,7 @@ private fun RowScope.TripAnalysis(state: TripPageUiState, tripKwh: Double?, onSe
 }
 
 @Composable
-private fun Panel(content: @Composable () -> Unit) {
+internal fun Panel(content: @Composable () -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(CardSurface).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -103,7 +104,7 @@ private fun Panel(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun LabeledValue(label: String, value: String, color: Color = TextPrimary, note: String? = null) {
+internal fun LabeledValue(label: String, value: String, color: Color = TextPrimary, note: String? = null) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Text(label, color = TextSecondary, fontSize = 14.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {

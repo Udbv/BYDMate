@@ -14,6 +14,8 @@ import androidx.room.PrimaryKey
  * - [regenKwh]: energy the motors returned, ≤ 0.
  * - [climateKwh]: the compressor; [otherKwh]: the 12 V side of the DC-DC.
  * - [peakKw] / [minKw]: highest and lowest battery power seen, [maxSpeed] likewise.
+ * - [wiperSamples]: ticks with the wipers running; null when the car did not report them.
+ * - [extTemp]: mean outside temperature, °C.
  */
 @Entity(tableName = "trip_minutes")
 data class TripMinuteEntity(
@@ -30,4 +32,6 @@ data class TripMinuteEntity(
     @ColumnInfo(name = "avg_speed") val avgSpeed: Double?,
     @ColumnInfo(name = "max_speed") val maxSpeed: Int?,
     @ColumnInfo(name = "soc") val soc: Int?,
+    @ColumnInfo(name = "wiper_samples") val wiperSamples: Int? = null,
+    @ColumnInfo(name = "ext_temp") val extTemp: Double? = null,
 )

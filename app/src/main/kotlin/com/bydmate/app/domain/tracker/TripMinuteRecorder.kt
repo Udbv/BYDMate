@@ -61,6 +61,10 @@ internal class MinuteAggregator {
     private var speedCount = 0
     private var maxSpeed: Int? = null
     private var soc: Int? = null
+    private var wiperTicks = 0
+    private var wiperKnown = false
+    private var tempSum = 0.0
+    private var tempCount = 0
 
     fun add(now: Long, data: DiParsData): TripMinuteEntity? {
         val parts = powerParts(data) ?: return null
@@ -94,7 +98,19 @@ internal class MinuteAggregator {
             maxSpeed = maxOf(maxSpeed ?: speed, speed)
         }
         data.soc?.let { soc = it }
+        addWeather(data)
         return finished
+    }
+
+    private fun addWeather(data: DiParsData) {
+        data.wiperRelay?.let { relay ->
+            wiperKnown = true
+            if (relay != 0) wiperTicks++
+        }
+        data.exteriorTemp?.let { temp ->
+            tempSum += temp
+            tempCount++
+        }
     }
 
     /** The minute in progress as a row, and a fresh start; null when it holds no tick. */
@@ -114,6 +130,8 @@ internal class MinuteAggregator {
             avgSpeed = if (speedCount > 0) speedSum / speedCount else null,
             maxSpeed = maxSpeed,
             soc = soc,
+            wiperSamples = wiperTicks.takeIf { wiperKnown },
+            extTemp = if (tempCount > 0) tempSum / tempCount else null,
         )
         reset()
         return row
@@ -135,6 +153,10 @@ internal class MinuteAggregator {
         speedCount = 0
         maxSpeed = null
         soc = null
+        wiperTicks = 0
+        wiperKnown = false
+        tempSum = 0.0
+        tempCount = 0
     }
 
     companion object {

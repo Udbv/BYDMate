@@ -47,6 +47,24 @@ class MinuteAggregatorTest {
         assertNull(agg.flush())
     }
 
+    @Test fun `wiper ticks and the outside temperature are kept per minute`() {
+        val agg = MinuteAggregator()
+        agg.add(0L, data(30.0).copy(wiperRelay = 0, exteriorTemp = 2))
+        agg.add(1000L, data(30.0).copy(wiperRelay = 1, exteriorTemp = 4))
+        agg.add(2000L, data(30.0).copy(wiperRelay = 2, exteriorTemp = null))
+        val row = agg.flush()!!
+        assertEquals(2, row.wiperSamples)
+        assertEquals(3.0, row.extTemp!!, 1e-9)
+    }
+
+    @Test fun `a car that does not report the wipers leaves them unknown`() {
+        val agg = MinuteAggregator()
+        agg.add(0L, data(30.0).copy(wiperRelay = null, exteriorTemp = null))
+        val row = agg.flush()!!
+        assertNull(row.wiperSamples)
+        assertNull(row.extTemp)
+    }
+
     @Test fun `a car without the current pair leaves the axles unknown`() {
         val agg = MinuteAggregator()
         agg.add(0L, data(30.0, front = null, rear = null))
