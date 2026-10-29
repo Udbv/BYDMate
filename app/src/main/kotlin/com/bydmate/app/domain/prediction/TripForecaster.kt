@@ -1,7 +1,6 @@
 package com.bydmate.app.domain.prediction
 
-import com.bydmate.app.data.local.dao.TripMinuteDao
-import com.bydmate.app.data.local.dao.TripPointDao
+import com.bydmate.app.data.local.dao.TripConditionsDao
 import com.bydmate.app.data.local.dao.TripWeatherRow
 import com.bydmate.app.data.local.entity.TripEntity
 import com.bydmate.app.data.repository.TripRepository
@@ -32,22 +31,21 @@ data class TripForecast(
 @Singleton
 class TripForecaster @Inject constructor(
     private val tripRepository: TripRepository,
-    private val minuteDao: TripMinuteDao,
-    private val pointDao: TripPointDao,
+    private val conditionsDao: TripConditionsDao,
 ) {
 
     /** Conditions of [trips] by id; [since] bounds the minutes read to the trips' period. */
     suspend fun conditions(trips: List<TripEntity>, since: Long): Map<Long, TripConditions> =
-        conditionsOf(trips, minuteDao.tripWeather(since).associateBy { it.tripId })
+        conditionsOf(trips, conditionsDao.tripWeather(since).associateBy { it.tripId })
 
     suspend fun forecast(trip: TripEntity): TripForecast {
         val trips = tripRepository.getAllTrips().first()
-        val climbs = pointDao.endsAltitude().mapNotNull { ends ->
+        val climbs = conditionsDao.endsAltitude().mapNotNull { ends ->
             val start = ends.startAlt ?: return@mapNotNull null
             val end = ends.endAlt ?: return@mapNotNull null
             ends.tripId to end - start
         }.toMap()
-        val conditions = conditionsOf(trips, minuteDao.tripWeather(since = 0L).associateBy { it.tripId })
+        val conditions = conditionsOf(trips, conditionsDao.tripWeather(since = 0L).associateBy { it.tripId })
             .mapValues { (id, c) -> c.copy(climbM = climbs[id]) }
         val samples = trips.mapNotNull { sampleOf(it, conditions[it.id]) }
         val before = samples.filter { it.startTs < trip.startTs }

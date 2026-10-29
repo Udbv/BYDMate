@@ -474,6 +474,7 @@ object AppModule {
     @Provides fun provideTripDao(db: AppDatabase): TripDao = db.tripDao()
     @Provides fun provideTripPointDao(db: AppDatabase): TripPointDao = db.tripPointDao()
     @Provides fun provideTripMinuteDao(db: AppDatabase): com.bydmate.app.data.local.dao.TripMinuteDao = db.tripMinuteDao()
+    @Provides fun provideTripConditionsDao(db: AppDatabase): com.bydmate.app.data.local.dao.TripConditionsDao = db.tripConditionsDao()
     @Provides fun provideChargeDao(db: AppDatabase): ChargeDao = db.chargeDao()
     @Provides fun provideChargePointDao(db: AppDatabase): ChargePointDao = db.chargePointDao()
     @Provides fun provideSettingsDao(db: AppDatabase): SettingsDao = db.settingsDao()

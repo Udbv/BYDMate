@@ -84,4 +84,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun tariffPeriodDao(): TariffPeriodDao
     abstract fun counterSnapshotDao(): CounterSnapshotDao
     abstract fun tripMinuteDao(): TripMinuteDao
+    abstract fun tripConditionsDao(): com.bydmate.app.data.local.dao.TripConditionsDao
 }

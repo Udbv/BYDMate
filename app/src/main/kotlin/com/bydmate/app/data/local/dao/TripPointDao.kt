@@ -5,13 +5,6 @@ import androidx.room.Insert
 import androidx.room.Query
 import com.bydmate.app.data.local.entity.TripPointEntity
 
-/** GPS altitude at a trip's two ends, metres: each the mean of the fixes in its first or last 30 s. */
-data class TripEndsAltitude(
-    val tripId: Long,
-    val startAlt: Double?,
-    val endAlt: Double?,
-)
-
 @Dao
 interface TripPointDao {
     @Insert
@@ -22,23 +15,6 @@ interface TripPointDao {
 
     @Query("SELECT * FROM trip_points WHERE trip_id IN (:tripIds) ORDER BY trip_id, timestamp ASC")
     suspend fun getByTripIds(tripIds: List<Long>): List<TripPointEntity>
-
-    /**
-     * [TripEndsAltitude] of every trip that has fixes with an altitude. GPS height jumps by metres
-     * fix to fix, so each end averages its first or last 30 s.
-     */
-    @Query(
-        """
-        SELECT e.trip_id AS tripId,
-            (SELECT AVG(p.altitude) FROM trip_points p WHERE p.trip_id = e.trip_id AND p.altitude IS NOT NULL
-                AND p.timestamp <= e.first_ts + 30000) AS startAlt,
-            (SELECT AVG(p.altitude) FROM trip_points p WHERE p.trip_id = e.trip_id AND p.altitude IS NOT NULL
-                AND p.timestamp >= e.last_ts - 30000) AS endAlt
-        FROM (SELECT trip_id, MIN(timestamp) AS first_ts, MAX(timestamp) AS last_ts FROM trip_points
-            WHERE altitude IS NOT NULL GROUP BY trip_id) e
-        """
-    )
-    suspend fun endsAltitude(): List<TripEndsAltitude>
 
     @Query("SELECT COUNT(*) FROM trip_points")
     suspend fun getCount(): Int
