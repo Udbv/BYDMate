@@ -19,7 +19,7 @@ class TripSegmentsTest {
     @Test
     fun `minutes keep their own temperature and are scaled to the drive's totals`() {
         val minutes = (0 until 10).map { minute(it, 0.2, 60.0, temp = -5.0 + it) }
-        val segs = TripSegments.of(distanceKm = 11.0, kwh = 2.2, overall = overall, minutes = minutes, altitudes = emptyList())
+        val segs = TripSegments.of(distanceKm = 11.0, kwh = 2.2, overall = overall, minutes = minutes, track = emptyList())
         assertEquals(10, segs.size)
         assertEquals(11.0, segs.sumOf { it.km }, 1e-9)
         assertEquals(2.2, segs.sumOf { it.kwh }, 1e-9)
@@ -33,7 +33,7 @@ class TripSegmentsTest {
     @Test
     fun `minutes that disagree with the drive's counters fall back to one segment`() {
         val minutes = (0 until 10).map { minute(it, 0.2, 60.0) }
-        val segs = TripSegments.of(distanceKm = 40.0, kwh = 2.0, overall = overall, minutes = minutes, altitudes = emptyList())
+        val segs = TripSegments.of(distanceKm = 40.0, kwh = 2.0, overall = overall, minutes = minutes, track = emptyList())
         assertEquals(1, segs.size)
         assertEquals(overall, segs.single().conditions)
     }
@@ -52,7 +52,7 @@ class TripSegmentsTest {
     fun `a pass up and down is climbed and descended, not netted out`() {
         val minutes = (0 until 9).map { minute(it, 0.2, 60.0) }
         // 0, 50, 100 ... 200 at minute 4, then back down to 0.
-        val alts = (0 until 9).map { MinuteAltitude(it * 60_000L, (if (it <= 4) it else 8 - it) * 50.0) }
+        val alts = (0 until 9).map { MinuteTrack(it * 60_000L, altitude = (if (it <= 4) it else 8 - it) * 50.0) }
         val segs = TripSegments.of(9.0, 1.8, overall, minutes, alts)
         val p = TripSegments.profile(segs)
         assertTrue(p.ascentM > 120)
@@ -66,5 +66,16 @@ class TripSegmentsTest {
         val minutes = (0 until 3).map { minute(it, 0.2, 60.0) }
         assertTrue(TripSegments.minuteClimbs(minutes, emptyList()).all { it == null })
         assertNull(TripSegments.profile(TripSegments.of(3.0, 0.6, TripConditions(null, null, null), minutes, emptyList())).tempMinC)
+    }
+
+    @Test
+    fun `track points stand in for minutes recorded without the weather`() {
+        val minutes = (0 until 6).map { minute(it, 0.2, 60.0, temp = null, wipers = null) }
+        val track = (0 until 6).map { MinuteTrack(it * 60_000L, extTemp = 3.0 + it, wiping = if (it == 2) 1 else 0) }
+        val segs = TripSegments.of(6.0, 1.2, overall, minutes, track)
+        assertEquals(3.0, segs.first().conditions.tempC!!, 1e-9)
+        assertEquals(8.0, segs.last().conditions.tempC!!, 1e-9)
+        assertEquals(TripWeather.RAIN, segs[0].conditions.weather)
+        assertEquals(TripWeather.DRY, segs[5].conditions.weather)
     }
 }

@@ -2,8 +2,17 @@ package com.bydmate.app.domain.prediction
 
 import com.bydmate.app.data.local.entity.TripMinuteEntity
 
-/** One minute of a drive's GPS height, metres: the mean of the minute's fixes. */
-data class MinuteAltitude(val minuteTs: Long, val altitude: Double)
+/**
+ * One minute of a drive's track: GPS height (m), outside temperature (°C) and whether the wipers
+ * ran, from the minute's points. They stand in where the minute row lacks them (minutes recorded
+ * before the row kept the weather) and give the height, which only the track knows.
+ */
+data class MinuteTrack(
+    val minuteTs: Long,
+    val altitude: Double? = null,
+    val extTemp: Double? = null,
+    val wiping: Int? = null,
+)
 
 /**
  * What a drive went through, for the trip page: the outside temperature from its coldest to its
@@ -30,7 +39,7 @@ object TripSegments {
         kwh: Double,
         overall: TripConditions,
         minutes: List<TripMinuteEntity>,
-        altitudes: List<MinuteAltitude>,
+        track: List<MinuteTrack>,
     ): List<Segment> {
         val whole = listOf(Segment(distanceKm, kwh, overall, climbKwh(overall.climbM)))
         if (minutes.size < MIN_MINUTES) return whole
@@ -39,13 +48,16 @@ object TripSegments {
         val kmScale = distanceKm / rawKm.sum()
         val kwhScale = kwh / rawKwh.sum()
         if (!kmScale.isSane() || !kwhScale.isSane()) return whole
-        val climbs = minuteClimbs(minutes, altitudes)
+        val byMinute = track.associateBy { it.minuteTs }
+        val points = minutes.map { byMinute[it.minuteTs] }
+        val climbs = minuteClimbs(minutes, track)
+        val wipers = minutes.mapIndexed { i, m -> m.wiperSamples ?: points[i]?.wiping }
         return minutes.mapIndexed { i, m ->
-            val temp = m.extTemp ?: overall.tempC
+            val temp = m.extTemp ?: points[i]?.extTemp ?: overall.tempC
             Segment(
                 km = rawKm[i] * kmScale,
                 kwh = rawKwh[i] * kwhScale,
-                conditions = TripConditions(temp, weatherAround(minutes, i, temp), m.avgSpeed, climbs[i]),
+                conditions = TripConditions(temp, weatherAround(wipers, i, temp), m.avgSpeed, climbs[i]),
                 climbKwh = climbKwh(climbs[i], MINUTE_DEADBAND_M),
             )
         }
@@ -67,8 +79,8 @@ object TripSegments {
      * its neighbours (GPS height jumps by metres fix to fix), then minute minus the one before.
      * Null where the track has no height.
      */
-    internal fun minuteClimbs(minutes: List<TripMinuteEntity>, altitudes: List<MinuteAltitude>): List<Double?> {
-        val byMinute = altitudes.associate { it.minuteTs to it.altitude }
+    internal fun minuteClimbs(minutes: List<TripMinuteEntity>, track: List<MinuteTrack>): List<Double?> {
+        val byMinute = track.associate { it.minuteTs to it.altitude }
         val raw = minutes.map { byMinute[it.minuteTs] }
         val smooth = raw.indices.map { i ->
             val window = (i - 1..i + 1).mapNotNull { raw.getOrNull(it) }
@@ -85,8 +97,8 @@ object TripSegments {
      * Wet when the wipers ran within two minutes either side: intermittent wipers skip minutes
      * in light rain. Snow when wet at or below [SNOW_MAX_C]; null when no minute near knew the wipers.
      */
-    private fun weatherAround(minutes: List<TripMinuteEntity>, i: Int, tempC: Double?): TripWeather? {
-        val near = (i - WET_WINDOW..i + WET_WINDOW).mapNotNull { minutes.getOrNull(it)?.wiperSamples }
+    private fun weatherAround(wipers: List<Int?>, i: Int, tempC: Double?): TripWeather? {
+        val near = (i - WET_WINDOW..i + WET_WINDOW).mapNotNull { wipers.getOrNull(it) }
         if (near.isEmpty()) return null
         return when {
             near.none { it > 0 } -> TripWeather.DRY

@@ -46,12 +46,12 @@ class TripForecaster @Inject constructor(
     suspend fun forecast(trip: TripEntity): TripForecast {
         val trips = tripRepository.getAllTrips().first()
         val weather = conditionsDao.tripWeather(since = 0L).associateBy { it.tripId }
-        val altitudes = conditionsDao.minuteAltitudes()
-            .groupBy({ it.tripId }, { MinuteAltitude(it.minuteTs, it.altitude) })
+        val tracks = conditionsDao.minuteTracks()
+            .groupBy({ it.tripId }, { MinuteTrack(it.minuteTs, it.altitude, it.extTemp, it.wiping) })
             .mapValues { (_, list) -> list.sortedBy { it.minuteTs } }
         val minutes = minuteDao.getInRange(0L, Long.MAX_VALUE)
         val byId = trips.mapNotNull { t ->
-            sampleOf(t, weather[t.id], minutesOf(t, minutes), altitudes[t.id].orEmpty())?.let { t.id to it }
+            sampleOf(t, weather[t.id], minutesOf(t, minutes), tracks[t.id].orEmpty())?.let { t.id to it }
         }.toMap()
         val samples = byId.values.toList()
         val before = samples.filter { it.startTs < trip.startTs }
@@ -97,14 +97,15 @@ class TripForecaster @Inject constructor(
             trip: TripEntity,
             weather: TripWeatherRow?,
             minutes: List<TripMinuteEntity>,
-            altitudes: List<MinuteAltitude>,
+            track: List<MinuteTrack>,
         ): TripSample? {
             val km = trip.distanceKm ?: return null
             val kwh = trip.kwhConsumed ?: return null
             if (trip.endTs == null || km <= 0.0 || (trip.fuelLiters ?: 0.0) > 0.0) return null
-            val net = altitudes.takeIf { it.size >= 2 }?.let { it.last().altitude - it.first().altitude }
+            val heights = track.mapNotNull { it.altitude }
+            val net = heights.takeIf { it.size >= 2 }?.let { it.last() - it.first() }
             val overall = conditionsOf(trip, weather).copy(climbM = net)
-            return TripSample(trip.startTs, km, kwh, overall, TripSegments.of(km, kwh, overall, minutes, altitudes))
+            return TripSample(trip.startTs, km, kwh, overall, TripSegments.of(km, kwh, overall, minutes, track))
         }
 
         /** The minutes of [trip] out of all minutes sorted by time; the first began before the trip did. */
