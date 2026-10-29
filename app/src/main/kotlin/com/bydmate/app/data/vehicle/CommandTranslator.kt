@@ -138,6 +138,8 @@ object CommandTranslator {
         "关闭车内灯" to Resolved("interior_light_off", 1),
         "氛围灯打开" to Resolved("ambient_light_on",   5),
         "氛围灯关闭" to Resolved("ambient_light_off",  1),  // raw +1 shift: 1 = off (lvl0)
+        // Master switch (#4) ── CANDIDATE (dev=1004 carve-out, 2=on) ── what lights a Tang L.
+        "氛围灯总开关打开" to Resolved("ambient_switch_on", 2),
 
         // ── DRL (ДХО) ── LIVE_VALIDATED (dev=1004 carve-out) ──────────────────
         "打开日行灯" to Resolved("drl_on",  1),

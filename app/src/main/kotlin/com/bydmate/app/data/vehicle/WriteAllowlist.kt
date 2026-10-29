@@ -94,7 +94,17 @@ class WriteAllowlist(private val map: Map<String, WriteEntry>) {
             MASSAGE_DEV to MASSAGE_LEVEL_DRIVER_FID,
             MASSAGE_DEV to MASSAGE_MODE_PASSENGER_FID,
             MASSAGE_DEV to MASSAGE_LEVEL_PASSENGER_FID,
+            // LIGHT_ATMOSPHERE_MAIN_SWITCH_SET (#4): the ambient light's master switch, which the
+            // car turns off between trips and the stock menu turns back on (Tang L recording
+            // 2026-10-29: the read fid went to 2 when the owner switched the light on). Only 2
+            // (on) passes, see [RESTRICTED_VALUES]. Carve-out approved by the owner 2026-10-29.
+            AMBIENT_SWITCH_DEV to AMBIENT_SWITCH_SET_FID,
         )
+
+        /** Ambient light master switch (#4), on the Light device: 2 = on; the off value is unconfirmed. */
+        const val AMBIENT_SWITCH_DEV = 1004
+        const val AMBIENT_SWITCH_SET_FID = 1276153924   // LIGHT_ATMOSPHERE_MAIN_SWITCH_SET
+        const val AMBIENT_SWITCH_FID = 1060110406       // LIGHT_ATMOSPHERE_MAIN_SWITCH
 
         /** Front-seat massage (#3), on the Setting device: mode 1 = off, 2..6 = programs; level 1..3. */
         const val MASSAGE_DEV = 1023
@@ -149,6 +159,7 @@ class WriteAllowlist(private val map: Map<String, WriteEntry>) {
             (DRIVE_MODE_DEV to DRIVE_MODE_WRITE_FID) to DriveMode.entries.map { it.value }.toSet(),
             (HUD_DEV to HUD_SWITCH_FID) to setOf(1, 2),
             (BATTERY_PREHEAT_DEV to BATTERY_PREHEAT_SET_FID) to setOf(1, 2),
+            (AMBIENT_SWITCH_DEV to AMBIENT_SWITCH_SET_FID) to setOf(2),
         )
 
         /** False when [entry] sits on a [RESTRICTED_VALUES] fid with a value outside its set. */
@@ -265,6 +276,12 @@ class WriteAllowlist(private val map: Map<String, WriteEntry>) {
             // ambient (IAL) via brightness — raw is +1 shifted: raw 1=off(lvl0), 2..5=lvl1..4, dev=1023 carve-out
             WriteEntry("ambient_light_on",   1023, 1069547536, null, 5, 5, "lights", true, "live-leopard3-2026-05-29"),
             WriteEntry("ambient_light_off",  1023, 1069547536, null, 1, 1, "lights", true, "live-leopard3-2026-05-29"),
+            // ambient master switch (#4) — 2=on, read back on the switch itself, dev=1004 carve-out.
+            // The brightness write above does not light a Tang L whose switch the car turned off.
+            WriteEntry(
+                "ambient_switch_on", AMBIENT_SWITCH_DEV, AMBIENT_SWITCH_SET_FID, AMBIENT_SWITCH_FID, 2, 2,
+                "lights", false, "tang-l-fidrec-2026-10-29",
+            ),
             // DRL (daytime running lights) — 1=on, 2=off (0 invalid), dev=1004 carve-out
             WriteEntry("drl_on",  1004, 1125122118, null, 1, 1, "lights", true, "live-leopard3-2026-05-29"),
             WriteEntry("drl_off", 1004, 1125122118, null, 2, 2, "lights", true, "live-leopard3-2026-05-29"),

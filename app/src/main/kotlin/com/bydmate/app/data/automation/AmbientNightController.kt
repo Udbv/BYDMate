@@ -61,9 +61,17 @@ class AmbientNightController @Inject constructor(
         }
         if (!step.fire || sessionId == null) return
 
-        val result = actionDispatcher.dispatch(ActionDef(COMMAND_AMBIENT_ON, COMMAND_AMBIENT_ON), data)
-        Log.i(TAG, "ambient on (session=$sessionId, attempt=${state.attempts}): " +
-            "success=${result.success} reason=${result.reason}")
+        // The master switch first: the car turns it off between trips, and with it off the
+        // brightness write is accepted but lights nothing (Tang L, #4). A car without that switch
+        // (or one that does not read it back) gets the brightness write that works there.
+        val switched = actionDispatcher.dispatch(ActionDef(COMMAND_AMBIENT_SWITCH_ON, COMMAND_AMBIENT_SWITCH_ON), data)
+        Log.i(TAG, "ambient switch on (session=$sessionId, attempt=${state.attempts}): " +
+            "success=${switched.success} reason=${switched.reason}")
+        val result = if (switched.success) switched else {
+            actionDispatcher.dispatch(ActionDef(COMMAND_AMBIENT_ON, COMMAND_AMBIENT_ON), data).also {
+                Log.i(TAG, "ambient brightness on: success=${it.success} reason=${it.reason}")
+            }
+        }
         state = ambientNightAfterDispatch(state, result.success)
         if (result.success || state.attempts >= MAX_ATTEMPTS) {
             prefs.edit().putLong(KEY_HANDLED_SESSION, sessionId).apply()
@@ -85,6 +93,9 @@ class AmbientNightController @Inject constructor(
 
         /** CommandTranslator → ambient_light_on (dev=1023 brightness carve-out, raw 5 = level 4). */
         const val COMMAND_AMBIENT_ON = "氛围灯打开"
+
+        /** CommandTranslator → ambient_switch_on (dev=1004 master switch carve-out, 2 = on). */
+        const val COMMAND_AMBIENT_SWITCH_ON = "氛围灯总开关打开"
 
         /** Car settings apply their own state right after power-on; writing earlier can be undone. */
         const val SETTLE_MS = 15_000L
