@@ -37,6 +37,7 @@ data class SeatCommand(val group: SeatGroup, val level: Int)
  * Values for competitor-sourced entries verified against competitor-actions.json
  * (app/src/main/assets/competitor-actions.json). See value comments below.
  */
+@Suppress("TooManyFunctions") // one parser per command family
 object CommandTranslator {
     data class Resolved(val actionName: String, val value: Int)
 
@@ -132,6 +133,9 @@ object CommandTranslator {
         // ── Sunshade ── LIVE_VALIDATED ────────────────────────────────────────
         "遮阳帘打开" to Resolved("sunshade_open",  1),
         "遮阳帘关闭" to Resolved("sunshade_close", 2),
+        // Half-open / stop: same fid, values 3/4 from the BYD SDK, not live-validated (#362).
+        "遮阳帘打开50" to Resolved("sunshade_half", 3),
+        "遮阳帘停止"   to Resolved("sunshade_stop", 4),
 
         // ── Interior / ambient light ── LIVE_VALIDATED (dev=1023 carve-out) ──────
         "打开车内灯" to Resolved("interior_light_on",  2),
@@ -354,6 +358,25 @@ object CommandTranslator {
             val m = Regex("""(\d)档""").matchEntire(tail) ?: return null
             val lvl = m.groupValues[1].toInt()
             return if (lvl in 1..5) SeatCommand(group, lvl) else null
+        }
+        return null
+    }
+
+    private val REAR_SEAT_HEAT_PREFIXES: Map<String, RearSeat> = mapOf(
+        "后左座椅加热" to RearSeat.LEFT,
+        "后右座椅加热" to RearSeat.RIGHT,
+    )
+
+    /** Parse a rear seat heat command (#327) into (seat, level), or null if not one. */
+    fun resolveRearSeatHeat(commandString: String): RearSeatCommand? {
+        val s = commandString.removePrefix("迪加")
+        for ((prefix, seat) in REAR_SEAT_HEAT_PREFIXES) {
+            if (!s.startsWith(prefix)) continue
+            val tail = s.removePrefix(prefix)
+            if (tail == "关闭") return RearSeatCommand(seat, 0)
+            val m = Regex("""(\d)档""").matchEntire(tail) ?: return null
+            val lvl = m.groupValues[1].toInt()
+            return if (lvl in 1..RearSeatHeat.MAX_LEVEL) RearSeatCommand(seat, lvl) else null
         }
         return null
     }

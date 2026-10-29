@@ -4,6 +4,7 @@ import androidx.room.testing.MigrationTestHelper
 import androidx.test.platform.app.InstrumentationRegistry
 import com.bydmate.app.di.AppModule
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,29 +24,21 @@ class Migration23to24Test {
     )
 
     @Test
-    fun `23 to 24 adds an empty trip_minutes table and keeps the trips`() {
+    fun `23 to 24 keeps every tombstone and adds an empty start time`() {
         helper.createDatabase(dbName, 23).use { old ->
-            old.execSQL(
-                "INSERT INTO trips (start_ts, end_ts, distance_km, kwh_consumed, cost, source) " +
-                    "VALUES (1000, 2000, 50.5, 9.1, 1.82, 'energydata')"
-            )
+            old.execSQL("INSERT INTO trip_tombstones (byd_id) VALUES (42)")
+            old.execSQL("INSERT INTO trip_tombstones (byd_id) VALUES (43)")
+            old.execSQL("INSERT INTO trips (start_ts, source, byd_id) VALUES (1000, 'energydata', 44)")
         }
 
         val migrated = helper.runMigrationsAndValidate(dbName, 24, true, AppModule.MIGRATION_23_24)
 
-        migrated.query("SELECT count(*) FROM trips").use { c ->
-            c.moveToFirst()
-            assertEquals(1, c.getInt(0))
+        migrated.query("SELECT byd_id, start_ts FROM trip_tombstones ORDER BY byd_id").use { c ->
+            assertEquals(2, c.count)
+            c.moveToFirst(); assertEquals(42L, c.getLong(0)); assertTrue(c.isNull(1))
+            c.moveToNext(); assertEquals(43L, c.getLong(0)); assertTrue(c.isNull(1))
         }
-        migrated.execSQL(
-            "INSERT INTO trip_minutes (minute_ts, samples, motors_kwh, front_kwh, rear_kwh, regen_kwh, " +
-                "climate_kwh, other_kwh, peak_kw, min_kw, avg_speed, max_speed, soc) " +
-                "VALUES (60000, 58, 0.4, 0.1, 0.3, -0.05, 0.02, 0.01, 85.0, -20.0, 54.0, 71, 80)"
-        )
-        migrated.query("SELECT count(*), sum(rear_kwh) FROM trip_minutes").use { c ->
-            c.moveToFirst()
-            assertEquals(1, c.getInt(0))
-            assertEquals(0.3, c.getDouble(1), 1e-9)
-        }
+        migrated.query("SELECT count(*) FROM trips").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
+        migrated.close()
     }
 }

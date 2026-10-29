@@ -619,6 +619,55 @@ object HelperBinderProtocol {
      */
     val TX_SPLIT37_ROOT_STATE: Int = IBinder.FIRST_CALL_TRANSACTION + 59  // 60
 
+    /**
+     * Voice session duck the stock assistant's way (#353): the hidden
+     * IAudioService.setAutoVoiceActiveState(isActive, isDuckMedia, callingPackageName) that
+     * com.byd.autovoice calls. The firmware then ducks media at track level and makes stream 17
+     * the active one, so on cars with an external amplifier (which gets the active stream's
+     * volume only) our reply plays at the "Голос" volume instead of the ducked media one. The
+     * method is looked up by name (its transaction number differs between firmwares) and gets
+     * the stock assistant's package, the only check the firmware makes.
+     *
+     * Request: [int active: 1=on, 0=off]
+     * Reply:   [int outcome (AUTO_VOICE_*), String detail (amp type, the call or the exception)]
+     * An old daemon without this handler makes transact return false → the client returns null.
+     */
+    val TX_SET_AUTO_VOICE: Int = IBinder.FIRST_CALL_TRANSACTION + 60  // 61
+
+    /**
+     * Manual ECU fault-code scan, start: the daemon runs the whole job on its own thread so the
+     * shared client mutex is held for milliseconds only. No address or payload bytes come from
+     * the app, only where to read the gear fid.
+     *
+     * The daemon holds the 18 addresses (DtcWire.ADDRESSES) and builds only `19 01 FF`,
+     * `19 02 0D`/`19 02 09` (by the block's availability mask, `19 02 FF` once after a negative
+     * answer) and `22 F1 94`. Before every request: the 90 s budget, `sys.diagmgrsrv.task_bk`
+     * at its idle value and the gear read live (getInt) == P; a 2 s passive listen comes first.
+     *
+     * Request: [int gearDev, int gearFid]
+     * Reply:   [int status: 0 = started, 1 = busy (poll it), -1 = refused]
+     * An old daemon without this handler makes transact return false → the client returns -2.
+     */
+    val TX_DTC_SCAN_START: Int = IBinder.FIRST_CALL_TRANSACTION + 61  // 62
+
+    /**
+     * Fault-code scan, status (see [TX_DTC_SCAN_START]).
+     *
+     * Reply: [int state, int done, int total, String reason, int count,
+     *         count × (int addr, String outcome, byte[] countUds, byte[] listUds, byte[] idUds)]
+     * state: DtcWire.STATE_* (0 idle, 1 running, 2 done, 3 unavailable, 4 aborted); a failed
+     * call answers a lone -1. A uds array is null when that request was not sent or not answered,
+     * `7F sid nrc` for a negative answer, the raw frame for outcome multiframe.
+     * An old daemon without this handler makes transact return false → the client returns null.
+     */
+    val TX_DTC_SCAN_STATUS: Int = IBinder.FIRST_CALL_TRANSACTION + 62  // 63
+
+    /** TX_SET_AUTO_VOICE outcomes: called; no such method on this firmware; the audio service or
+     *  the call threw. */
+    const val AUTO_VOICE_APPLIED = 0
+    const val AUTO_VOICE_UNSUPPORTED = 2
+    const val AUTO_VOICE_FAILED = -1
+
     /** TX_SET_SCREEN_BACKLIGHT outcomes: called and the status shows the wanted state; called but
      *  the status did not follow (or could not be read); no such method on this firmware; the
      *  PowerManager or the call threw. */
