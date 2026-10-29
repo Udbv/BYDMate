@@ -14,6 +14,8 @@ import com.bydmate.app.data.repository.SettingsRepository
 import com.bydmate.app.data.repository.TripRepository
 import com.bydmate.app.domain.cost.BatteryPriceLookup
 import com.bydmate.app.domain.cost.TripEnergyPrice
+import com.bydmate.app.domain.prediction.TripForecast
+import com.bydmate.app.domain.prediction.TripForecaster
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +31,7 @@ data class TripPageUiState(
     val minutes: List<TripMinuteEntity> = emptyList(),
     val summary: TripEnergySummary? = null,
     val price: TripEnergyPrice? = null,
+    val forecast: TripForecast? = null,
     val currencySymbol: String = "",
     val tileSource: String = SettingsRepository.DEFAULT_MAP_TILE_SOURCE,
     val hybrid: Boolean = false,
@@ -45,6 +48,7 @@ class TripPageViewModel @Inject constructor(
     private val tripPointDao: TripPointDao,
     private val tripMinuteDao: TripMinuteDao,
     private val batteryPrice: BatteryPriceLookup,
+    private val forecaster: TripForecaster,
     private val settingsRepository: SettingsRepository,
     private val vehicleKindMonitor: VehicleKindMonitor,
 ) : ViewModel() {
@@ -79,6 +83,7 @@ class TripPageViewModel @Inject constructor(
                 minutes = minutes,
                 summary = TripEnergySummary.of(minutes),
                 price = batteryPrice.at(trip.startTs),
+                forecast = forecaster.forecast(trip),
                 currencySymbol = settingsRepository.getCurrencySymbol(),
                 tileSource = settingsRepository.getMapTileSource(),
                 hybrid = vehicleKindMonitor.kind.value == VehicleKind.HYBRID,
