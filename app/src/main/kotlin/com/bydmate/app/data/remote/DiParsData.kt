@@ -88,6 +88,7 @@ data class DiParsData(
     val motorCurrentFront: Float? = null,  // drive motor current, A (bus voltage is shared, so the pair gives the power split)
     val motorCurrentRear: Float? = null,
     val compressorW: Int? = null,        // AC / heat pump compressor draw, W
+    val lvCurrentA: Int? = null,         // 12 V side of the DC-DC, A (with voltage12v: the 12 V load)
     val tyreTempFL: Int? = null,         // °C
     val tyreTempFR: Int? = null,
     val tyreTempRL: Int? = null,

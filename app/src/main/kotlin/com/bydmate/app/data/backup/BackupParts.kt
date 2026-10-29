@@ -33,7 +33,7 @@ object BackupParts {
 
     /** Parent before children: inserts run in this order, deletes in the reverse one. */
     val TABLES_TABLES = listOf(
-        "trips", "trip_points", "trip_tombstones",
+        "trips", "trip_points", "trip_minutes", "trip_tombstones",
         "charges", "charge_points",
         "battery_snapshots", "idle_drains",
     )

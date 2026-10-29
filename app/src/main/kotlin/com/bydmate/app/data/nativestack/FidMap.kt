@@ -179,6 +179,9 @@ object FidMap {
         FidEntry("motorRpmFront",      1012, 1141899272,  5, Decoder.INT_RAW, symbol = "Engine.ENGINE_FRONT_MOTOR_SPEED"),
         FidEntry("motorRpmRear",       1012, 621805576,   5, Decoder.INT_RAW, symbol = "Engine.ENGINE_REAR_MOTOR_SPEED"),
         FidEntry("compressorW",        1000, 1031798840,  5, Decoder.INT_RAW, symbol = "Power.POWER_COMPRESSOR_CONSUME_POWER"),
+        // Tang L recording 2026-10-29: 62..64 A at 13.7 V parked with the cabin heating, the
+        // 12 V load the trip page shows next to the climate.
+        FidEntry("lvCurrentA",         1006, 919601192,   5, Decoder.INT_RAW, symbol = "Energy.ENERGY_LOW_VOLTAGE_SIDE_CURRENT"),
         FidEntry("tyreTempFL",         1007, 1246797848,  5, Decoder.INT_RAW, symbol = "Instrument.INSTRUMENT_2IN1_LF_TYRE_TEMPERATURE"),
         FidEntry("tyreTempFR",         1007, 1246797860,  5, Decoder.INT_RAW, symbol = "Instrument.INSTRUMENT_2IN1_RF_TYRE_TEMPERATURE"),
         FidEntry("tyreTempRL",         1007, 1246797872,  5, Decoder.INT_RAW, symbol = "Instrument.INSTRUMENT_2IN1_LB_TYRE_TEMPERATURE"),

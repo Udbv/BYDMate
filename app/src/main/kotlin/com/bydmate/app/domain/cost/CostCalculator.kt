@@ -26,6 +26,9 @@ data class RecalcResult(
 private fun TripEntity.needsPrice(fuelCost: Double?): Boolean =
     if (cost == null) kwhConsumed != null || fuelCost != null else this.fuelCost == null && fuelCost != null
 
+/** One kWh of a trip: its price and the share of it that came from DC charging (null: unknown). */
+data class TripEnergyPrice(val pricePerKwh: Double, val dcShare: Double?)
+
 /** Measured AC/DC losses derived from the charges where a meter reading was typed in. */
 data class MeasuredLosses(
     val acPct: Double?,
@@ -66,6 +69,18 @@ class CostCalculator @Inject constructor(
         Log.i(TAG, "period seeded start=0 home=${seed.homeRate} dc=${seed.dcRate} " +
             "loss=${seed.acLossPct}/${seed.dcLossPct} rule=${seed.tripRule}")
         return TariffSchedule(tariffPeriodDao.getAllAsc())
+    }
+
+    /**
+     * What one kWh of a trip starting at [ts] really cost: the weighted price of the energy in the
+     * pack after the charges before it (the `charges` rule, whatever rule the settings use), with
+     * its DC share. Without a charge in the last 60 days, the home rate and an unknown share.
+     */
+    suspend fun batteryPriceAt(ts: Long): TripEnergyPrice? {
+        val period = schedule().periodAt(ts) ?: return null
+        val timeline = BatteryPriceTimeline(chargeDao.getCompletedForPricing(ts), settingsRepository.getBatteryCapacity())
+        val priced = timeline.tripPriceAt(ts)
+        return TripEnergyPrice(priced?.pricePerKwh ?: period.homeRate, priced?.dcShare)
     }
 
     /** Price for a charge that is being created right now (detector, agent, manual add). */

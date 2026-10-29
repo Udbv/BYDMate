@@ -513,7 +513,7 @@ class LogRecorder internal constructor(
             // 4.0.1-dev.5..dev.10: massage keeper, the cluster power card, the HUD lane strip, the
             // automatic trip log itself and the ambient light at night.
             "MassageKeeper:*", "ClusterPowerCard:*", "HudLaneWriter:*", "WazeLaneReader:*", "AutoTripLog:*",
-            "AmbientNight:*",
+            "AmbientNight:*", "TripMinutes:*",
             // Power-off report in the helper daemon: arm, power off/on, send attempts, outcome.
             "OffReport:*",
             // Agent tools (where_am_i steps, failed weather requests) and the two Overpass

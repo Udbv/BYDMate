@@ -71,6 +71,8 @@ import java.util.Date
 @Composable
 fun TripsScreen(
     onOpenTemperature: () -> Unit = {},
+    /** The trip page; without one (previews, tests) the detail dialog opens instead. */
+    onOpenTrip: ((Long) -> Unit)? = null,
     viewModel: TripsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -153,7 +155,7 @@ fun TripsScreen(
                                                 currencySymbol = state.currencySymbol,
                                                 timeColWidth = timeColWidth,
                                                 kind = state.vehicleKind,
-                                                onClick = { viewModel.selectTrip(trip) },
+                                                onClick = { onOpenTrip?.invoke(trip.id) ?: viewModel.selectTrip(trip) },
                                                 onLongClick = { viewModel.onLongPressTrip(trip) },
                                             )
                                         }

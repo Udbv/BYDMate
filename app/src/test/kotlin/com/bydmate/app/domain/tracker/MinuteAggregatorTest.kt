@@ -1,0 +1,65 @@
+package com.bydmate.app.domain.tracker
+
+import com.bydmate.app.data.remote.diParsData
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class MinuteAggregatorTest {
+
+    private fun data(
+        kw: Double,
+        front: Float? = 30f,
+        rear: Float? = 70f,
+        compressorW: Int? = 1200,
+        lvAmps: Int? = 50,
+    ) = diParsData(power = kw, voltage12v = 13.8, speed = 60, soc = 80).copy(
+        motorCurrentFront = front, motorCurrentRear = rear, compressorW = compressorW, lvCurrentA = lvAmps,
+    )
+
+    @Test fun `a minute of steady drive splits the motors' energy by the axle currents`() {
+        val agg = MinuteAggregator()
+        for (s in 0 until 60) assertNull(agg.add(s * 1000L, data(30.0)))
+        val row = agg.add(60_000L, data(30.0))!!
+        assertEquals(0L, row.minuteTs)
+        assertEquals(60, row.samples)
+        val other = 50 * 13.8 / 1000 / 0.92
+        val motors = (30.0 - 1.2 - other) / 60
+        assertEquals(motors, row.motorsKwh, 1e-6)
+        assertEquals(motors * 0.3, row.frontKwh!!, 1e-6)
+        assertEquals(motors * 0.7, row.rearKwh!!, 1e-6)
+        assertEquals(1.2 / 60, row.climateKwh, 1e-6)
+        assertEquals(other / 60, row.otherKwh, 1e-6)
+        assertEquals(0.0, row.regenKwh, 1e-9)
+        assertEquals(60.0, row.avgSpeed!!, 1e-9)
+    }
+
+    @Test fun `regen goes below zero and the extremes are kept`() {
+        val agg = MinuteAggregator()
+        agg.add(0L, data(80.0))
+        agg.add(1000L, data(-40.0))
+        agg.add(2000L, data(-40.0))
+        val row = agg.flush()!!
+        assertEquals(80.0, row.peakKw, 1e-9)
+        assertEquals(-40.0, row.minKw, 1e-9)
+        assertEquals(true, row.regenKwh < 0)
+        assertNull(agg.flush())
+    }
+
+    @Test fun `a car without the current pair leaves the axles unknown`() {
+        val agg = MinuteAggregator()
+        agg.add(0L, data(30.0, front = null, rear = null))
+        val row = agg.flush()!!
+        assertNull(row.frontKwh)
+        assertNotNull(row.motorsKwh)
+    }
+
+    @Test fun `a gap counts as one tick, not as power held`() {
+        val agg = MinuteAggregator()
+        agg.add(0L, data(36.0, compressorW = null, lvAmps = null))
+        agg.add(40_000L, data(36.0, compressorW = null, lvAmps = null))
+        val row = agg.flush()!!
+        assertEquals(36.0 * (1_000 + 5_000) / 3_600_000.0, row.motorsKwh, 1e-9)
+    }
+}

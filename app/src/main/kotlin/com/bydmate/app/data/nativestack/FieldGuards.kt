@@ -27,6 +27,7 @@ object FieldGuards {
         "motorRpmFront" to -20000..20000,
         "motorRpmRear" to -20000..20000,
         "compressorW" to 0..20000,
+        "lvCurrentA" to 0..300,
         "tyreTempFL" to -50..150,
         "tyreTempFR" to -50..150,
         "tyreTempRL" to -50..150,

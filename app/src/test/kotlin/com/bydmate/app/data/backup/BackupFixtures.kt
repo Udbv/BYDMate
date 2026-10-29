@@ -43,6 +43,10 @@ internal object BackupFixtures {
                 "VALUES ($id, 1000, '$tag', 11042.4, 11092.9)"
         )
         db.execSQL("INSERT INTO trip_points (trip_id, timestamp, lat, lon) VALUES ($id, 1001, 53.9, 27.5)")
+        db.execSQL(
+            "INSERT INTO trip_minutes (minute_ts, samples, motors_kwh, regen_kwh, climate_kwh, other_kwh, peak_kw, min_kw) " +
+                "VALUES (${id * 60_000}, 60, 0.4, 0.0, 0.02, 0.01, 50.0, -5.0)",
+        )
         db.execSQL("INSERT INTO trip_tombstones (byd_id) VALUES ($id)")
         db.execSQL(
             "INSERT INTO charges (id, start_ts, status, merged_count, cost_manual, detection_source) " +

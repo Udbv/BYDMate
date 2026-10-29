@@ -419,6 +419,7 @@ class NativeParsReader @Inject constructor(
             motorCurrentFront   = motorAmps(decoded, "motorCurrentFront"),
             motorCurrentRear    = motorAmps(decoded, "motorCurrentRear"),
             compressorW         = ranged("compressorW"),
+            lvCurrentA          = ranged("lvCurrentA"),
             tyreTempFL          = ranged("tyreTempFL"),
             tyreTempFR          = ranged("tyreTempFR"),
             tyreTempRL          = ranged("tyreTempRL"),
