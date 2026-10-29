@@ -2358,6 +2358,8 @@
     <string name="forecast_value">%1$.1f кВт·г · %2$.1f /100</string>
     <string name="forecast_diff">%1$+d%%</string>
     <string name="forecast_temp">%1$d °C</string>
+    <string name="forecast_temp_range">%1$d…%2$d °C</string>
+    <string name="forecast_ascent">пад’ём +%1$d м, спуск %2$d м</string>
     <string name="forecast_climb">перапад %1$+d м</string>
     <string name="forecast_climb_share">з іх перапад вышынь: %1$+.1f кВт·г</string>
     <string name="forecast_basis_full">Падобных паездак: %1$d (тэмпература, хуткасць, надвор’е)</string>
