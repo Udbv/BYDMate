@@ -80,18 +80,6 @@ class CostCalculator @Inject constructor(
         return TariffSchedule(tariffPeriodDao.getAllAsc())
     }
 
-    /**
-     * What one kWh of a trip starting at [ts] really cost: the weighted price of the energy in the
-     * pack after the charges before it (the `charges` rule, whatever rule the settings use), with
-     * its DC share. Without a charge in the last 60 days, the home rate and an unknown share.
-     */
-    suspend fun batteryPriceAt(ts: Long): TripEnergyPrice? {
-        val period = schedule().periodAt(ts) ?: return null
-        val timeline = BatteryPriceTimeline(chargeDao.getCompletedForPricing(ts), settingsRepository.getBatteryCapacity())
-        val priced = timeline.tripPriceAt(ts)
-        return TripEnergyPrice(priced?.pricePerKwh ?: period.homeRate, priced?.dcShare)
-    }
-
     /** Price for a charge that is being created right now (detector, agent, manual add). */
     suspend fun costForNewCharge(
         startTs: Long,

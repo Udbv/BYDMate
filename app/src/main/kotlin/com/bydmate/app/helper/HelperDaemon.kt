@@ -231,6 +231,7 @@ fun main(args: Array<String>) {
     val virtualDisplays = ConcurrentHashMap<Int, VirtualDisplay>()
 
     // Step 3: build our stub Binder.
+    @Suppress("LargeClass") // every transaction the app can send lands in this one switch
     val helperBinder = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
             // Uid gate first — only our app may call.
