@@ -1352,7 +1352,6 @@
     <string name="tech_card_limits">Ліміти BMS</string>
     <string name="tech_card_cells">Комірки</string>
     <string name="tech_card_motors">Мотори та інвертори</string>
-    <string name="tech_card_climate">Клімат</string>
     <string name="tech_card_tyres">Шини · тиск / температура</string>
     <string name="tech_card_history">Батарея · історія</string>
     <string name="tech_label_hv_voltage">напруга HV</string>
