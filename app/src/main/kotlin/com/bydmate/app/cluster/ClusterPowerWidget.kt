@@ -17,7 +17,6 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.bydmate.app.camera.blindSpotClusterDisplay
 import com.bydmate.app.data.remote.DiParsData
 import com.bydmate.app.data.vehicle.HelperClient
-import com.bydmate.app.domain.calculator.PowerHistory
 import com.bydmate.app.ui.overlay.OverlayLifecycleOwner
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +45,8 @@ class ClusterPowerWidget @Inject constructor(
 ) {
     private val prefs get() = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val state = MutableStateFlow(PowerCardState())
+    private val history = MutableStateFlow(CardHistory())
+    private var wasOn = false
 
     private var root: FrameLayout? = null
     private var lifecycle: OverlayLifecycleOwner? = null
@@ -59,7 +60,12 @@ class ClusterPowerWidget @Inject constructor(
     suspend fun onTick(data: DiParsData) {
         val enabled = prefs.getBoolean(KEY_ENABLED, false)
         val carOn = data.powerState?.let { it >= 1 } == true
-        state.value = powerCardState(data)
+        val card = powerCardState(data)
+        state.value = card
+        // The peaks belong to one trip: a car coming on starts them afresh.
+        if (carOn && !wasOn) history.value = CardHistory()
+        if (carOn) history.value = history.value.add(card, System.currentTimeMillis())
+        wasOn = carOn
         when {
             enabled && carOn -> {
                 // Moved or resized in Settings: put the window where it now belongs.
@@ -148,8 +154,8 @@ class ClusterPowerWidget @Inject constructor(
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
             setContent {
                 val card by state.collectAsState()
-                val samples by PowerHistory.samples.collectAsState()
-                ClusterPowerCard(card, samples)
+                val trail by history.collectAsState()
+                ClusterPowerCard(card, trail)
             }
         }
         val frameLayout = FrameLayout(displayContext).apply {

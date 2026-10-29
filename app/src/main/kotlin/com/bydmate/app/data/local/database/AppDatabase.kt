@@ -15,6 +15,7 @@ import com.bydmate.app.data.local.dao.SettingsDao
 import com.bydmate.app.data.local.dao.TariffPeriodDao
 import com.bydmate.app.data.local.dao.TripDao
 import com.bydmate.app.data.local.dao.LastStateDao
+import com.bydmate.app.data.local.dao.TripMinuteDao
 import com.bydmate.app.data.local.dao.TripPointDao
 import com.bydmate.app.data.local.dao.TripTombstoneDao
 import com.bydmate.app.data.local.dao.VehicleWriteLogDao
@@ -31,6 +32,7 @@ import com.bydmate.app.data.local.entity.RuleLogEntity
 import com.bydmate.app.data.local.entity.SettingEntity
 import com.bydmate.app.data.local.entity.TariffPeriodEntity
 import com.bydmate.app.data.local.entity.TripEntity
+import com.bydmate.app.data.local.entity.TripMinuteEntity
 import com.bydmate.app.data.local.entity.TripPointEntity
 import com.bydmate.app.data.local.entity.TripTombstoneEntity
 import com.bydmate.app.data.local.entity.VehicleWriteLogEntity
@@ -52,16 +54,17 @@ import com.bydmate.app.data.local.entity.VehicleWriteLogEntity
         VehicleWriteLogEntity::class,
         TripTombstoneEntity::class,
         TariffPeriodEntity::class,
-        CounterSnapshotEntity::class
+        CounterSnapshotEntity::class,
+        TripMinuteEntity::class,
     ],
-    version = 23,
+    version = 24,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** Current Room schema version. Must match the @Database(version = ...) annotation above. */
-        const val SCHEMA_VERSION = 23
+        const val SCHEMA_VERSION = 24
     }
 
     abstract fun tripDao(): TripDao
@@ -80,4 +83,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun tripTombstoneDao(): TripTombstoneDao
     abstract fun tariffPeriodDao(): TariffPeriodDao
     abstract fun counterSnapshotDao(): CounterSnapshotDao
+    abstract fun tripMinuteDao(): TripMinuteDao
 }

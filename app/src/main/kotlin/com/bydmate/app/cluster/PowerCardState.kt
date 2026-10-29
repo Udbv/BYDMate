@@ -1,142 +1,102 @@
 package com.bydmate.app.cluster
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.bydmate.app.R
 import com.bydmate.app.data.nativestack.MotorSplit
 import com.bydmate.app.data.nativestack.motorSplitPercent
 import com.bydmate.app.data.remote.DiParsData
-import com.bydmate.app.domain.calculator.PowerSample
-import com.bydmate.app.domain.calculator.powerKw
-import com.bydmate.app.ui.theme.AccentGreen
-import com.bydmate.app.ui.theme.TextMuted
-import com.bydmate.app.ui.widget.RowPowerGraph
-import kotlin.math.abs
-import kotlin.math.roundToInt
+import com.bydmate.app.domain.tracker.powerParts
 
 /**
- * What the cluster power card shows. [totalKw] is the battery power (+ traction, − regen).
+ * What the cluster power card shows. [totalKw] is the battery power (+ traction, − regen); the
+ * compressor ([climateKw]) and the 12 V side ([otherKw]) are measured, the motors get the rest.
  * [frontPercent] is the front motor's share of the drive current: on the Tang L the two motor
  * currents sum to ~1.4x the battery current (phase, not DC), so they give the split but not kW;
- * each axle's kW is the battery power cut in that ratio. Null split = the car does not report
+ * each axle's kW is the motors' power cut in that ratio. Null split = the car does not report
  * the pair; [idle] = neither motor draws current.
  */
 internal data class PowerCardState(
     val totalKw: Double? = null,
     val frontPercent: Int? = null,
     val idle: Boolean = false,
+    val climateKw: Double = 0.0,
+    val otherKw: Double = 0.0,
 ) {
-    val frontKw: Double? get() = frontPercent?.let { pct -> totalKw?.let { it * pct / PERCENT } }
-    val rearKw: Double? get() = frontPercent?.let { pct -> totalKw?.let { it * (PERCENT - pct) / PERCENT } }
+    val motorsKw: Double? get() = totalKw?.let { it - climateKw - otherKw }
+    val frontKw: Double? get() = frontPercent?.let { pct -> motorsKw?.let { it * pct / PERCENT } }
+    val rearKw: Double? get() = frontPercent?.let { pct -> motorsKw?.let { it * (PERCENT - pct) / PERCENT } }
+    val auxKw: Double get() = climateKw + otherKw
     val regen: Boolean get() = (totalKw ?: 0.0) < REGEN_KW
 }
 
-internal fun powerCardState(data: DiParsData): PowerCardState =
-    when (val split = motorSplitPercent(data.motorCurrentFront, data.motorCurrentRear)) {
-        is MotorSplit.Share -> PowerCardState(powerKw(data), split.frontPercent)
-        MotorSplit.Idle -> PowerCardState(powerKw(data), idle = true)
-        null -> PowerCardState(powerKw(data))
+internal fun powerCardState(data: DiParsData): PowerCardState {
+    val parts = powerParts(data) ?: return PowerCardState()
+    return when (val split = motorSplitPercent(data.motorCurrentFront, data.motorCurrentRear)) {
+        is MotorSplit.Share -> PowerCardState(parts.totalKw, split.frontPercent, false, parts.climateKw, parts.otherKw)
+        MotorSplit.Idle -> PowerCardState(parts.totalKw, null, true, parts.climateKw, parts.otherKw)
+        null -> PowerCardState(parts.totalKw, null, false, parts.climateKw, parts.otherKw)
     }
+}
+
+/** One tick of the card's 2-minute graphs. */
+internal data class CardSample(
+    val atMs: Long,
+    val frontKw: Double?,
+    val rearKw: Double?,
+    val climateKw: Double,
+    val otherKw: Double,
+)
+
+/**
+ * The card's last [WINDOW_MS] of axle and climate power, and the trip's traction and regen peaks
+ * (kept until the car goes off). A silence over [GAP_RESET_MS] starts the graphs afresh.
+ */
+internal data class CardHistory(
+    val samples: List<CardSample> = emptyList(),
+    val peakKw: Double? = null,
+    val regenPeakKw: Double? = null,
+) {
+    fun add(state: PowerCardState, nowMs: Long): CardHistory {
+        val total = state.totalKw ?: return this
+        val sample = CardSample(nowMs, state.frontKw, state.rearKw, state.climateKw, state.otherKw)
+        val last = samples.lastOrNull()
+        val kept = if (last != null && nowMs - last.atMs > GAP_RESET_MS) emptyList()
+        else samples.filter { nowMs - it.atMs <= WINDOW_MS }
+        return CardHistory(
+            samples = kept + sample,
+            peakKw = if (total > 0) maxOf(peakKw ?: total, total) else peakKw,
+            regenPeakKw = if (total < 0) minOf(regenPeakKw ?: total, total) else regenPeakKw,
+        )
+    }
+
+    companion object {
+        const val WINDOW_MS = 120_000L
+        const val GAP_RESET_MS = 10_000L
+    }
+}
+
+/**
+ * One colour scale for the total, each axle and the bars: regen teal/green, calm grey, then
+ * yellow, orange and rose as the power climbs. The bands also differ in lightness.
+ */
+internal fun powerColor(kw: Double?): Color = when {
+    kw == null -> IdleColor
+    kw <= STRONG_REGEN_KW -> Color(0xFF2DD4BF)
+    kw < REGEN_KW -> Color(0xFF86EFAC)
+    kw < CALM_KW -> Color(0xFFCBD5E1)
+    kw < MODERATE_KW -> Color(0xFFFCD34D)
+    kw < INTENSE_KW -> Color(0xFFFB923C)
+    else -> Color(0xFFFB7185)
+}
+
+internal val IdleColor = Color(0xFF3B4652)
+internal val ClimateColor = Color(0xFFA78BFA)
+internal val OtherColor = Color(0xFFDDD6FE)
 
 private const val PERCENT = 100.0
 
-/** Below this the battery is taking power back: the card turns green. */
+/** Below this the battery is taking power back. */
 private const val REGEN_KW = -0.5
-
-private val CardBackground = Color(0xE6101418)
-private val TractionColor = Color(0xFFE6E6E6)
-private val FrontColor = Color(0xFF4FA3FF)
-private val RearColor = Color(0xFFFFB13B)
-
-/** The card itself: total kW, the front/rear bar with each axle's kW, the 2-minute graph. */
-@Composable
-internal fun ClusterPowerCard(state: PowerCardState, samples: List<PowerSample>) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .clip(RoundedCornerShape(16.dp))
-            .background(CardBackground)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = state.totalKw?.let { kwText(it) } ?: "—",
-                color = if (state.regen) AccentGreen else TractionColor,
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-            )
-            Text(
-                text = stringResource(
-                    if (state.regen) R.string.cluster_power_regen else R.string.cluster_power_kw,
-                ),
-                color = TextMuted,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(bottom = 6.dp),
-            )
-        }
-        SplitBar(state)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            AxleLabel(R.string.cluster_power_front, state.frontKw, state.frontPercent, state.idle, FrontColor)
-            AxleLabel(
-                R.string.cluster_power_rear, state.rearKw,
-                state.frontPercent?.let { 100 - it }, state.idle, RearColor,
-            )
-        }
-        if (samples.size > 1) RowPowerGraph(samples)
-    }
-}
-
-@Composable
-private fun SplitBar(state: PowerCardState) {
-    val front = state.frontPercent
-    Row(
-        modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp))
-            .background(TextMuted.copy(alpha = 0.3f)),
-    ) {
-        if (front != null && !state.idle) {
-            if (front > 0) Box(Modifier.weight(front.toFloat()).height(10.dp).background(FrontColor))
-            if (front < 100) Box(Modifier.weight((100 - front).toFloat()).height(10.dp).background(RearColor))
-        }
-    }
-}
-
-@Composable
-private fun AxleLabel(label: Int, kw: Double?, percent: Int?, idle: Boolean, color: Color) {
-    val value = when {
-        percent == null -> "—"
-        idle -> "0"
-        else -> "${kw?.let { kwText(it) } ?: "—"} · $percent%"
-    }
-    Text(
-        text = "${stringResource(label)} $value",
-        color = color,
-        fontSize = 15.sp,
-        fontFamily = FontFamily.Monospace,
-    )
-}
-
-private fun kwText(kw: Double): String {
-    val rounded = kw.roundToInt()
-    return if (abs(kw) < 10 && rounded != 0) "%.1f".format(kw) else rounded.toString()
-}
+private const val STRONG_REGEN_KW = -30.0
+private const val CALM_KW = 20.0
+private const val MODERATE_KW = 60.0
+private const val INTENSE_KW = 120.0

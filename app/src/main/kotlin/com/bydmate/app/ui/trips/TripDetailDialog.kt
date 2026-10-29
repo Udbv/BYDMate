@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -80,7 +81,6 @@ fun TripDetailDialog(
     hybrid: Boolean = false,
     onDismiss: () -> Unit
 ) {
-    val ctx = LocalContext.current
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -103,171 +103,191 @@ fun TripDetailDialog(
                         .fillMaxHeight(0.85f)
                         .clickable { /* absorb click */ }
                 ) {
-                    val isStop = (trip.distanceKm ?: 0.0) == 0.0
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        TripDetailHeader(trip, isStop, onDismiss)
-
-                        // Landscape: map left, stats right
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            // LEFT: Map + speed histogram
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                // Map in its own clipped box
-                                if (points.size >= 2) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(8.dp))
-                                    ) {
-                                        TripRouteMap(
-                                            points = points,
-                                            tileSource = tileSource,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .weight(1f)
-                                            .background(NavyDark, RoundedCornerShape(8.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(stringResource(R.string.trip_detail_gps_unavailable), color = TextMuted, fontSize = 13.sp)
-                                    }
-                                }
-
-                                // Speed histogram
-                                if (points.size >= 4) {
-                                    SpeedHistogram(
-                                        points = points,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(60.dp)
-                                    )
-                                }
-                            }
-
-                            // RIGHT: Stats in groups split by a thin line; a row without data and a group without rows are hidden
-                            val showFuel = hybrid || trip.fuelLiters != null
-                            val groups = buildList {
-                                add(buildList {
-                                    trip.distanceKm?.let {
-                                        add(StatRow(stringResource(R.string.trip_detail_distance_label),
-                                            stringResource(R.string.trip_detail_distance_value, it), main = true))
-                                    }
-                                    val odoStart = trip.odometerStartKm
-                                    val odoEnd = trip.odometerEndKm
-                                    if (isStop && odoStart != null && odoStart == odoEnd) {
-                                        add(StatRow(stringResource(R.string.trip_detail_odometer_label),
-                                            stringResource(R.string.trip_detail_odometer_value, odoEnd)))
-                                    } else {
-                                        odoStart?.let {
-                                            add(StatRow(stringResource(R.string.trip_detail_odometer_start_label),
-                                                stringResource(R.string.trip_detail_odometer_value, it)))
-                                        }
-                                        odoEnd?.let {
-                                            add(StatRow(stringResource(R.string.trip_detail_odometer_end_label),
-                                                stringResource(R.string.trip_detail_odometer_value, it)))
-                                        }
-                                    }
-                                })
-                                add(buildList {
-                                    if (trip.endTs != null) {
-                                        add(StatRow(stringResource(R.string.trip_detail_duration_label),
-                                            formatDuration(ctx, trip.startTs, trip.endTs)))
-                                    }
-                                    val moving = remember(points, trip.startTs, trip.endTs) {
-                                        TripDetailStats.movingTimeMs(points, trip.startTs, trip.endTs)
-                                    }
-                                    moving?.let {
-                                        add(StatRow(stringResource(R.string.trip_detail_moving_label), formatDuration(ctx, 0L, it)))
-                                    }
-                                    trip.avgSpeedKmh?.let {
-                                        add(StatRow(stringResource(R.string.trip_detail_avg_speed_label),
-                                            stringResource(R.string.trip_detail_speed_value, it)))
-                                    }
-                                    if (points.isNotEmpty()) {
-                                        val maxSpeed = points.maxOfOrNull { it.speedKmh ?: 0.0 } ?: 0.0
-                                        if (maxSpeed > 0) {
-                                            add(StatRow(stringResource(R.string.trip_detail_max_speed_label),
-                                                stringResource(R.string.trip_detail_speed_value, maxSpeed)))
-                                        }
-                                    }
-                                })
-                                add(buildList {
-                                    trip.kwhConsumed?.let {
-                                        add(StatRow(stringResource(R.string.trip_detail_consumption_label),
-                                            stringResource(R.string.trip_detail_consumption_value, it)))
-                                        trip.kwhPer100km?.let { per100 ->
-                                            add(StatRow(stringResource(R.string.trip_detail_efficiency_label),
-                                                stringResource(R.string.trip_detail_efficiency_value, per100), consumptionColor(per100)))
-                                        }
-                                    }
-                                    if (trip.socStart != null && trip.socEnd != null) {
-                                        add(StatRow(stringResource(R.string.trip_detail_soc_label),
-                                            "${trip.socStart}% → ${trip.socEnd}%",
-                                            note = "(${TripDetailStats.socChangeLabel(trip.socStart, trip.socEnd)})"))
-                                    }
-                                    if (showFuel) {
-                                        add(StatRow(stringResource(R.string.trip_detail_fuel_label),
-                                            trip.fuelLiters?.let { stringResource(R.string.dashboard_fuel_liters_value, it) } ?: "—",
-                                            if ((trip.fuelLiters ?: 0.0) > 0.0) AccentOrange else TextPrimary))
-                                        val hev = trip.hevKm
-                                        val dist = trip.distanceKm
-                                        add(StatRow(stringResource(R.string.trip_detail_hev_ev_label),
-                                            if (hev != null && dist != null)
-                                                stringResource(R.string.trip_detail_hev_ev_value, hev, (dist - hev).coerceAtLeast(0.0))
-                                            else "—"))
-                                    }
-                                })
-                                add(buildList {
-                                    trip.cost?.let {
-                                        add(StatRow(stringResource(R.string.trip_detail_cost_label),
-                                            "%.2f %s".format(it, currencySymbol), AccentGreen))
-                                    }
-                                    TripDetailStats.costPer100Km(trip.cost, trip.distanceKm)?.let {
-                                        add(StatRow(stringResource(R.string.trip_detail_cost_per_100_label),
-                                            "%.2f %s".format(it, currencySymbol)))
-                                    }
-                                    if (showFuel) {
-                                        add(StatRow(stringResource(R.string.trip_detail_fuel_cost_label),
-                                            trip.fuelCost?.let { "%.2f %s".format(it, currencySymbol) } ?: "—"))
-                                    }
-                                })
-                                add(buildList {
-                                    TripDetailStats.exteriorTempLabel(trip.exteriorTemp, trip.exteriorTempEnd)?.let {
-                                        add(StatRow(stringResource(R.string.trip_detail_ext_temp_label), it))
-                                    }
-                                })
-                            }.filter { it.isNotEmpty() }
-
-                            TripStatsColumn(
-                                groups = groups,
-                                modifier = Modifier
-                                    .width(340.dp)
-                                    .fillMaxHeight()
-                            )
-                        }
-                    }
+                    TripDetailContent(trip, points, currencySymbol, tileSource, hybrid, onDismiss)
                 }
             }
+        }
+    }
+}
+
+/**
+ * The trip's header, map and stats; the dialog shows it alone, the trip page adds [analysis]
+ * (the per-minute power) as a third column.
+ */
+@Composable
+internal fun TripDetailContent(
+    trip: TripEntity,
+    points: List<TripPointEntity>,
+    currencySymbol: String,
+    tileSource: String,
+    hybrid: Boolean,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    analysis: (@Composable RowScope.() -> Unit)? = null,
+) {
+    val ctx = LocalContext.current
+    val isStop = (trip.distanceKm ?: 0.0) == 0.0
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        TripDetailHeader(trip, isStop, onDismiss)
+
+        // Landscape: map left, stats right
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // LEFT: Map + speed histogram
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Map in its own clipped box
+                if (points.size >= 2) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                    ) {
+                        TripRouteMap(
+                            points = points,
+                            tileSource = tileSource,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .background(NavyDark, RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(stringResource(R.string.trip_detail_gps_unavailable), color = TextMuted, fontSize = 13.sp)
+                    }
+                }
+
+                // Speed histogram
+                if (points.size >= 4) {
+                    SpeedHistogram(
+                        points = points,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(60.dp)
+                    )
+                }
+            }
+
+            // RIGHT: Stats in groups split by a thin line; a row without data and a group without rows are hidden
+            val showFuel = hybrid || trip.fuelLiters != null
+            val groups = buildList {
+                add(buildList {
+                    trip.distanceKm?.let {
+                        add(StatRow(stringResource(R.string.trip_detail_distance_label),
+                            stringResource(R.string.trip_detail_distance_value, it), main = true))
+                    }
+                    val odoStart = trip.odometerStartKm
+                    val odoEnd = trip.odometerEndKm
+                    if (isStop && odoStart != null && odoStart == odoEnd) {
+                        add(StatRow(stringResource(R.string.trip_detail_odometer_label),
+                            stringResource(R.string.trip_detail_odometer_value, odoEnd)))
+                    } else {
+                        odoStart?.let {
+                            add(StatRow(stringResource(R.string.trip_detail_odometer_start_label),
+                                stringResource(R.string.trip_detail_odometer_value, it)))
+                        }
+                        odoEnd?.let {
+                            add(StatRow(stringResource(R.string.trip_detail_odometer_end_label),
+                                stringResource(R.string.trip_detail_odometer_value, it)))
+                        }
+                    }
+                })
+                add(buildList {
+                    if (trip.endTs != null) {
+                        add(StatRow(stringResource(R.string.trip_detail_duration_label),
+                            formatDuration(ctx, trip.startTs, trip.endTs)))
+                    }
+                    val moving = remember(points, trip.startTs, trip.endTs) {
+                        TripDetailStats.movingTimeMs(points, trip.startTs, trip.endTs)
+                    }
+                    moving?.let {
+                        add(StatRow(stringResource(R.string.trip_detail_moving_label), formatDuration(ctx, 0L, it)))
+                    }
+                    trip.avgSpeedKmh?.let {
+                        add(StatRow(stringResource(R.string.trip_detail_avg_speed_label),
+                            stringResource(R.string.trip_detail_speed_value, it)))
+                    }
+                    if (points.isNotEmpty()) {
+                        val maxSpeed = points.maxOfOrNull { it.speedKmh ?: 0.0 } ?: 0.0
+                        if (maxSpeed > 0) {
+                            add(StatRow(stringResource(R.string.trip_detail_max_speed_label),
+                                stringResource(R.string.trip_detail_speed_value, maxSpeed)))
+                        }
+                    }
+                })
+                add(buildList {
+                    trip.kwhConsumed?.let {
+                        add(StatRow(stringResource(R.string.trip_detail_consumption_label),
+                            stringResource(R.string.trip_detail_consumption_value, it)))
+                        trip.kwhPer100km?.let { per100 ->
+                            add(StatRow(stringResource(R.string.trip_detail_efficiency_label),
+                                stringResource(R.string.trip_detail_efficiency_value, per100), consumptionColor(per100)))
+                        }
+                    }
+                    if (trip.socStart != null && trip.socEnd != null) {
+                        add(StatRow(stringResource(R.string.trip_detail_soc_label),
+                            "${trip.socStart}% → ${trip.socEnd}%",
+                            note = "(${TripDetailStats.socChangeLabel(trip.socStart, trip.socEnd)})"))
+                    }
+                    if (showFuel) {
+                        add(StatRow(stringResource(R.string.trip_detail_fuel_label),
+                            trip.fuelLiters?.let { stringResource(R.string.dashboard_fuel_liters_value, it) } ?: "—",
+                            if ((trip.fuelLiters ?: 0.0) > 0.0) AccentOrange else TextPrimary))
+                        val hev = trip.hevKm
+                        val dist = trip.distanceKm
+                        add(StatRow(stringResource(R.string.trip_detail_hev_ev_label),
+                            if (hev != null && dist != null)
+                                stringResource(R.string.trip_detail_hev_ev_value, hev, (dist - hev).coerceAtLeast(0.0))
+                            else "—"))
+                    }
+                })
+                add(buildList {
+                    trip.cost?.let {
+                        add(StatRow(stringResource(R.string.trip_detail_cost_label),
+                            "%.2f %s".format(it, currencySymbol), AccentGreen))
+                    }
+                    TripDetailStats.costPer100Km(trip.cost, trip.distanceKm)?.let {
+                        add(StatRow(stringResource(R.string.trip_detail_cost_per_100_label),
+                            "%.2f %s".format(it, currencySymbol)))
+                    }
+                    if (showFuel) {
+                        add(StatRow(stringResource(R.string.trip_detail_fuel_cost_label),
+                            trip.fuelCost?.let { "%.2f %s".format(it, currencySymbol) } ?: "—"))
+                    }
+                })
+                add(buildList {
+                    TripDetailStats.exteriorTempLabel(trip.exteriorTemp, trip.exteriorTempEnd)?.let {
+                        add(StatRow(stringResource(R.string.trip_detail_ext_temp_label), it))
+                    }
+                })
+            }.filter { it.isNotEmpty() }
+
+            TripStatsColumn(
+                groups = groups,
+                modifier = Modifier
+                    .width(340.dp)
+                    .fillMaxHeight()
+            )
+            analysis?.invoke(this)
         }
     }
 }

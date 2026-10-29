@@ -300,7 +300,10 @@ fun AppNavigation(
                 )
             }
             composable(Screen.Trips.route) {
-                TripsScreen(onOpenTemperature = { navController.navigate("trip_temperature") })
+                TripsScreen(
+                    onOpenTemperature = { navController.navigate("trip_temperature") },
+                    onOpenTrip = { id -> navController.navigate(com.bydmate.app.ui.trips.TripPageViewModel.route(id)) },
+                )
             }
             composable(Screen.Charges.route) {
                 ChargesScreen(onNavigateSettings = { navController.navigate(Screen.Settings.route) })
@@ -313,6 +316,16 @@ fun AppNavigation(
                     onNavigateToVoiceUserPhrases = { navController.navigate("voice_user_phrases") },
                     onNavigateToTariffPeriods = { navController.navigate("tariff_periods") },
                 )
+            }
+            composable(
+                com.bydmate.app.ui.trips.TripPageViewModel.ROUTE,
+                arguments = listOf(
+                    androidx.navigation.navArgument(com.bydmate.app.ui.trips.TripPageViewModel.ARG_TRIP_ID) {
+                        type = androidx.navigation.NavType.LongType
+                    },
+                ),
+            ) {
+                com.bydmate.app.ui.trips.TripPageScreen(onBack = { navController.popBackStack() })
             }
             composable("trip_temperature") {
                 com.bydmate.app.ui.trips.TripTemperatureScreen(onBack = { navController.popBackStack() })
