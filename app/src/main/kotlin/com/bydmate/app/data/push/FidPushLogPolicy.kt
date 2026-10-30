@@ -21,7 +21,7 @@ internal object FidPushLogPolicy {
         "insulationKohm", "motorTempFront", "motorTempRear", "inverterTempFront", "inverterTempRear",
         "hvVoltage", "hvCurrent", "motorCurrentFront", "motorCurrentRear",
         "bmsMaxChargeKw", "bmsMaxDischargeAllowKw", "bmsMaxDischargeKw",
-        "motorRpmFront", "motorRpmRear", "compressorW",
+        "motorRpmFront", "motorRpmRear", "compressorW", "lvCurrentA",
         "tyreTempFL", "tyreTempFR", "tyreTempRL", "tyreTempRR",
         "pedalAccel", "pedalBrake", "soh", "lifetimeAvgPhm", "chargeBatteryVolt", "chargingCapacity",
     )
