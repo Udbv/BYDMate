@@ -14,7 +14,7 @@ class FidPushLogPolicyTest {
     }
 
     @Test fun `the busy continuous readings are analog`() {
-        listOf("speed", "soc", "motorRpmFront", "maxCellVoltage", "hvCurrent", "power").forEach {
+        listOf("speed", "soc", "motorRpmFront", "maxCellVoltage", "hvCurrent", "power", "lvCurrentA").forEach {
             assertTrue(it, FidPushLogPolicy.isAnalog(it))
         }
     }
