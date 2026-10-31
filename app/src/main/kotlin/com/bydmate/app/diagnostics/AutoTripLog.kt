@@ -31,8 +31,11 @@ import javax.inject.Singleton
  * - Car off for [OFF_MS] with that recording running: it stops, and the file goes to the bot.
  * - The car usually kills the process sooner. Then at the next start the old file is neither
  *   resumed into the new trip nor lost: [onServiceStart] finishes it and sends it.
- * - The 2 h auto-stop ends a long trip's file; a new one starts. A stop by the owner keeps it off
- *   until the car goes off.
+ * - A long trip goes out in parts: every [CHUNK_MS] the file is closed, sent to the bot and the
+ *   recording goes on in a new one, so a drive in progress can be read without the Settings
+ *   button (#43). A file that ended any other way (the recorder's own 2 h stop) and was never
+ *   sent goes out when the next one starts, instead of being forgotten. A stop by the owner keeps
+ *   it off until the car goes off.
  */
 @Singleton
 class AutoTripLog @Inject constructor(
@@ -75,6 +78,10 @@ class AutoTripLog @Inject constructor(
         noteOwnerStop(state, own, carOn, now)
         if (carOn) {
             offSince = null
+            if (own != null && partDue(state, own, now)) {
+                rotate(own)
+                return
+            }
             if (!state.isRecording && !stoppedByOwner && now - serviceStartedAt >= startDelay()) start()
             return
         }
@@ -106,7 +113,25 @@ class AutoTripLog @Inject constructor(
         }
     }
 
+    private fun partDue(state: LogRecorder.State, own: String, now: Long): Boolean =
+        state.isRecording && state.filePath == own && now - state.startedAtMs >= CHUNK_MS
+
+    /** Closes this part, sends it and goes on in a new file: not an owner's stop. */
+    private suspend fun rotate(own: String) {
+        Log.i(TAG, "part done after ${CHUNK_MS / MINUTE_MS} min: $own")
+        watchedPath = null
+        recorder.stop()
+        uploads.launch { send(File(own), waitForNetwork = false) }
+        start()
+    }
+
     private suspend fun start() {
+        // A previous file of ours that never reached the bot (the recorder's own stop) goes now.
+        prefs.getString(KEY_PATH, null)?.let { prev ->
+            if (prev != prefs.getString(KEY_SENT, null) && prev != recorder.state.value.filePath) {
+                uploads.launch { send(File(prev), waitForNetwork = false) }
+            }
+        }
         val result = recorder.start { file ->
             file.writeText(
                 "BYDMate ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}): automatic trip log, " +
@@ -162,6 +187,9 @@ class AutoTripLog @Inject constructor(
         const val EARLY_START_MS = 3_000L
         const val START_DELAY_MS = 45_000L
         const val OFF_MS = 60_000L
+        /** A part of a long trip's log: closed, sent and continued in a new file after this (#43). */
+        const val CHUNK_MS = 20 * 60 * 1000L
+        private const val MINUTE_MS = 60_000L
         private const val AUTO_STOP_MS = 2 * 60 * 60 * 1000L
         private const val AUTO_STOP_SLACK_MS = 60_000L
         private const val SETTLE_MS = 60_000L

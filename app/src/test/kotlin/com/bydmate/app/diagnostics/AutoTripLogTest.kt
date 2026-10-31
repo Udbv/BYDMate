@@ -107,4 +107,26 @@ class AutoTripLogTest {
         log.onTick(carOn = true, now = 10 * AutoTripLog.START_DELAY_MS)
         coVerify(exactly = 0) { recorder.start(any()) }
     }
+
+    @Test fun `a long trip goes out in 20-minute parts and keeps recording`() = runBlocking {
+        coEvery { settings.getTgBackupConfig() } returns TgBackupConfig("t", 1L, "", "")
+        var clock = 1_000L
+        coEvery { recorder.start(any()) } answers {
+            state.value = LogRecorder.State(isRecording = true, filePath = file.absolutePath, startedAtMs = clock)
+            LogRecorder.StartResult.Started(file)
+        }
+        log.onTick(carOn = true, now = AutoTripLog.START_DELAY_MS)
+        coVerify(exactly = 1) { recorder.start(any()) }
+        log.onTick(carOn = true, now = 1_000 + AutoTripLog.CHUNK_MS - 1)
+        coVerify(exactly = 0) { recorder.stop() }
+        clock = 1_000 + AutoTripLog.CHUNK_MS
+        log.onTick(carOn = true, now = clock)
+        coVerify(exactly = 1) { recorder.stop() }
+        coVerify(exactly = 2) { recorder.start(any()) }
+        assertTrue(state.value.isRecording)
+        coVerify(timeout = 5_000) { sender.sendZipped(any(), file) }
+        // The part was not an owner's stop: the next tick neither stops nor holds the recording off.
+        log.onTick(carOn = true, now = 1_000 + AutoTripLog.CHUNK_MS + 2_000)
+        coVerify(exactly = 2) { recorder.start(any()) }
+    }
 }
