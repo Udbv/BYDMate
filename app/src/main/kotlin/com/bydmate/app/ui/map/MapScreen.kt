@@ -89,7 +89,7 @@ fun MapScreen(viewModel: MapViewModel = hiltViewModel()) {
                 state, target,
                 onRoute = { openWaze(context, RouteNavigatorUris.route(RouteNavigatorUris.WAZE, target.lat, target.lon)) },
                 onClose = viewModel::clearTarget,
-                modifier = Modifier.align(Alignment.BottomStart).padding(12.dp).width(420.dp),
+                modifier = Modifier.align(Alignment.BottomStart).padding(12.dp).width(560.dp),
             )
         }
     }
@@ -178,7 +178,10 @@ private fun TargetCard(
         val route = state.route
         when {
             state.routing -> Text(stringResource(R.string.map_routing), color = TextMuted, fontSize = 14.sp)
-            route != null -> RouteSummary(route, state.scenarios)
+            route != null -> {
+                RouteSummary(route, state.scenarios)
+                SpeedPlanTable(state.speedPlans, state.currency)
+            }
             state.routeFailed -> Text(stringResource(R.string.map_route_failed), color = AccentOrange, fontSize = 13.sp)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

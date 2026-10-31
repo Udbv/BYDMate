@@ -676,6 +676,17 @@
     <string name="map_range_unknown">Autonomia desconhecida</string>
     <string name="map_route_waze">Rota no Waze</string>
     <string name="map_you">Está aqui</string>
+    <string name="map_speed_title">Mais rápido ou mais longe</string>
+    <string name="map_speed_kph">%1$d km/h</string>
+    <string name="map_speed_no_stops">sem carregar</string>
+    <string name="map_speed_kwh">%1$d kWh</string>
+    <string name="map_speed_cost">~%1$d %2$s</string>
+    <string name="map_speed_note">Carregadores de %1$d kW até 80 %%, partida com a carga atual, chegada com 10 %%. O tempo inclui a paragem para carregar.</string>
+    <plurals name="map_speed_stops">
+        <item quantity="one">%1$d carga, %2$d min</item>
+        <item quantity="many">%1$d cargas, %2$d min</item>
+        <item quantity="other">%1$d cargas, %2$d min</item>
+    </plurals>
     <string name="map_scenarios_title">Até onde chega a carga</string>
     <string name="map_scenario_heavy">Exigente (frio, autoestrada): %1$d km</string>
     <string name="map_scenario_normal">Habitual: %1$d km</string>

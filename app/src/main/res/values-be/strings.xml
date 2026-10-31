@@ -800,6 +800,18 @@
     <string name="map_range_unknown">Запас ходу невядомы</string>
     <string name="map_route_waze">Маршрут у Waze</string>
     <string name="map_you">Вы тут</string>
+    <string name="map_speed_title">Хутчэй ці далей</string>
+    <string name="map_speed_kph">%1$d км/г</string>
+    <string name="map_speed_no_stops">без зарадак</string>
+    <string name="map_speed_kwh">%1$d кВт·г</string>
+    <string name="map_speed_cost">~%1$d %2$s</string>
+    <string name="map_speed_note">Зарадкі %1$d кВт да 80 %%, старт з бягучага зараду, прыезд з 10 %%. Час — з заездам на зарадку.</string>
+    <plurals name="map_speed_stops">
+        <item quantity="one">%1$d зарадка, %2$d хв</item>
+        <item quantity="few">%1$d зарадкі, %2$d хв</item>
+        <item quantity="many">%1$d зарадак, %2$d хв</item>
+        <item quantity="other">%1$d зарадкі, %2$d хв</item>
+    </plurals>
     <string name="map_scenarios_title">Куды хопіць зарада</string>
     <string name="map_scenario_heavy">Цяжка (холад, траса): %1$d км</string>
     <string name="map_scenario_normal">Звычайна: %1$d км</string>

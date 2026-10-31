@@ -31,7 +31,22 @@ data class MapUiState(
     val routing: Boolean = false,
     val route: RoutePlan? = null,
     val routeFailed: Boolean = false,
+    val startKwh: Double? = null,
+    val capacityKwh: Double? = null,
+    val outsideC: Double? = null,
+    val dcPrice: Double? = null,
+    val currency: String = "",
 ) {
+    /** The cruise speeds compared over the route, from the energy the battery holds now. */
+    val speedPlans: List<SpeedPlan>
+        get() {
+            val r = route ?: return emptyList()
+            val start = startKwh ?: return emptyList()
+            val capacity = capacityKwh?.takeIf { it > 0 } ?: return emptyList()
+            val from = PlanStart(start, capacity, outsideC, dcPrice)
+            return SpeedPlanner.CRUISE_SPEEDS.map { SpeedPlanner.plan(r.distanceKm, it, from) }
+        }
+
     val pieces: List<RoutePiece>
         get() {
             val r = route ?: return emptyList()
@@ -67,11 +82,16 @@ class MapViewModel @Inject constructor(
         viewModelScope.launch {
             val bounds = boundsCache.get()
             val capacity = settingsRepository.getBatteryCapacity()
+            val dc = settingsRepository.getDcTariff().takeIf { it > 0 }
+            val currency = settingsRepository.getCurrencySymbol()
+            _uiState.update { it.copy(capacityKwh = capacity, dcPrice = dc, currency = currency) }
             combine(TrackingService.lastRangeKm, TrackingService.lastData) { km, data -> km to data }
                 .collect { (km, data) ->
                     val remain = data?.batteryRemainKwh ?: data?.soc?.let { it / PERCENT * capacity }
                     val scenarios = km?.takeIf { it > 0 }?.let { ReachScenarios.of(it, remain, bounds) }
-                    _uiState.update { it.copy(scenarios = scenarios) }
+                    _uiState.update {
+                        it.copy(scenarios = scenarios, startKwh = remain, outsideC = data?.exteriorTemp?.toDouble())
+                    }
                 }
         }
     }
