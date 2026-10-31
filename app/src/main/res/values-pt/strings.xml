@@ -2362,4 +2362,7 @@
         <item quantity="many">Mais %1$d códigos não couberam, todos estão na janela «Diagnóstico»</item>
         <item quantity="other">Mais %1$d códigos não couberam, todos estão na janela «Diagnóstico»</item>
     </plurals>
+    <string name="dashboard_live_trip_now">agora</string>
+    <string name="dashboard_live_trip_regen">regeneração %1$.1f kWh</string>
+    <string name="dashboard_live_trip_temp">exterior %1$d °C</string>
 </resources>

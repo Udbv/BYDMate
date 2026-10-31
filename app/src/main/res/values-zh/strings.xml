@@ -2468,4 +2468,7 @@
     <plurals name="tech_dtc_more_codes">
         <item quantity="other">还有 %1$d 个故障码放不下，全部见“诊断”窗口</item>
     </plurals>
+    <string name="dashboard_live_trip_now">当前</string>
+    <string name="dashboard_live_trip_regen">能量回收 %1$.1f kWh</string>
+    <string name="dashboard_live_trip_temp">车外 %1$d °C</string>
 </resources>

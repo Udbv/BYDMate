@@ -2360,4 +2360,7 @@
         <item quantity="one">%1$d more code did not fit, all of them are in the “Diagnostics” window</item>
         <item quantity="other">%1$d more codes did not fit, all of them are in the “Diagnostics” window</item>
     </plurals>
+    <string name="dashboard_live_trip_now">now</string>
+    <string name="dashboard_live_trip_regen">regen %1$.1f kWh</string>
+    <string name="dashboard_live_trip_temp">outside %1$d °C</string>
 </resources>

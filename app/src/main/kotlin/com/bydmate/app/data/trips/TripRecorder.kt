@@ -242,6 +242,7 @@ class TripRecorder @Inject @Suppress("LongParameterList") constructor( // inject
         val gap = now() - state.ts
         val active = !energyDataReader.isAvailable() || deadDetector.isDead()
         val staleGap = 5 * 60 * 1_000L
+        logRestart(plausibleDistance(state.tripStartMileage, state.mileage), gap, active, staleGap)
         if (gap < staleGap) {
             if (active) {
                 open = Open(
@@ -327,3 +328,22 @@ private fun resumeHybrid(edge: HybridIgnitionEdge, endEdge: ReadableOnTick, stat
     val onTs = saved.onTs ?: return
     endEdge.seed(onTs, saved.onFuelTotal, saved.onMileageHev, saved.onMileage)
 }
+
+/**
+ * One line in the trip log for every restart that finds a trip open (an app update in the middle
+ * of a drive, #44): whether it goes on or is closed, after how long, how far.
+ */
+private fun logRestart(km: Double?, gap: Long, active: Boolean, staleGap: Long) {
+    val outcome = when {
+        !active -> "left to the energy data source"
+        gap < staleGap -> "continued"
+        else -> "closed (gap over ${staleGap / MS_PER_MIN} min)"
+    }
+    com.bydmate.app.diagnostics.TripDebugLog.event(
+        "TRIP",
+        "open trip at restart: gap=${gap / MS_PER_S}s km=${km ?: "-"} -> $outcome",
+    )
+}
+
+private const val MS_PER_S = 1_000L
+private const val MS_PER_MIN = 60_000L

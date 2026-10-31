@@ -2524,4 +2524,7 @@
         <item quantity="many">Jeszcze %1$d kodów się nie zmieściło, wszystkie w oknie „Diagnostyka”</item>
         <item quantity="other">Jeszcze %1$d kodu się nie zmieściło, wszystkie w oknie „Diagnostyka”</item>
     </plurals>
+    <string name="dashboard_live_trip_now">teraz</string>
+    <string name="dashboard_live_trip_regen">rekuperacja %1$.1f kWh</string>
+    <string name="dashboard_live_trip_temp">na zewnątrz %1$d °C</string>
 </resources>

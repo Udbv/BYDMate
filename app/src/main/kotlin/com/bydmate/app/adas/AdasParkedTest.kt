@@ -80,12 +80,17 @@ class AdasParkedTest @Inject constructor(
     internal suspend fun run(limitKph: Int, cameraM: Int) {
         val gateway = gatewayFactory(context)
         val fires = HashMap<Int, Int>()
-        var outcome = "шлюз SOME/IP недоступний"
+        // Whatever ends the run before it says otherwise: leaving the settings screen cancels it
+        // (2026-10-31 17:03 reported «gateway unavailable» for a run that sent all its frames).
+        var outcome = "перервано"
         var started = false
         try {
             val before = readCar()
             note("parked test start limit=$limitKph camera=${cameraM}m car before: ${before?.describe() ?: "no answer"}")
-            if (!gateway.bind()) return
+            if (!gateway.bind()) {
+                outcome = "шлюз SOME/IP недоступний"
+                return
+            }
             val sending = sendingFrames(limitKph, cameraM)
             // The factory map offers these services itself; ours are started only when a frame
             // does not go out without them, and only those are stopped at the end.

@@ -86,4 +86,15 @@ class AdasParkedTestTest {
         assertEquals(AdasParkedTest.SERVICES, gateway.started)
         assertEquals(AdasParkedTest.SERVICES, gateway.stopped)
     }
+
+    @Test fun `a cancelled run says it was cut short and still clears`() = runTest {
+        val gateway = FakeGateway()
+        val test = subject(gateway, { car(1, 0) }, { testScheduler.currentTime })
+        val job = backgroundScope.launch { test.run(70, 300) }
+        testScheduler.advanceTimeBy(2_000)
+        job.cancel()
+        testScheduler.advanceTimeBy(5_000)
+        assertEquals("перервано", test.status.value.result)
+        assertTrue(gateway.fired.last().second.contentEquals(AdasParkedTest.clearingFrames().last().bytes))
+    }
 }

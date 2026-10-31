@@ -2524,4 +2524,7 @@
         <item quantity="many">Яшчэ %1$d кодаў не змясціліся, усе ў акне «Дыягностыка»</item>
         <item quantity="other">Яшчэ %1$d кода не змясціліся, усе ў акне «Дыягностыка»</item>
     </plurals>
+    <string name="dashboard_live_trip_now">зараз</string>
+    <string name="dashboard_live_trip_regen">рэкуперацыя %1$.1f кВт·г</string>
+    <string name="dashboard_live_trip_temp">звонку %1$d °C</string>
 </resources>
