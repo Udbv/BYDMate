@@ -40,11 +40,13 @@ internal fun powerParts(data: DiParsData): PowerParts? {
 }
 
 /**
- * The car is plugged in: the gun is in (2) or the BMS says it is charging (1). The battery then
- * takes power from the charger, which on the power reading looks exactly like regen; a plugged
- * car cannot drive, so such a tick belongs to no trip.
+ * The car is plugged in: any gun state but none (0/1) - AC reads 2, DC 3 (the 2026-10-31 DC
+ * session), the same rule as the charge detector's - or the BMS says it is charging (1). The
+ * battery then takes power from the charger, which on the power reading looks exactly like regen;
+ * a plugged car cannot drive, so such a tick belongs to no trip.
  */
-fun isPluggedIn(data: DiParsData): Boolean = data.chargeGunState == GUN_CONNECTED || data.bmsState == BMS_CHARGING
+fun isPluggedIn(data: DiParsData): Boolean =
+    (data.chargeGunState ?: GUN_NONE) > GUN_NONE || data.bmsState == BMS_CHARGING
 
 /**
  * A minute that took energy while standing: regen needs wheels turning, so this was a charger
@@ -215,7 +217,8 @@ private const val MS_PER_HOUR = 3_600_000.0
 /** The DC-DC's own losses: the 12 V load costs the battery a little more than it uses. */
 private const val DCDC_EFFICIENCY = 0.92
 
-private const val GUN_CONNECTED = 2
+/** Gun states 0 and 1 both mean nothing is plugged in. */
+private const val GUN_NONE = 1
 private const val BMS_CHARGING = 1
 
 /** More than 3 kW on average returned in a minute without moving: no regen does that. */

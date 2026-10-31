@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import com.bydmate.app.navdata.waze.ArrowSignature
+import com.bydmate.app.navdata.waze.LaneShape
 import com.bydmate.app.navdata.waze.WazeArrowTable
 import com.bydmate.app.navdata.waze.WazeLaneSegmenter
 import java.util.concurrent.atomic.AtomicBoolean
@@ -425,7 +426,9 @@ object WazeVisualManeuverReader {
             widths[i] = cw
             heights[i] = ch
             scores[i] = WazeLaneSegmenter.cellScore(pixels, w, x0, y0, cw, ch)
-            val verdict = WazeLaneSegmenter.classifyLaneDetailed(cw, ch, crop)
+            val verdict = WazeLaneSegmenter.classifyLaneDetailed(cw, ch, crop).let { v ->
+                if (v.matched) v else shapeVerdict(cw, ch, crop) ?: v
+            }
             classes[i] = verdict
             codes[i] = verdict.code
             grids[i] = if (verdict.matched) "" else verdict.grid
@@ -444,6 +447,20 @@ object WazeVisualManeuverReader {
         }
         return LaneOutcome(codes, fronts, scores, grids.map { it ?: "" }, mainIndex, arrow)
             .apply { allMatched = classes.all { it?.matched == true } }
+    }
+
+    /**
+     * A lane no drawable matches, read by its shape ([LaneShape]); null when the shape is not a
+     * whole arrow either. The highlighted direction is the manoeuvre's when the lane allows it.
+     */
+    private fun shapeVerdict(w: Int, h: Int, crop: IntArray): WazeLaneSegmenter.LaneClass? {
+        val dirs = LaneShape.directions(w, h, crop) ?: return null
+        val active = WazeLaneReader.maneuverDirection()?.takeIf { it in dirs } ?: dirs.first()
+        return WazeLaneSegmenter.LaneClass(
+            code = NavLaneCodes.codeFor(dirs),
+            activeCode = NavLaneCodes.dirId(active),
+            name = "shape:" + dirs.joinToString("+"),
+        )
     }
 
     /** Every cell lies inside the container and is about as tall as it is wide (a full arrow). */
