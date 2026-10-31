@@ -113,6 +113,7 @@ object FidPushApplier {
         "insideTemp" to { d, v -> d.copy(insideTemp = v) },
         "exteriorTemp" to { d, v -> d.copy(exteriorTemp = v) },
         "compressorW" to { d, v -> d.copy(compressorW = v) },
+        "lvCurrentA" to { d, v -> d.copy(lvCurrentA = v) },
         // Seats
         "seatHeatDriver" to { d, v -> d.copy(seatHeatDriver = v) },
         "seatVentDriver" to { d, v -> d.copy(seatVentDriver = v) },

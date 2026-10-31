@@ -11,6 +11,8 @@ data class BatteryPrice(
     /** Finish of the charge the price was computed at. */
     val sourceTs: Long,
     val pricePerKwh: Double,
+    /** Share of the energy in the pack that came from DC sessions, 0..1, mixed like the price. */
+    val dcShare: Double = 0.0,
 )
 
 /**
@@ -92,16 +94,23 @@ class BatteryPriceTimeline(charges: List<ChargeEntity>, capacityKwh: Double) {
 
     private val points: List<BatteryPrice> = buildList {
         var price: Double? = null
+        var dcShare = 0.0
         for (charge in charges) {
             val kwh = charge.kwhCharged?.takeIf { it > 0.0 }
             val cost = charge.cost
             if (kwh == null || cost == null) continue
             val remainKwh = ((charge.socStart ?: 0).coerceIn(0, 100)) / 100.0 * capacityKwh
             val previous = price
-            price = if (previous == null || remainKwh <= 0.0) cost / kwh
-            else (remainKwh * previous + cost) / (remainKwh + kwh)
+            val dc = if (TariffSchedule.isDc(charge.type)) 1.0 else 0.0
+            if (previous == null || remainKwh <= 0.0) {
+                price = cost / kwh
+                dcShare = dc
+            } else {
+                price = (remainKwh * previous + cost) / (remainKwh + kwh)
+                dcShare = (remainKwh * dcShare + kwh * dc) / (remainKwh + kwh)
+            }
             // A charge can only influence trips that start after it ended.
-            add(BatteryPrice(sourceTs = charge.endTs ?: charge.startTs, pricePerKwh = price))
+            add(BatteryPrice(sourceTs = charge.endTs ?: charge.startTs, pricePerKwh = price, dcShare = dcShare))
         }
     }.sortedBy { it.sourceTs }
 

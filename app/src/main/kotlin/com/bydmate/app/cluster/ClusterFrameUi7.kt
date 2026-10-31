@@ -72,6 +72,7 @@ class ClusterFrameUi7(
     enum class Owner(internal val tag: String) {
         PROJECTION("projection"),
         CAMERA("camera"),
+        POWER_CARD("power_card"),
     }
 
     /**

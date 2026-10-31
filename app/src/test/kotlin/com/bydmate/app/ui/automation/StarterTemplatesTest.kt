@@ -38,7 +38,8 @@ class StarterTemplatesTest {
             assertEquals(name, "service_start", start.kind)
             assertEquals(name, "Запуск BYDMate", start.displayName)
         }
-        assertEquals("ExtTemp", TriggerDef.listFromJson(ru.single { it.name == "Зимний старт" }.triggers).first().param)
+        // The cabin, not the street: a warm garage needs no heat.
+        assertEquals("InsideTemp", TriggerDef.listFromJson(ru.single { it.name == "Зимний старт" }.triggers).first().param)
         assertEquals("InsideTemp", TriggerDef.listFromJson(ru.single { it.name == "Летнее охлаждение" }.triggers).first().param)
         val gear = lastTrigger("Шторка при движении")
         assertEquals("Gear", gear.param)

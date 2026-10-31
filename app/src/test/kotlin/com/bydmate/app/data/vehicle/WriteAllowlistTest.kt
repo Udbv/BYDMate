@@ -486,7 +486,17 @@ class WriteAllowlistTest {
         assertTrue(WriteAllowlist.isBanned(1006, 734003229))
         assertTrue(WriteAllowlist.isBanned(1006, 555745294))
         val dev1023 = WriteAllowlist.BANNED_DEV_FID_EXCEPTIONS.filter { it.first == 1023 }.map { it.second }.toSet()
-        assertEquals(setOf(1330643002, 1069547536, 850427920, 850427928, 944767029, 1276260400, 1276174371), dev1023)
+        assertEquals(
+            setOf(
+                1330643002, 1069547536, 850427920, 850427928, 944767029, 1276260400, 1276174371,
+                // Front-seat massage mode and intensity, driver and passenger (#3).
+                1276190752, 1276190736, 1276190756, 1276190739,
+            ),
+            dev1023,
+        )
+        // The massage read fids stay banned: only the SET pair per seat is carved out.
+        assertTrue(WriteAllowlist.isBanned(1023, 1335885872))
+        assertTrue(WriteAllowlist.isBanned(1023, 1335885880))
     }
 
     @Test fun `drive mode entries are single allowed values, rock unvalidated`() {
@@ -602,5 +612,55 @@ class WriteAllowlistTest {
 
     @Test fun `no translator command resolves to 255 on a window`() {
         assertTrue(CommandTranslator.allResolved().none { it.actionName.startsWith("window") && it.value == 255 })
+    }
+
+    // ── #362: sunshade half/stop = values 3/4 on fid 1125122060, like the sunroof pair on ...056 ──
+    @Test fun `sunshade half and stop are dev 1001 fid 1125122060 values 3 and 4 unvalidated`() {
+        val al = WriteAllowlist(
+            (WriteAllowlist.LIVE_VALIDATED + WriteAllowlist.CANDIDATE_UNVALIDATED)
+                .associateBy { it.actionName.lowercase() }
+        )
+        for ((name, v) in listOf("sunshade_half" to 3, "sunshade_stop" to 4)) {
+            val e = al.find(name) ?: error("missing $name")
+            assertEquals(1001, e.dev)
+            assertEquals(1125122060, e.writeFid)
+            assertEquals(v, e.valueMin)
+            assertEquals(v, e.valueMax)
+            assertEquals("sunshade", e.category)
+            assertFalse("$name must not claim live validation", e.validated)
+            assertTrue(WriteAllowlist.valuesAllowed(e))
+        }
+        // The open/close pair stays live-validated.
+        assertTrue(al.find("sunshade_open")!!.validated)
+        assertTrue(al.find("sunshade_close")!!.validated)
+    }
+
+    @Test fun `loadProduction includes the sunshade half and stop entries`() {
+        val al = WriteAllowlist.loadProduction { "{}" }
+        for (name in listOf("sunshade_half", "sunshade_stop")) {
+            assertNotNull("$name missing from production", al.find(name))
+        }
+    }
+
+    // ── Rear seat heat (#327): dev=1001 candidates, no dev=1023 write ─────────
+    @Test fun `rear seat heat entries are unvalidated dev 1001 candidates`() {
+        val allowlist = WriteAllowlist.loadProduction { "{}" }
+        for ((name, fid) in listOf("rear_left_seat_heat" to 1125122091, "rear_right_seat_heat" to 1125122099)) {
+            val e = allowlist.find(name)
+            assertNotNull(name, e)
+            assertEquals(name, 1001, e!!.dev)
+            assertEquals(name, fid, e.writeFid)
+            assertEquals(name, 1, e.valueMin)
+            assertEquals(name, 3, e.valueMax)
+            assertEquals(name, "seats", e.category)
+            assertFalse(name, e.validated)
+        }
+    }
+
+    @Test fun `nothing writes the rear seat fids on dev 1023`() {
+        val allowlist = WriteAllowlist.loadProduction { "{}" }
+        val fids = setOf(1125122091, 1125122099, 1214251019, 1214251027)
+        assertTrue(allowlist.allEntries().none { it.dev == 1023 && it.writeFid in fids })
+        assertTrue(WriteAllowlist.isBanned(1023, 1125122091))
     }
 }

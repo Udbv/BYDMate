@@ -46,6 +46,7 @@ import com.bydmate.app.data.remote.DiParsData
 import com.bydmate.app.data.telegram.ReportField
 import com.bydmate.app.data.telegram.TELEGRAM_REPORT_KIND
 import com.bydmate.app.data.telegram.withReportRuleName
+import com.bydmate.app.data.vehicle.RearSeat
 import com.bydmate.app.data.vehicle.VehicleApi
 import com.bydmate.app.service.TrackingService
 import com.bydmate.app.ui.overlay.OverlayNotificationManager
@@ -273,7 +274,9 @@ val ACTION_COMMANDS = listOf(
         ActionOption("天窗打开0", R.string.auto_act_sunroof_close, R.string.auto_cat_sunroof),
         ActionOption("", R.string.toggle_target_sunroof, R.string.auto_cat_sunroof, toggleTarget = ActionDispatcher.TOGGLE_SUNROOF),
         ActionOption("遮阳帘打开", R.string.auto_act_sunshade_open, R.string.auto_cat_sunroof),
+        ActionOption("遮阳帘打开50", R.string.auto_act_sunshade_open_50, R.string.auto_cat_sunroof),
         ActionOption("遮阳帘关闭", R.string.auto_act_sunshade_close, R.string.auto_cat_sunroof),
+        ActionOption("遮阳帘停止", R.string.auto_act_sunshade_stop, R.string.auto_cat_sunroof),
         ActionOption("天窗停止", R.string.auto_act_sunroof_stop, R.string.auto_cat_sunroof),
         ActionOption("天窗通风", R.string.auto_act_sunroof_updip, R.string.auto_cat_sunroof),
         ActionOption("天窗舒适打开", R.string.auto_act_sunroof_comfort, R.string.auto_cat_sunroof),
@@ -410,6 +413,8 @@ data class AutomationUiState(
     val ruleLogs: List<RuleLogEntity> = emptyList(),
     /** A short note at the bottom of the tab (rule limit, test run refused); the screen hides it. */
     val message: String? = null,
+    /** Rear seats whose heat this car reports (#327): the editor offers only their tiles. */
+    val rearSeats: Set<RearSeat> = emptySet(),
 )
 
 @HiltViewModel
@@ -578,6 +583,7 @@ class AutomationViewModel @Inject @Suppress("LongParameterList") constructor( //
                 )
             )
         }
+        loadRearSeats()
     }
 
     fun openEditRule(rule: RuleEntity) {
@@ -600,6 +606,15 @@ class AutomationViewModel @Inject @Suppress("LongParameterList") constructor( //
                     enabled = rule.enabled,
                 )
             )
+        }
+        loadRearSeats()
+    }
+
+    /** Asks the car which rear seats have heat (#327), once per editor open. */
+    private fun loadRearSeats() {
+        viewModelScope.launch {
+            val sides = withContext(ioDispatcher) { vehicleApi.rearSeatHeatSides() }
+            _uiState.update { it.copy(rearSeats = sides) }
         }
     }
 
@@ -1266,17 +1281,16 @@ internal fun starterTemplates(lang: String): List<RuleEntity> {
             enabled = false,
             triggerLogic = "AND",
             triggers = TriggerDef.listToJson(listOf(
-                TriggerDef("ExtTemp", "车外温度", "<", "0",
-                    tName("车外温度 < 0°C", "Outside Temp < 0°C", "Темп. снаружи < 0°C")),
+                // The cabin, not the street: a warm garage needs no heat (WinterStartRuleMigration).
+                TriggerDef("InsideTemp", "车内温度", "<", "10",
+                    tName("车内温度 < 10°C", "Cabin Temp < 10°C", "Темп. в салоне < 10°C")),
                 TriggerDef("ServiceStart", "服务启动", "==", "true",
                     tName("BYDMate 启动", "BYDMate startup", "Запуск BYDMate"), kind = "service_start")
             )),
-            actions = ActionDef.listToJson(listOf(
-                ActionDef("主驾座椅加热2档",
-                    tName("主驾座椅加热2档", "Driver Heat 2", "Подогрев водителя 2")),
-                ActionDef("后视镜加热",
-                    tName("后视镜加热开", "Mirror Heat On", "Подогрев зеркал вкл"))
-            )),
+            // Warm fast, then step down: see WinterStartRuleMigration.
+            actions = ActionDef.listToJson(
+                com.bydmate.app.data.automation.WinterStartRuleMigration.stagedActions()
+            ),
             cooldownSeconds = 600
         ),
         RuleEntity(

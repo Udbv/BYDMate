@@ -13,6 +13,7 @@ import com.bydmate.app.data.repository.SettingsRepository
 import com.bydmate.app.data.trips.TripCounterMath
 import com.bydmate.app.data.trips.TripCounterResets
 import com.bydmate.app.data.trips.TripCounterUi
+import com.bydmate.app.domain.cost.CostCalculator
 import com.bydmate.app.service.TrackingService
 import com.bydmate.app.util.AppStrings
 import com.bydmate.app.util.appLanguageTag
@@ -75,6 +76,7 @@ class TelegramReporter @Inject constructor(
     private val tripCounterResets: TripCounterResets,
     private val appStrings: AppStrings,
     private val offState: PowerOffArmState,
+    private val costCalculator: CostCalculator,
     private val vehicleKindMonitor: VehicleKindMonitor? = null,
 ) {
     companion object {
@@ -147,7 +149,10 @@ class TelegramReporter @Inject constructor(
         if (!config.configured || chatId == null) return null
         val header = TelegramReportBuilder.powerOffHeader(strings)
         val fields = settings.getTgReportOffFields()
-        val report = TelegramReportBuilder.build(header, "", fields, inputs(), language(), strings, clock())
+        val report = TelegramReportBuilder.build(
+            header, "", fields, inputs(), language(), strings, clock(),
+            tripEndLabel = TelegramReportBuilder.TIME_PLACEHOLDER,
+        )
         previous?.takeIf { it.token == config.token && it.chatId == chatId && it.text == report.text }
             ?.let { return it }
         val id = newId()
@@ -368,7 +373,7 @@ class TelegramReporter @Inject constructor(
         } else null
         val lastTrip = tripDao.getRecent(RECENT_TRIPS).first().firstOrNull { (it.distanceKm ?: 0.0) > 0.0 }
         tripCounterResets.load()
-        val tariff = settings.getTripCostTariff()
+        val tariff = costCalculator.tripRateAt(startedAt ?: clock())
         val hybrid = vehicleKindMonitor?.kind?.value == VehicleKind.HYBRID
         val trip1 = tripCounter(1, tariff)
         val trip2 = tripCounter(2, tariff)
@@ -384,6 +389,8 @@ class TelegramReporter @Inject constructor(
             hybrid = hybrid,
             trip1Fuel = if (hybrid) counterFuel(1, trip1) else null,
             trip2Fuel = if (hybrid) counterFuel(2, trip2) else null,
+            tripTariff = tariff,
+            currencySymbol = settings.getCurrencySymbol(),
         )
     }
 

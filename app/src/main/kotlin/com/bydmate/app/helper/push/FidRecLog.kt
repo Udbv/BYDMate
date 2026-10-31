@@ -29,6 +29,11 @@ internal class FidRecLog(val file: File, private val nowMs: () -> Long = System:
 
     /** One event line, stamped with the wall clock the caller measured the event at. */
     fun event(e: RecEvent) = synchronized(this) {
+        val note = e.note
+        if (note != null) {
+            append("${stamp.format(Date(e.atMs))} # $note")
+            return@synchronized
+        }
         append(
             "${stamp.format(Date(e.atMs))} dev=${e.dev} fid=${e.fid} ${e.symbol} " +
                 "int=${e.intValue} dbl=${e.doubleValue}"
@@ -66,10 +71,17 @@ internal class FidRecLog(val file: File, private val nowMs: () -> Long = System:
 
         /** File name of a run started at [atMs]. */
         fun nameFor(atMs: Long): String =
-            "bydmate_fidrec_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(atMs))}.txt"
+            "$FID_REC_PREFIX${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(atMs))}.txt"
 
         /** Human-readable start time for the file header. */
         fun startedAtText(atMs: Long): String =
             SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(atMs))
     }
 }
+
+/** Newest recording in [dir] by its timestamped name; null when there is none or no access. */
+internal fun latestFidRecording(dir: File): File? =
+    dir.listFiles { f -> f.isFile && f.name.startsWith(FID_REC_PREFIX) && f.name.endsWith(".txt") }
+        ?.maxByOrNull { it.name }
+
+private const val FID_REC_PREFIX = "bydmate_fidrec_"

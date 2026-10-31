@@ -56,6 +56,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bydmate.app.R
+import kotlin.math.roundToInt
+import com.bydmate.app.domain.prediction.TripConditions
+import com.bydmate.app.domain.prediction.TripWeather
 import com.bydmate.app.data.local.entity.TripEntity
 import com.bydmate.app.data.nativestack.VehicleKind
 import com.bydmate.app.ui.components.consumptionColor
@@ -71,6 +74,8 @@ import java.util.Date
 @Composable
 fun TripsScreen(
     onOpenTemperature: () -> Unit = {},
+    /** The trip page; without one (previews, tests) the detail dialog opens instead. */
+    onOpenTrip: ((Long) -> Unit)? = null,
     viewModel: TripsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -153,7 +158,8 @@ fun TripsScreen(
                                                 currencySymbol = state.currencySymbol,
                                                 timeColWidth = timeColWidth,
                                                 kind = state.vehicleKind,
-                                                onClick = { viewModel.selectTrip(trip) },
+                                                conditions = state.conditions[trip.id],
+                                                onClick = { onOpenTrip?.invoke(trip.id) ?: viewModel.selectTrip(trip) },
                                                 onLongClick = { viewModel.onLongPressTrip(trip) },
                                             )
                                         }
@@ -384,6 +390,7 @@ private fun TripRow(
     currencySymbol: String,
     timeColWidth: Dp,
     kind: VehicleKind,
+    conditions: TripConditions?,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -406,10 +413,18 @@ private fun TripRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                .padding(start = 36.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+                .padding(start = 4.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Outside temperature, and the weather when it was wet
+            Text(
+                weatherMark(conditions),
+                color = TextMuted,
+                fontSize = 10.sp,
+                maxLines = 1,
+                modifier = Modifier.width(32.dp)
+            )
             // Time range
             Text(
                 "$time – $endTime",
@@ -470,6 +485,18 @@ private fun TripRow(
         HorizontalDivider(color = CardBorder.copy(alpha = 0.3f), thickness = 0.5.dp,
             modifier = Modifier.padding(start = 36.dp, end = 12.dp))
     }
+}
+
+/** «-3°❄», «12°☂», «18°»: the trip's outside temperature with a mark when the wipers ran. */
+private fun weatherMark(c: TripConditions?): String {
+    if (c == null) return ""
+    val temp = c.tempC?.let { "${it.roundToInt()}°" } ?: ""
+    val sky = when (c.weather) {
+        TripWeather.RAIN -> "☂"
+        TripWeather.SNOW -> "❄"
+        TripWeather.DRY, null -> ""
+    }
+    return temp + sky
 }
 
 /** DM-i: the «л» cell and the «/100» cell with the litre rule ([per100Cell]). */

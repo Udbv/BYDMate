@@ -224,4 +224,43 @@ class LogTelegramSenderTest {
         sender.sendFinishedTripLog(ctx)
         coVerify(exactly = 3) { sink.sendDocument(any(), any(), any(), any(), true) }
     }
+
+    private fun recDir(): File = File(ctx.cacheDir, "rec").apply { deleteRecursively(); mkdirs() }
+
+    private fun recording(dir: File, name: String): File = File(dir, name).apply { writeText("dev=1023 fid=1 int=1\n") }
+
+    @Test fun `a recording the car powered off on goes to the bot once, zipped`() = runTest {
+        val dir = recDir()
+        recording(dir, "bydmate_fidrec_20261025_100000.txt")
+        recording(dir, "bydmate_fidrec_20261025_115150.txt")
+
+        sender.sendUnsentRecording(ctx, dir) { false }
+        sender.sendUnsentRecording(ctx, dir) { false }
+
+        coVerify(exactly = 1) { sink.sendDocument("123:abc", 777L, match { it.name == "bydmate_fidrec_20261025_115150.zip" }, any(), true) }
+        coVerify(exactly = 1) { sink.sendDocument(any(), any(), any(), any(), true) }
+        // The zip is a temporary: only the original stays.
+        assertEquals(emptyList<String>(), ctx.cacheDir.listFiles()!!.filter { it.name.endsWith(".zip") }.map { it.name })
+    }
+
+    @Test fun `a recording the daemon still writes, or with no bot, is left alone`() = runTest {
+        val dir = recDir()
+        val file = recording(dir, "bydmate_fidrec_20261025_115150.txt")
+
+        sender.sendUnsentRecording(ctx, dir) { it == file.path }
+        config = config.copy(chatId = null)
+        sender.sendUnsentRecording(ctx, dir) { false }
+
+        coVerify(exactly = 0) { sink.sendDocument(any(), any(), any(), any(), true) }
+    }
+
+    @Test fun `a recording sent from Settings is not sent again at the next start`() = runTest {
+        val dir = recDir()
+        val file = recording(dir, "bydmate_fidrec_20261025_115150.txt")
+
+        assertEquals(AppStrings(ctx).get(com.bydmate.app.R.string.settings_log_tg_sent), sender.sendRecording(ctx, file))
+        sender.sendUnsentRecording(ctx, dir) { false }
+
+        coVerify(exactly = 1) { sink.sendDocument(any(), any(), any(), any(), true) }
+    }
 }

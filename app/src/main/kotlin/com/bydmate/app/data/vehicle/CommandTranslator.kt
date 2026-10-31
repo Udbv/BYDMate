@@ -37,6 +37,7 @@ data class SeatCommand(val group: SeatGroup, val level: Int)
  * Values for competitor-sourced entries verified against competitor-actions.json
  * (app/src/main/assets/competitor-actions.json). See value comments below.
  */
+@Suppress("TooManyFunctions") // one parser per command family
 object CommandTranslator {
     data class Resolved(val actionName: String, val value: Int)
 
@@ -132,12 +133,17 @@ object CommandTranslator {
         // ── Sunshade ── LIVE_VALIDATED ────────────────────────────────────────
         "遮阳帘打开" to Resolved("sunshade_open",  1),
         "遮阳帘关闭" to Resolved("sunshade_close", 2),
+        // Half-open / stop: same fid, values 3/4 from the BYD SDK, not live-validated (#362).
+        "遮阳帘打开50" to Resolved("sunshade_half", 3),
+        "遮阳帘停止"   to Resolved("sunshade_stop", 4),
 
         // ── Interior / ambient light ── LIVE_VALIDATED (dev=1023 carve-out) ──────
         "打开车内灯" to Resolved("interior_light_on",  2),
         "关闭车内灯" to Resolved("interior_light_off", 1),
         "氛围灯打开" to Resolved("ambient_light_on",   5),
         "氛围灯关闭" to Resolved("ambient_light_off",  1),  // raw +1 shift: 1 = off (lvl0)
+        // Master switch (#4) ── CANDIDATE (dev=1004 carve-out, 2=on) ── what lights a Tang L.
+        "氛围灯总开关打开" to Resolved("ambient_switch_on", 2),
 
         // ── DRL (ДХО) ── LIVE_VALIDATED (dev=1004 carve-out) ──────────────────
         "打开日行灯" to Resolved("drl_on",  1),
@@ -271,8 +277,18 @@ object CommandTranslator {
         WINDOW_POS_REGEX.matchEntire(stripped)?.let { m ->
             return windowsPct(m.groupValues[2].toInt(), WINDOW_DOORS.getValue(m.groupValues[1]))
         }
+        // Front-seat massage (#3): <seat>按摩模式<2..6>强度<1..3> → mode, then intensity. A
+        // composite, so dispatch writes both under NonCancellable.
+        MASSAGE_REGEX.matchEntire(stripped)?.let { m ->
+            val seat = MASSAGE_SEATS.getValue(m.groupValues[1])
+            return listOf(
+                Resolved("massage_mode_$seat", m.groupValues[2].toInt()),
+                Resolved("massage_level_$seat", m.groupValues[3].toInt()),
+            )
+        }
         return emptyList()
     }
+
 
     // Dynamic temperature command: 设置温度<N> (e.g. 设置温度24). Range-clamped in resolve().
     private val TEMP_REGEX = Regex("""设置温度(\d+)""")
@@ -294,6 +310,9 @@ object CommandTranslator {
 
     // Dynamic per-door window position: 主驾打开30 (door prefix + percent 1..99, no leading zero).
     private val WINDOW_POS_REGEX = Regex("""(主驾|副驾|后左|后右)打开([1-9]\d?)""")
+    // Front-seat massage: 主驾按摩模式6强度3 (seat, program 2..6, intensity 1..3); MassageKeeper builds it.
+    private val MASSAGE_REGEX = Regex("""(主驾|副驾)按摩模式([2-6])强度([1-3])""")
+    private val MASSAGE_SEATS = mapOf("主驾" to "driver", "副驾" to "passenger")
     private val WINDOW_DOORS = mapOf("主驾" to "driver", "副驾" to "passenger", "后左" to "rear_left", "后右" to "rear_right")
 
     // Vent = crack windows to this aperture % (validated per-door % path). Small
@@ -339,6 +358,25 @@ object CommandTranslator {
             val m = Regex("""(\d)档""").matchEntire(tail) ?: return null
             val lvl = m.groupValues[1].toInt()
             return if (lvl in 1..5) SeatCommand(group, lvl) else null
+        }
+        return null
+    }
+
+    private val REAR_SEAT_HEAT_PREFIXES: Map<String, RearSeat> = mapOf(
+        "后左座椅加热" to RearSeat.LEFT,
+        "后右座椅加热" to RearSeat.RIGHT,
+    )
+
+    /** Parse a rear seat heat command (#327) into (seat, level), or null if not one. */
+    fun resolveRearSeatHeat(commandString: String): RearSeatCommand? {
+        val s = commandString.removePrefix("迪加")
+        for ((prefix, seat) in REAR_SEAT_HEAT_PREFIXES) {
+            if (!s.startsWith(prefix)) continue
+            val tail = s.removePrefix(prefix)
+            if (tail == "关闭") return RearSeatCommand(seat, 0)
+            val m = Regex("""(\d)档""").matchEntire(tail) ?: return null
+            val lvl = m.groupValues[1].toInt()
+            return if (lvl in 1..RearSeatHeat.MAX_LEVEL) RearSeatCommand(seat, lvl) else null
         }
         return null
     }

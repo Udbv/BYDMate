@@ -23,6 +23,8 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
+import com.bydmate.app.domain.prediction.TripConditions
+import com.bydmate.app.domain.prediction.TripForecaster
 
 enum class TripPeriod { TODAY, WEEK, MONTH, YEAR, ALL }
 enum class TripFilter { ALL, TRIPS_ONLY, STOPS_ONLY }
@@ -86,6 +88,8 @@ data class TripsUiState(
     val expandedTripPoints: List<TripPointEntity> = emptyList(),
     val mapTileSource: String = SettingsRepository.DEFAULT_MAP_TILE_SOURCE,
     val vehicleKind: VehicleKind = VehicleKind.UNKNOWN,
+    /** Outside temperature and weather of the shown trips, by id. */
+    val conditions: Map<Long, TripConditions> = emptyMap(),
 )
 
 @HiltViewModel
@@ -94,6 +98,7 @@ class TripsViewModel @Inject constructor(
     private val tripPointDao: TripPointDao,
     private val settingsRepository: SettingsRepository,
     private val vehicleKindMonitor: VehicleKindMonitor,
+    private val forecaster: TripForecaster,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TripsUiState())
@@ -242,6 +247,8 @@ class TripsViewModel @Inject constructor(
                     )
                 }
                 rebuildChart()
+                val conditions = forecaster.conditions(filtered, since = from)
+                _uiState.update { it.copy(conditions = conditions) }
             }
         }
     }

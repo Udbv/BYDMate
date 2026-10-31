@@ -33,7 +33,7 @@ object BackupParts {
 
     /** Parent before children: inserts run in this order, deletes in the reverse one. */
     val TABLES_TABLES = listOf(
-        "trips", "trip_points", "trip_tombstones",
+        "trips", "trip_points", "trip_minutes", "trip_tombstones",
         "charges", "charge_points",
         "battery_snapshots", "idle_drains",
     )
@@ -48,6 +48,7 @@ object BackupParts {
     val TABLES_SETTINGS_KEYS: Set<String> = setOf(
         "last_energydata_import_ts",
         "dedup_cleanup_done",
+        "energy_ids_recycled",
         "idle_drain_cleanup_done",
         "consumption_recalc_done",
         "idle_drain_v2_cleanup",

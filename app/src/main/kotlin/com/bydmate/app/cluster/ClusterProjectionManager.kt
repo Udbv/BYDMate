@@ -1027,6 +1027,11 @@ object ClusterProjectionManager {
         // on a car with no cluster display) - sending the down sequence would be a fresh
         // ИПЦ write to a cluster we never touched.
         if (!shouldPowerDownCompositor(prefs.getBoolean(KEY_COMPOSITOR_POWERED, false))) return
+        // The power card on the cluster still needs the compositor; it powers it down itself.
+        if (ClusterPowerWidget.active) {
+            log("compositor stays up: power card shown")
+            return
+        }
         val off = runCatching { helper.setClusterContainerMode(false) }.getOrDefault(false)
         if (off) {
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

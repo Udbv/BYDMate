@@ -18,7 +18,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import com.bydmate.app.helper.push.FidRecLog
+import com.bydmate.app.helper.push.latestFidRecording
 import java.io.File
+import java.io.IOException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
@@ -119,9 +122,68 @@ class LogTelegramSender @Inject constructor(
         }
     }
 
+    /**
+     * One sensor recording to the bot, zipped (the text shrinks ~10x and Telegram takes 50 MB),
+     * pinned like every diagnostic file, and remembered so [sendUnsentRecording] skips it. Null
+     * while another upload runs. Throws IOException when [file] cannot be read.
+     */
+    suspend fun sendRecording(context: Context, file: File): String? = recordingOutcome(context, file)?.status
+
+    /**
+     * At service start: the newest sensor recording when neither the switch nor the button sent it.
+     * On the Tang L the car went off with the recorder running twice, and the upload on stop never
+     * ran. [recording] says whether the daemon still writes that file (the service restarted with
+     * the car on); such a file is left alone. Same modem wait and retries as the trip log.
+     */
+    suspend fun sendUnsentRecording(
+        context: Context,
+        dir: File = File(FidRecLog.DIR),
+        recording: suspend (path: String) -> Boolean,
+    ) {
+        if (!settings.getTgBackupConfig().configured) return
+        val file = withContext(Dispatchers.IO) { latestFidRecording(dir) } ?: return
+        if (lastSentRecording(context) == file.name) return
+        repeat(TRIP_ATTEMPTS) { attempt ->
+            delay(if (attempt == 0) TRIP_SETTLE_MS else TRIP_RETRY_MS)
+            if (recording(file.path)) return
+            val outcome = try {
+                recordingOutcome(context, file)
+            } catch (e: IOException) {
+                Log.w(TAG, "recording to telegram: unreadable ${e.javaClass.simpleName}")
+                return
+            } ?: return@repeat
+            if (outcome.sent || !outcome.transient) return
+        }
+    }
+
+    private suspend fun recordingOutcome(context: Context, file: File): Outcome? =
+        sendZipped(context, file)?.also { outcome ->
+            // A permanent failure (too big) is not retried at every start either.
+            if (outcome.sent || !outcome.transient) markRecordingSent(context, file.name)
+        }
+
+    /**
+     * [file] zipped to the bot (a sensor recording, the automatic trip log). Null while another
+     * upload runs. Throws IOException when [file] cannot be read.
+     */
+    suspend fun sendZipped(context: Context, file: File): Outcome? {
+        val zip = withContext(Dispatchers.IO) { zipForUpload(file, context.cacheDir) }
+        try {
+            if (!_sending.compareAndSet(expect = false, update = true)) return null
+            return try {
+                uploadOutcome(zip)
+            } finally {
+                _sending.value = false
+            }
+        } finally {
+            withContext(Dispatchers.IO) { zip.delete() }
+        }
+    }
+
     private suspend fun upload(file: File): String = uploadOutcome(file).status
 
-    private class Outcome(val status: String, val sent: Boolean = false, val transient: Boolean = false)
+    /** [transient]: the failure may heal (no network, a server error); a retry is worth it. */
+    class Outcome(val status: String, val sent: Boolean = false, val transient: Boolean = false)
 
     private suspend fun uploadOutcome(file: File): Outcome {
         val config = settings.getTgBackupConfig()
@@ -161,6 +223,19 @@ class LogTelegramSender @Inject constructor(
         const val TRIP_RETRY_MS = 120_000L
         const val TRIP_ATTEMPTS = 3
     }
+}
+
+/** Name of the last sensor recording that went to the bot (or failed for good). */
+private const val KEY_RECORDING_SENT = "fidrec_tg_sent"
+
+private fun recordingPrefs(context: Context) =
+    context.getSharedPreferences(TripDebugLog.PREFS_NAME, Context.MODE_PRIVATE)
+
+private fun lastSentRecording(context: Context): String? =
+    recordingPrefs(context).getString(KEY_RECORDING_SENT, null)
+
+private fun markRecordingSent(context: Context, name: String) {
+    recordingPrefs(context).edit().putString(KEY_RECORDING_SENT, name).apply()
 }
 
 /**

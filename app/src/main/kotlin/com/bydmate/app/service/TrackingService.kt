@@ -92,6 +92,11 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var insightsManager: com.bydmate.app.data.remote.InsightsManager
     @Inject lateinit var automationEngine: AutomationEngine
     @Inject lateinit var ambientNightController: com.bydmate.app.data.automation.AmbientNightController
+    @Inject lateinit var massageKeeper: com.bydmate.app.data.automation.MassageKeeper
+    @Inject lateinit var clusterPowerWidget: com.bydmate.app.cluster.ClusterPowerWidget
+    @Inject lateinit var autoTripLog: com.bydmate.app.diagnostics.AutoTripLog
+    @Inject lateinit var tripMinuteRecorder: com.bydmate.app.domain.tracker.TripMinuteRecorder
+    @Inject lateinit var adasShadow: com.bydmate.app.adas.AdasShadow
     @Inject lateinit var networkAvailableMonitor: com.bydmate.app.data.automation.NetworkAvailableMonitor
     @Inject lateinit var alicePollingManager: AlicePollingManager
     @Inject lateinit var odometerBuffer: OdometerConsumptionBuffer
@@ -124,11 +129,13 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var ttsModelManager: com.bydmate.app.voice.TtsModelManager
     @Inject lateinit var ttsEngine: com.bydmate.app.voice.TtsEngine
     @Inject lateinit var audioCapture: com.bydmate.app.voice.AudioCapture
+    @Inject lateinit var autoVoiceDuck: com.bydmate.app.voice.AutoVoiceDuck
     @Inject lateinit var hudController: com.bydmate.app.hud.HudController
     @Inject lateinit var fidPushChannel: com.bydmate.app.data.push.FidPushChannel
     @Inject lateinit var blindSpotController: com.bydmate.app.camera.BlindSpotController
     @Inject lateinit var clusterMusicBridge: com.bydmate.app.media.ClusterMusicBridge
     @Inject lateinit var logRecorder: com.bydmate.app.diagnostics.LogRecorder
+    @Inject lateinit var splitPreferences: com.bydmate.app.split.SplitPreferences
     @Inject lateinit var logTelegramSender: com.bydmate.app.diagnostics.LogTelegramSender
     @Inject lateinit var autoBackupScheduler: com.bydmate.app.data.backup.AutoBackupScheduler
     @Inject lateinit var postRestoreCheck: com.bydmate.app.data.backup.PostRestoreCheck
@@ -638,6 +645,8 @@ class TrackingService : Service(), LocationListener {
             // A binder that just arrived carries no subscription yet: the daemon clears its
             // listener table when it dies, and a fresh one starts empty.
             serviceScope.launch { fidPushChannel.resubscribe("binder accepted") { fidCatalogManager.catalog } }
+            // An off call of the firmware voice duck that found no daemon lands now (#353).
+            runCatching { autoVoiceDuck.recoverStuck() }
             // Tell the daemon we hold its binder so it stops re-announcing it (#64/#148).
             // Must not block the receiver thread — registerClient is a binder transact.
             serviceScope.launch { helperClient.registerClient() }
@@ -741,6 +750,10 @@ class TrackingService : Service(), LocationListener {
                 }
                 adbVerdictMonitor.recompute()
                 ChainLog.append(this@TrackingService, "Helper daemon: ${if (ok) "alive" else "unreachable"}")
+                // Companion of restoreStuckDuck() above (#353): turn the firmware voice duck off
+                // if a process died with it on. Needs the daemon, hence here; without an answer
+                // the duck retries, and so does every later daemon arrival.
+                runCatching { autoVoiceDuck.recoverStuck() }
                 // Not gated on ok: a cached catalog resolves over the ADB read path without the
                 // daemon, and without one the call just returns and the respawn path retries.
                 resolveFidCatalog()
@@ -842,6 +855,8 @@ class TrackingService : Service(), LocationListener {
         // file, so the startup itself (launch automations, steering-wheel keys) is
         // in the log the user sends us.
         serviceScope.launch {
+            // The automatic trip log of the last trip is finished and sent, not resumed into this one.
+            if (runCatching { autoTripLog.onServiceStart() }.getOrDefault(false)) return@launch
             // Retried while nothing is recording: this early the storage holding the
             // log may still be unmounted, and a resumed logcat can die right away
             // when the READ_LOGS grant above has not landed yet.
@@ -870,8 +885,16 @@ class TrackingService : Service(), LocationListener {
         serviceScope.launch { logTelegramSender.run() }
         // The trip that ended before this start, to the owner's bot when they asked for that.
         serviceScope.launch { logTelegramSender.sendFinishedTripLog(applicationContext) }
+        // A sensor recording the car powered off on (the upload on stop never ran), to the bot.
+        serviceScope.launch {
+            logTelegramSender.sendUnsentRecording(applicationContext) { path ->
+                helperClient.recStatus()?.let { it.running && it.filePath == path } == true
+            }
+        }
         // Car type (EV / DM-i hybrid): cache first, then a read round; the poll tick continues it.
         serviceScope.launch { vehicleKindMonitor.onServiceStart(System.currentTimeMillis()) }
+        // Car model code (AutoType): read once per process, logged for the DTC descriptions.
+        serviceScope.launch { com.bydmate.app.data.dtc.CarAutoType.read(helperClient) }
         startPolling()
         startCameraMonitor()
         // Pushed fid values are laid into the live snapshot as they arrive; the poll above is
@@ -1781,6 +1804,15 @@ class TrackingService : Service(), LocationListener {
                     // Live power integration removed — motor power ≠ total battery drain.
                     automationEngine.evaluateMutex.withLock { automationEngine.evaluate(data, sessionId) }
                     ambientNightController.onTick(data, sessionId, lastLocation.value)
+                    runCatching { massageKeeper.onTick(data) }
+                        .onFailure { Log.w(TAG, "MassageKeeper.onTick failed", it) }
+                    runCatching { clusterPowerWidget.onTick(data) }
+                        .onFailure { Log.w(TAG, "ClusterPowerWidget.onTick failed", it) }
+                    runCatching { autoTripLog.onTick(data.powerState?.let { it >= 1 } == true) }
+                        .onFailure { Log.w(TAG, "AutoTripLog.onTick failed", it) }
+                    tripMinuteRecorder.onTick(data.powerState?.let { it >= 1 } == true, data)
+                    runCatching { adasShadow.onTick(data.powerState?.let { it >= 1 } == true, data) }
+                        .onFailure { Log.w(TAG, "AdasShadow.onTick failed", it) }
                     updateNotification(data)
                     maybeLogSessionSummary(nowMs, data, sessionId)
                     maybeSendIternioTelemetry(data, nowMs)
@@ -2018,22 +2050,11 @@ class TrackingService : Service(), LocationListener {
         // track — while parked the GPS provider goes quiet (8 m filter) and only
         // network kept firing far-away points that got recorded into the route.
         // Same params as TripInfo (2000ms, 8m, explicit MainLooper).
-        if (gpsEnabled) {
-            try {
-                lm.requestLocationUpdates(
-                    LocationManager.GPS_PROVIDER,
-                    2000L, 8.0f,
-                    this, Looper.getMainLooper()
-                )
-                Log.i(TAG, "requestLocationUpdates(GPS_PROVIDER) registered")
-            } catch (e: Exception) {
-                Log.e(TAG, "GPS provider registration failed: ${e.message}", e)
-            }
-        }
+        registerGpsUpdates(lm, this, Looper.getMainLooper())
 
         // Immediate fix from GPS last-known only (like TripInfo).
         try {
-            val lastKnown = if (gpsEnabled) lm.getLastKnownLocation(LocationManager.GPS_PROVIDER) else null
+            val lastKnown = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
             // A seed is never live; with no fresh seed (GPS off, no fix yet), any snapshot kept
             // from a previous run of this service is demoted too, so a restart never keeps
             // serving a stale point as if the listener just delivered it.
@@ -2050,7 +2071,7 @@ class TrackingService : Service(), LocationListener {
         }
 
         if (!gpsEnabled) {
-            Log.e(TAG, "GPS provider not enabled! GPS tracking will not work.")
+            Log.e(TAG, "GPS provider not enabled! Listener registered, waiting for the provider.")
         }
     }
 
@@ -2188,6 +2209,8 @@ class TrackingService : Service(), LocationListener {
     }
 
     private suspend fun starServiceNeeded(prefs: android.content.SharedPreferences): Boolean {
+        // The split key is caught by the same a11y filter; without this a split-key-only car loses it on boot.
+        if (splitPreferences.isSteeringKeyActive()) return true
         val mirrorEnabled = prefs.getBoolean(ClusterProjectionManager.KEY_MIRROR_ENABLED, false)
         // Voice PTT depends on the same a11y service (SteeringWheelKeyService reads "voice" prefs
         // itself); without this, enabling Voice alone never re-binds the service (Finding 3).
@@ -2311,6 +2334,26 @@ class TrackingService : Service(), LocationListener {
         lastNotificationText = text
         val nm = getSystemService(NotificationManager::class.java)
         nm.notify(NOTIFICATION_ID, buildNotification(text))
+    }
+}
+
+/** GPS listener registration, whatever the provider state at this instant (#361): DiLink 3.0/4.0
+ *  switch the provider off with the ignition, and a service created during an ignition-off wake
+ *  lives on into the next drive. Android keeps a request made for a disabled provider and starts
+ *  delivering once it comes back on. A unit with no GPS provider at all throws; that is logged. */
+@Suppress("TooGenericExceptionCaught") // a vendor LocationManager must not take the service down
+internal fun registerGpsUpdates(lm: LocationManager, listener: LocationListener, looper: Looper) {
+    try {
+        lm.requestLocationUpdates(
+            LocationManager.GPS_PROVIDER,
+            2000L, 8.0f,
+            listener, looper
+        )
+        Log.i("TrackingService", "requestLocationUpdates(GPS_PROVIDER) registered")
+    } catch (e: SecurityException) {
+        Log.e("TrackingService", "GPS permission denied: ${e.message}", e)
+    } catch (e: Exception) {
+        Log.e("TrackingService", "GPS provider registration failed: ${e.message}", e)
     }
 }
 

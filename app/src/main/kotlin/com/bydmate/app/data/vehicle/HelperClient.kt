@@ -14,6 +14,8 @@ import com.bydmate.app.diagnostics.TraceArea
 import com.bydmate.app.helper.HelperBinderHolder
 import com.bydmate.app.helper.DisplayDevice
 import com.bydmate.app.helper.HelperBinderProtocol
+import com.bydmate.app.helper.dtc.DtcScanStatus
+import com.bydmate.app.helper.dtc.readDtcScanStatus
 import com.bydmate.app.helper.offreport.OffReportStatus
 import com.bydmate.app.helper.offreport.readOffReportStatus
 import com.bydmate.app.helper.offreport.writeOffReportArm
@@ -70,6 +72,12 @@ data class HudNaviReply(val outcome: Int, val sdkReturn: Int) {
  * the daemon found and its reads, or the exception.
  */
 data class ScreenBacklightReply(val outcome: Int, val status: Int, val detail: String)
+
+/**
+ * TX_SET_AUTO_VOICE answer (#353): [outcome] is one of HelperBinderProtocol.AUTO_VOICE_*, [detail]
+ * the amp type the daemon read and the call it made, or the exception.
+ */
+data class AutoVoiceReply(val outcome: Int, val detail: String)
 
 /** One TX_HUD_SDK call: the instrument SDK method way 3 makes after its raw writes, as OpenBYD does. */
 sealed class HudSdkCall(val method: Int, val sdkName: String) {
@@ -455,6 +463,18 @@ interface HelperClient {
      *  two apart. */
     suspend fun setScreenBacklight(on: Boolean): ScreenBacklightReply?
 
+    /** Stock-assistant voice duck state inside the daemon (TX_SET_AUTO_VOICE, #353).
+     *  Null when the daemon is unreachable; AUTO_VOICE_UNSUPPORTED when it is too old to know
+     *  the transaction. */
+    suspend fun setAutoVoiceActive(active: Boolean): AutoVoiceReply?
+
+    /** Starts the daemon's manual fault-code scan (TX_DTC_SCAN_START): 0 started, 1 busy, -1 refused,
+     *  -2 daemon too old to know the code; null when the daemon is unreachable. */
+    suspend fun dtcScanStart(gearDev: Int, gearFid: Int): Int? = null
+
+    /** State and raw answers of the fault-code scan (TX_DTC_SCAN_STATUS); null when unreachable. */
+    suspend fun dtcScanStatus(): DtcScanStatus? = null
+
     /**
      * Direct freeform launch: find-or-launch [packageName], switch its task to freeform,
      * move it to [displayId] with the given window bounds and focus it. UNAVAILABLE = the
@@ -711,6 +731,7 @@ interface HelperClient {
 }
 
 @Singleton
+@Suppress("LargeClass") // every app call into the shell-uid daemon, one transaction each
 open class HelperClientImpl @Inject constructor() : HelperClient {
     private val mutex = Mutex()
     @Volatile private var cached: IBinder? = null
@@ -1002,6 +1023,31 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
         transactParsed(HelperBinderProtocol.TX_SET_SCREEN_BACKLIGHT, { it.writeInt(if (on) 1 else 0) }) { reply ->
             if (reply.dataAvail() < 8) return@transactParsed null
             ScreenBacklightReply(reply.readInt(), reply.readInt(), reply.readString().orEmpty())
+        }
+
+    // Only the wait for the channel is bounded, not the transact: a timeout cannot interrupt a
+    // blocking binder.transact, it would only drop an answer the daemon already gave, and a lost
+    // APPLIED leaves AutoVoiceDuck's media fallback on for the whole session (#353). The caller
+    // (AutoVoiceDuck's own queue) waits for the real reply; a dead daemon fails the transact at once.
+    override suspend fun setAutoVoiceActive(active: Boolean): AutoVoiceReply? =
+        withContext(Dispatchers.IO) {
+            if (withTimeoutOrNull(AUTO_VOICE_LOCK_WAIT_MS) { mutex.lock() } == null) {
+                Log.w(TAG, "setAutoVoiceActive: helper channel busy for ${AUTO_VOICE_LOCK_WAIT_MS}ms, not sent")
+                return@withContext null
+            }
+            try {
+                // A daemon started by an older APK does not handle the code: same as a firmware
+                // without the method for the caller (fallback, verdict cached, marker cleared).
+                transactBodyUnlocked(
+                    HelperBinderProtocol.TX_SET_AUTO_VOICE, { it.writeInt(if (active) 1 else 0) },
+                    notHandled = AutoVoiceReply(HelperBinderProtocol.AUTO_VOICE_UNSUPPORTED, "daemon does not handle TX_SET_AUTO_VOICE"),
+                ) { reply ->
+                    if (reply.dataAvail() < 4) return@transactBodyUnlocked null
+                    AutoVoiceReply(reply.readInt(), reply.readString().orEmpty())
+                }
+            } finally {
+                mutex.unlock()
+            }
         }
 
     // Two-stage budget instead of the single transactParsed timeout: the daemon plans its own work
@@ -1400,6 +1446,24 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
             readRecStatus(reply)
         }
 
+    // transactParsed's path, plus the notHandled answer: a daemon spawned by an older APK does
+    // not know the code (transact returns false) and the caller tells that apart from unreachable.
+    override suspend fun dtcScanStart(gearDev: Int, gearFid: Int): Int? =
+        withContext(Dispatchers.IO) {
+            withTimeoutOrNull(REQ_TIMEOUT_MS) {
+                onBeforeLock?.invoke()
+                mutex.withLock {
+                    transactBodyUnlocked(
+                        HelperBinderProtocol.TX_DTC_SCAN_START, { it.writeInt(gearDev); it.writeInt(gearFid) },
+                        notHandled = DTC_SCAN_NOT_HANDLED,
+                    ) { if (it.dataAvail() < 4) null else it.readInt() }
+                }
+            }
+        }
+
+    override suspend fun dtcScanStatus(): DtcScanStatus? =
+        transactParsed(HelperBinderProtocol.TX_DTC_SCAN_STATUS, { }, parse = ::readDtcScanStatus)
+
     override suspend fun offReportArm(id: String, token: String, chatId: Long, text: String, lateMark: String): Boolean =
         transactParsed(
             HelperBinderProtocol.TX_OFFREPORT_ARM,
@@ -1460,7 +1524,7 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
         withContext(Dispatchers.IO) {
             withTimeoutOrNull(timeoutMs) {
                 onBeforeLock?.invoke()
-                mutex.withLock { transactBodyUnlocked(code, writeArgs, beforeSend, parse) }
+                mutex.withLock { transactBodyUnlocked(code, writeArgs, beforeSend, parse = parse) }
             }
         }
 
@@ -1472,11 +1536,14 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
      * verdict from before the retry never reaches the second send (2026-09-27, review round 2).
      * It is handed [lockedReader], bound to THIS already-held lock via a direct
      * [transactBodyUnlocked] call, never [readBatch] (which would re-take the mutex and deadlock).
+     * [notHandled] is returned instead of null when the daemon refuses the code (uid gate, or a
+     * daemon too old to know it).
      */
     private suspend fun <T> transactBodyUnlocked(
         code: Int,
         writeArgs: (Parcel) -> Unit,
         beforeSend: (suspend (LockedReader) -> Boolean)? = null,
+        notHandled: T? = null,
         parse: (Parcel) -> T?,
     ): T? {
         repeat(2) { attempt ->
@@ -1488,7 +1555,7 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
                 data.writeInterfaceToken(HelperBinderProtocol.DESCRIPTOR)
                 writeArgs(data)
                 val ok = binder.transact(code, data, reply, 0)
-                if (!ok) return null                          // uid gate rejected / not handled
+                if (!ok) return notHandled                    // uid gate rejected / not handled
                 return parse(reply)
             } catch (e: DeadObjectException) {
                 cached = null                                 // stale binder; loop re-resolves once
@@ -1606,6 +1673,8 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
 
         private const val TAG = "HelperClient"
         private const val REQ_TIMEOUT_MS = 2000L
+        /** dtcScanStart's answer from a daemon that does not know TX_DTC_SCAN_START. */
+        private const val DTC_SCAN_NOT_HANDLED = -2
         /** Budget for a [writeStatus] beforeSend guard (e.g. DriveModeChannel's terrain speed
          *  re-check): well under REQ_TIMEOUT_MS so a slow guard cannot hold the transport mutex
          *  for the whole shared write budget, or make a caller behind it wait the full 2 s just
@@ -1624,6 +1693,9 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
          *  FORCE_TIMEOUT_MS so a queued launch still gets the full daemon budget; the caller's
          *  worst case is the sum (20s), which the split/cluster callers absorb fail-soft. */
         private const val MUTEX_WAIT_MS = 5_000L
+        /** How long [setAutoVoiceActive] waits for the channel; NO_ANSWER after that, which
+         *  AutoVoiceDuck retries for an off call. */
+        private const val AUTO_VOICE_LOCK_WAIT_MS = 5_000L
         /** TX_READ_BATCH budget: 58 in-process transacts typically take ~100 ms; 5 s is a 50× margin. */
         const val BATCH_TIMEOUT_MS = 5_000L
         /** TX_RAISE_FREEFORM_TASK budget: two shell spawns (resolve-activity + am start).

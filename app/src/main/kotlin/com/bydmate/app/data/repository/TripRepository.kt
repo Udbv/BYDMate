@@ -9,7 +9,9 @@ import com.bydmate.app.data.local.database.AppDatabase
 import com.bydmate.app.data.local.entity.TripEntity
 import com.bydmate.app.data.local.entity.TripPointEntity
 import com.bydmate.app.data.local.entity.TripTombstoneEntity
+import com.bydmate.app.domain.calculator.ConsumptionBounds
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
@@ -47,7 +49,7 @@ class TripRepository @Inject constructor(
      */
     suspend fun deleteTrip(trip: TripEntity) {
         db.withTransaction {
-            trip.bydId?.let { tripTombstoneDao.insert(TripTombstoneEntity(it)) }
+            trip.bydId?.let { tripTombstoneDao.insert(TripTombstoneEntity(it, trip.startTs)) }
             tripPointDao.deleteByTripId(trip.id)
             tripDao.deleteById(trip.id)
         }
@@ -186,6 +188,22 @@ class TripRepository @Inject constructor(
             avg += tripAvgs[i] * (active[i] / sumW)
         }
         return avg
+    }
+
+    /**
+     * [ConsumptionBounds] over the trips of the last [ConsumptionBounds.WINDOW_DAYS]: the range
+     * of stretch consumption this car has really shown. Glitched trips (outside
+     * [AVG_SANE_KWH_PER_100KM]) are left out. Null while the history is too short.
+     */
+    suspend fun getConsumptionBounds(now: Long = System.currentTimeMillis()): ClosedFloatingPointRange<Double>? {
+        val from = now - ConsumptionBounds.WINDOW_DAYS * 24 * 60 * 60 * 1000L
+        val trips = tripDao.getByDateRange(from, now).first().mapNotNull { t ->
+            val km = t.distanceKm ?: return@mapNotNull null
+            val kwh = t.kwhConsumed ?: return@mapNotNull null
+            if (km <= 0.0 || kwh / km * 100.0 !in AVG_SANE_KWH_PER_100KM) return@mapNotNull null
+            ConsumptionBounds.Trip(t.startTs, km, kwh)
+        }
+        return ConsumptionBounds.of(trips)
     }
 
     /**

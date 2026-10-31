@@ -33,6 +33,7 @@ import com.bydmate.app.ui.overlay.OverlayNotificationManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -147,6 +148,12 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
     // Whether this process is our own a11y recovery restart; read once, on the first evaluate.
     @Volatile private var selfRestartVerdict: Boolean? = null
     private val serviceStartConsumed: MutableSet<Long> = ConcurrentHashMap.newKeySet()
+    // Runs with pauses cut by a car-off finish on the next start (RunResume); a rule its trigger
+    // already fired again in this process starts over instead.
+    private val runCheckpoints by lazy { RunCheckpointStore(context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)) }
+    private val firedThisProcess: MutableSet<Long> = ConcurrentHashMap.newKeySet()
+    @Volatile private var resumeChecked = false
+    private val resumedRuns = ConcurrentHashMap<Long, Job>()
     // evaluate() has two callers (the poll tick and every push event), and its per-rule gates are
     // read-then-write across several steps: cooldown, once-per-trip, service_start consumption,
     // updateLastTriggered. Two overlapping calls could pass the same rule and dispatch its actions
@@ -430,6 +437,8 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
 
                 // Mark triggered immediately to prevent re-fire
                 ruleDao.updateLastTriggered(rule.id, now)
+                firedThisProcess.add(rule.id)
+                resumedRuns.remove(rule.id)?.cancel()
                 if (serviceStartActive && triggers.any { it.kind == "service_start" }) {
                     serviceStartConsumed.add(rule.id)
                 }
@@ -453,6 +462,31 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error evaluating rule '${rule.name}': ${e.message}")
+            }
+        }
+        if (!resumeChecked && serviceStartFiredAt != null) {
+            resumeChecked = true
+            resumeInterrupted(rules)
+        }
+    }
+
+    /** Finishes the runs a car-off cut between steps, after this start's own fires are decided. */
+    private fun resumeInterrupted(rules: List<RuleEntity>) {
+        val byId = rules.associateBy { it.id }
+        val now = nowMs()
+        for (cp in runCheckpoints.all()) {
+            val rule = byId[cp.ruleId]
+            val actions = rule?.let { ActionDef.listFromJson(it.actions) }.orEmpty()
+            if (rule == null || rule.id in firedThisProcess ||
+                !RunResume.resumable(cp, rule.actions.hashCode(), actions.size, now)
+            ) {
+                runCheckpoints.clear(cp.ruleId)
+                continue
+            }
+            Log.i(TAG, "rule ${rule.id} resumes at step ${cp.nextStep + 1}/${actions.size}, ${(now - cp.startedAt) / 1000}s into its run")
+            resumedRuns[rule.id] = scope.launch {
+                executeAndLog(rule, actions, "resumed", TrackingService.lastData.value, resume = cp)
+                resumedRuns.remove(rule.id)
             }
         }
     }
@@ -708,6 +742,7 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
 
     // --- Execution ---
 
+    @Suppress("LongParameterList") // a fire's inputs plus where a resumed run picks up
     private suspend fun executeAndLog(
         rule: RuleEntity,
         actions: List<ActionDef>,
@@ -716,7 +751,11 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
         // Trace id of the edge that fired the rule: the cause of its step lines and of what the
         // vehicle layer traces under them (a write's late check).
         cause: Long = 0L,
+        // A resumed run picks up at its saved step on its first start's clock (RunResume).
+        resume: RunCheckpoint? = null,
     ): Boolean {
+        val firstStep = resume?.nextStep ?: 0
+        val runStartedAt = resume?.startedAt ?: nowMs()
         // One chime per rule firing, regardless of action kinds (per-rule "Выполнять со звуком").
         if (rule.playSound) {
             OverlayNotificationManager.playNotificationSound(context)
@@ -725,7 +764,10 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
         val results = JSONArray()
         var allSuccess = true
 
-        for ((i, action) in actions.withIndex()) {
+        val staged = RunResume.hasPauses(actions)
+        for (i in firstStep until actions.size) {
+            if (staged) runCheckpoints.save(RunCheckpoint(rule.id, runStartedAt, i, nowMs(), rule.actions.hashCode()))
+            val action = timedAction(actions, i, runStartedAt) ?: continue
             // Fresh data per step: a pause may lie between the fire and this step. A speed-gated
             // step does not trust it either: the dispatcher reads the speed itself right before.
             val stepData = liveData() ?: data
@@ -744,6 +786,7 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
             })
             if (!result.success) allSuccess = false
         }
+        if (staged) runCheckpoints.clear(rule.id)
 
         ruleLogDao.insert(
             RuleLogEntity(
@@ -757,6 +800,14 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
         )
         Log.i(TAG, "Rule '${rule.name}' executed: success=$allSuccess")
         return allSuccess
+    }
+
+    /** Step [i] as it runs now: a pause shortened to what is left on the run's clock, null once it is over. */
+    private fun timedAction(actions: List<ActionDef>, i: Int, runStartedAt: Long): ActionDef? {
+        val action = actions[i]
+        if (!RunResume.isPause(action)) return action
+        val left = RunResume.pauseLeftMs(actions, i, runStartedAt, nowMs())
+        return if (left > 0) action.copy(payload = left.toString()) else null
     }
 
     /**

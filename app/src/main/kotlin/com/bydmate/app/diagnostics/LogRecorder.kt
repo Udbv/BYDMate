@@ -250,6 +250,9 @@ class LogRecorder internal constructor(
 
     private fun pendingPrefs() = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    /** The file an interrupted recording would resume into; null when none is pending. */
+    fun pendingPath(): String? = pendingPrefs().getString(KEY_FILE_PATH, null)
+
     private fun rememberPending(target: File, startedAtMs: Long) {
         pendingPrefs().edit()
             .putString(KEY_FILE_PATH, target.absolutePath)
@@ -463,9 +466,13 @@ class LogRecorder internal constructor(
             // Blindspot wave: AVM camera probe. FidPush carries the daemon's push
             // subscription (register results, events) and the app's apply lines.
             "FidPush:*", "TechPanel:*", "CameraProbe:*", "BlindSpot:*", "CameraMonitor:*",
+            // «Диагностика»: reads of the stock car status provider and its key observers.
+            "CarStatus:*",
             // Diagnostic fid recorder (-test builds): summary only — the events go to its own
             // file in /sdcard/Download, not here.
             "FidRec:*",
+            // Manual fault-code scan: the daemon's requests, frames and outcomes (app and daemon share the tag).
+            "DtcScan:*",
             // Split-screen wave: session/watchdog decisions, pill+picker overlay, widget tap.
             "SplitSessionMgr:*", "SplitOverlayCtrl:*", "SplitPillView:*",
             "WidgetController:*",
@@ -507,6 +514,12 @@ class LogRecorder internal constructor(
             "DriveModeChannel:*",
             // Telegram reports: build (items taken / skipped, length), send, outbox add/drain/drop.
             "TgReport:*",
+            // 4.0.1-dev.5..dev.10: massage keeper, the cluster power card, the HUD lane strip, the
+            // automatic trip log itself and the ambient light at night.
+            "MassageKeeper:*", "ClusterPowerCard:*", "HudLaneWriter:*", "WazeLaneReader:*", "AutoTripLog:*",
+            "AmbientNight:*", "TripMinutes:*",
+            // 4.1.0-dev.17: ADAS shadow mode (what Waze would pass to the driver assistance).
+            "AdasShadow:*",
             // Power-off report in the helper daemon: arm, power off/on, send attempts, outcome.
             "OffReport:*",
             // Agent tools (where_am_i steps, failed weather requests) and the two Overpass
@@ -519,8 +532,12 @@ class LogRecorder internal constructor(
             // rule confirm overlay, the autostart worker, the crash log and the listener grant.
             "NavA11yExtractor:*", "HudAmapBroadcaster:*", "HudAmapClusterLoop:*", "ClusterFrameUi7:*", "ClusterProbe:*",
             "Split37Engine:*", "NativeSplitLauncher:*", "HudTextSanitizer:*", "KnobPlayPause:*",
-            "SteeringHeatChannel:*", "HudSwitchChannel:*", "BatteryPreheatChannel:*", "NetworkAvailMon:*", "ConfirmOverlay:*", "ServiceStartWorker:*",
+            "SteeringHeatChannel:*", "HudSwitchChannel:*", "RearSeatHeatChannel:*", "BatteryPreheatChannel:*", "NetworkAvailMon:*", "ConfirmOverlay:*", "ServiceStartWorker:*",
             "CrashLog:*", "MediaSessionGrant:*",
+            // Stock climate app seat writes (#327/#341): the BYD framework logs the seat and
+            // value it sets, the car's confirmation and AC device events. AbsBYDAutoDevice stays
+            // out: it floods (~20 lines/s on Leopard 3).
+            "BYDAutoSettingDevice:*", "AbsBYDAutoSettingListener:*", "BYDAutoAcDevice:*",
             // The event journal: one line per user action, decision and failure, by=#id links.
             "Trace:*"
         )

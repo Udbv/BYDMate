@@ -27,6 +27,19 @@ cut only after that test.** The `waze` flavor therefore defaults to the Developm
 
 The channel is chosen in the app: Settings -> Updates -> Update channel.
 
+### Issues and pull requests
+
+GitHub closes an issue only when a closing keyword reaches the default branch `main`, and the
+release PR merges `develop` into `main` with a merge commit, so the commits of `develop` get there
+with it. Therefore:
+
+- Every PR into `develop` names its issues in the body: `Closes #N` for an issue the PR finishes,
+  `Refs #N` for one it only advances. Work without an issue gets one first.
+- The squash commit of a PR into `develop` repeats the `Closes #N` lines in its message. They
+  reach `main` with the release merge, and GitHub closes the issues then: after the car test,
+  not at the dev build.
+- The release PR `develop` -> `main` lists `Closes #N` for every issue the release finishes.
+
 ## Signing
 
 Release builds are signed with `D:\BYD\keys\bydmate-waze.jks` (alias `bydmate-waze`), referenced

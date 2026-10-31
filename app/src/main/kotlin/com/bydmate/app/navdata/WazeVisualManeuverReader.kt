@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import com.bydmate.app.navdata.waze.ArrowSignature
+import com.bydmate.app.navdata.waze.LaneShape
 import com.bydmate.app.navdata.waze.WazeArrowTable
 import com.bydmate.app.navdata.waze.WazeLaneSegmenter
 import java.util.concurrent.atomic.AtomicBoolean
@@ -44,6 +45,8 @@ object WazeVisualManeuverReader {
         val matchedName: String?,
         val hamming: Int?,
         val gridString: String,
+        /** Read off Waze's lane strip, which stands where the arrow was until the junction. */
+        val fromLanes: Boolean = false,
     )
 
     data class Diagnostics(
@@ -104,6 +107,7 @@ object WazeVisualManeuverReader {
 
     @Synchronized
     private fun countCompletion(result: Diagnostics) {
+        logFailureEdge(result.failure)
         latestCounters = latestCounters.copy(
             completed = latestCounters.completed + 1,
             lastCompleted = result,
@@ -114,6 +118,19 @@ object WazeVisualManeuverReader {
                 "${result.targetWidth}x${result.targetHeight} icon=${result.panelIcon} " +
                 "name=${result.matchedName} hamming=${result.hamming} failure=${result.failure}",
         )
+    }
+
+    @Volatile private var lastFailure: String? = null
+
+    /**
+     * Into the trip log when the reason a screenshot gives nothing changes, so a drive log shows
+     * why there was no VISUAL or LANES line (the 2026-10-31 logs could not tell).
+     */
+    private fun logFailureEdge(failure: String?) {
+        val reason = failure?.takeIf { it != "pending" && it != "signature_not_matched" }
+        if (reason == lastFailure) return
+        lastFailure = reason
+        com.bydmate.app.diagnostics.TripDebugLog.event("VISUAL", if (reason == null) "reading again" else "no read: $reason")
     }
 
     /**
@@ -147,6 +164,9 @@ object WazeVisualManeuverReader {
         val nowElapsed = SystemClock.elapsedRealtime()
         synchronized(this) {
             if (nowElapsed - lastAttemptElapsedMs < MIN_ATTEMPT_INTERVAL_MS) return false
+            // A screenshot whose callback never came (the window went away under it) must not
+            // keep the reader shut for the rest of the drive.
+            if (inFlight.get() && nowElapsed - lastAttemptElapsedMs > STUCK_MS) inFlight.set(false)
             if (!inFlight.compareAndSet(false, true)) return false
             lastAttemptElapsedMs = nowElapsed
         }
@@ -177,9 +197,11 @@ object WazeVisualManeuverReader {
                             // Lanes first, exactly as the donor: when Waze is showing a lane
                             // strip, one of its cells IS the maneuver arrow, so the separate
                             // arrow crop is only used when there is no strip to segment.
+                            // With the strip as the target there is no arrow crop to fall back on:
+                            // the strip read as one arrow is noise.
                             val classification = software?.let { bitmap ->
                                 classifyLanes(bitmap, target.displayId, density, exitNumber)
-                                    ?: classify(bitmap, target.bounds, exitNumber)
+                                    ?: if (target.source == SOURCE_LANES) null else classify(bitmap, target.bounds, exitNumber)
                             }
                             val result = Diagnostics(
                                 attemptedAtMs = System.currentTimeMillis(),
@@ -288,7 +310,15 @@ object WazeVisualManeuverReader {
         // donor's default rectangle lands on the MAP on this head unit, and the map matched
         // "directions_roundabout" 80 times in one drive (hamming 10-12) while every real arrow
         // matched at 0-8. So a missing node means "no classification", not "classify the default".
-        return bounds?.let { Target(displayId, it, "navBarDirection") }
+        bounds?.let { return Target(displayId, it, SOURCE_ARROW) }
+        // Near a junction Waze puts its lane strip where the arrow was and the arrow node goes:
+        // in the 2026-10-31 logs every screenshot stopped the moment `laneGuidanceView` came up,
+        // so the strip was only ever caught in the frames where both were on screen. The strip's
+        // rectangle (read from this same tree just before) is then the target.
+        val lanes = NavLaneState.geometry?.takeIf { it.container.width > 0 && it.container.height > 0 }
+            ?: return null
+        val c = lanes.container
+        return Target(lanes.displayId, Rect(c.left, c.top, c.right, c.bottom), SOURCE_LANES)
     }
 
     /**
@@ -349,16 +379,19 @@ object WazeVisualManeuverReader {
                         arrow = segmented.mainArrow?.let {
                             classifyPixels(it.width, it.height, it.pixels, exitNumber)
                         },
-                    )
+                    ).apply { allMatched = segmented.matched.all { it } }
                 }
             }
             ) ?: return null
 
         val distance = runCatching { NavGuidanceHub.snapshot().distanceMeters }.getOrDefault(0)
+        // An arrow the table does not know classifies as code 0, which the panel draws as
+        // "straight": a strip with one unknown lane is a wrong strip (drive 2026-10-25: straight
+        // arrows where Waze showed turns). Nothing on the glass beats a wrong arrow there.
         NavLaneState.updateFromPixels(
-            NavLanes.ofCodes(result.codes, result.fronts, distance),
+            if (result.allMatched) NavLanes.ofCodes(result.codes, result.fronts, distance) else NavLanes.NONE,
         )
-        val classification = result.arrow ?: Classification(0, null, null, "")
+        val classification = (result.arrow ?: Classification(0, null, null, "")).copy(fromLanes = true)
         logLanes(geometry, result, distance, classification, fromTree)
         return classification
     }
@@ -371,7 +404,12 @@ object WazeVisualManeuverReader {
         val grids: List<String>,
         val mainIndex: Int,
         val arrow: Classification?,
-    )
+    ) {
+        /** Every lane's glyph matched a known drawable; otherwise the strip is not published. */
+        var allMatched: Boolean = false
+        /** Per lane, what read it (a drawable name or `shape:` with each branch's brightness). */
+        var names: List<String> = emptyList()
+    }
 
     /**
      * The tree path: each cell rectangle is cropped as-is and classified at the donor's two
@@ -388,6 +426,11 @@ object WazeVisualManeuverReader {
     ): LaneOutcome? {
         val n = cells.size
         if (n == 0) return null
+        // The strip slides in: until it settles, the tree's cells (read a moment before the
+        // screenshot) reach past the container or are cut short, and every crop is a fragment
+        // (drive 2026-10-25: container 84..113 with cells to 164, all lanes invalid). Try again
+        // on the next screenshot instead of publishing fragments.
+        if (!treeCellsSettled(container, cells)) return null
         val codes = IntArray(n)
         val fronts = IntArray(n)
         val scores = FloatArray(n)
@@ -414,7 +457,9 @@ object WazeVisualManeuverReader {
             widths[i] = cw
             heights[i] = ch
             scores[i] = WazeLaneSegmenter.cellScore(pixels, w, x0, y0, cw, ch)
-            val verdict = WazeLaneSegmenter.classifyLaneDetailed(cw, ch, crop)
+            val verdict = WazeLaneSegmenter.classifyLaneDetailed(cw, ch, crop).let { v ->
+                if (v.matched) v else shapeVerdict(cw, ch, crop) ?: v
+            }
             classes[i] = verdict
             codes[i] = verdict.code
             grids[i] = if (verdict.matched) "" else verdict.grid
@@ -432,7 +477,35 @@ object WazeVisualManeuverReader {
             classifyPixels(widths[i], heights[i], crops[i]!!, exitNumber)
         }
         return LaneOutcome(codes, fronts, scores, grids.map { it ?: "" }, mainIndex, arrow)
+            .apply {
+                allMatched = classes.all { it?.matched == true }
+                names = classes.map { it?.name ?: "-" }
+            }
     }
+
+    /**
+     * A lane no drawable matches, read by its shape ([LaneShape]); null when the shape is not a
+     * whole arrow either. The highlighted direction is the manoeuvre's when the lane allows it.
+     */
+    private fun shapeVerdict(w: Int, h: Int, crop: IntArray): WazeLaneSegmenter.LaneClass? {
+        val reading = LaneShape.read(w, h, crop) ?: return null
+        val dirs = reading.directions
+        // The branch Waze lit first; the manoeuvre says nothing at a roundabout, so it comes second.
+        val active = reading.lit ?: WazeLaneReader.maneuverDirection()?.takeIf { it in dirs } ?: dirs.first()
+        return WazeLaneSegmenter.LaneClass(
+            code = NavLaneCodes.codeFor(dirs),
+            activeCode = NavLaneCodes.dirId(active),
+            name = "shape:" + dirs.joinToString("+") { "${it.name.take(1)}${reading.luma[it]}" } + ">" + active.name.take(1),
+        )
+    }
+
+    /** Every cell lies inside the container and is about as tall as it is wide (a full arrow). */
+    internal fun treeCellsSettled(container: NavLaneState.LaneRect, cells: List<NavLaneState.LaneRect>): Boolean =
+        cells.all { c ->
+            c.left >= container.left && c.right <= container.right &&
+                c.top >= container.top && c.bottom <= container.bottom &&
+                c.height * SETTLED_HEIGHT_DEN >= c.width * SETTLED_HEIGHT_NUM
+        }
 
     /** openbyd's `isValidBounds` (:488-494): the crop has to lie wholly inside the screenshot. */
     internal fun isValidBounds(
@@ -480,6 +553,7 @@ object WazeVisualManeuverReader {
                 (if (result.mainIndex >= 0) "#${result.mainIndex}" else "none") +
                 " icon=${classification.panelIcon} name=${classification.matchedName ?: "-"}" +
                 (if (cells.isEmpty()) "" else " $cells") +
+                (if (result.names.any { it.startsWith("shape:") }) " ${result.names.joinToString(" | ")}" else "") +
                 (if (grids.isEmpty()) "" else " $grids"),
         )
     }
@@ -492,6 +566,10 @@ object WazeVisualManeuverReader {
 
     /** The donor's "this lane does not fit the crop" code (`processSegmentedLanes`: 13). */
     private const val LANE_CODE_INVALID = 13
+
+    /** A settled lane cell is at least 9/10 as tall as it is wide (78x78 on this Waze). */
+    private const val SETTLED_HEIGHT_NUM = 9
+    private const val SETTLED_HEIGHT_DEN = 10
 
     /** Crops [crop] out of [bitmap] and classifies the raw pixels - no resampling. */
     private fun classify(bitmap: Bitmap, crop: Rect, exitNumber: Int?): Classification? {
@@ -551,6 +629,12 @@ object WazeVisualManeuverReader {
 
     /** Fraction of the value range that separates arrow from background; openbyd's arrow setting. */
     private const val ARROW_THRESHOLD = 0.8f
+
+    internal const val SOURCE_ARROW = "navBarDirection"
+    internal const val SOURCE_LANES = "laneGuidanceView"
+
+    /** A screenshot not answered in this long is lost. */
+    private const val STUCK_MS = 10_000L
 
     /** openbyd captures the arrow every two seconds; anything faster only costs battery. */
     internal const val MIN_ATTEMPT_INTERVAL_MS = 2000L
