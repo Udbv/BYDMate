@@ -38,10 +38,14 @@ object LaneShape {
         return dirs.takeIf { it.isNotEmpty() }
     }
 
-    /** A branch out beside the stem in the upper half is a turn that way. */
+    /**
+     * A branch out beside the stem above its lowest part is a turn that way. Waze starts the side
+     * branch of a straight-and-right lane a little below the middle (2026-10-31 photo), so the
+     * search goes down to [ARM_BAND] of the arrow.
+     */
     private fun turns(ink: Ink, box: Box, height: Int, stemX: Double): List<NavLanes.Dir> {
         val reach = height * ARM_REACH
-        val upperBottom = box.top + height / 2
+        val upperBottom = box.top + (height * ARM_BAND).toInt()
         return listOfNotNull(
             NavLanes.Dir.LEFT.takeIf { ink.anyIn(box.top, upperBottom, 0, (stemX - reach).toInt()) },
             NavLanes.Dir.RIGHT.takeIf { ink.anyIn(box.top, upperBottom, (stemX + reach).toInt(), ink.w - 1) },
@@ -125,6 +129,8 @@ object LaneShape {
     private const val TIP_BAND = 0.12
     /** A tip within this share of the arrow's height from the stem points straight on. */
     private const val STRAIGHT_TOLERANCE = 0.12
+    /** How far down the arrow a turn's branch may start. */
+    private const val ARM_BAND = 0.70
     /** A branch reaching this share of the height beside the stem is a turn. */
     private const val ARM_REACH = 0.28
     private const val LUMA_R = 299

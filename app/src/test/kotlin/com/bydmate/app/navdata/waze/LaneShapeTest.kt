@@ -104,4 +104,25 @@ class LaneShapeTest {
         val c = straight().apply { rect(5, 60, 12, 74, white) }
         assertNull(LaneShape.directions(c.w, c.h, c.px))
     }
+
+    @Test fun `the 2026-10-31 strip reads left, straight, and straight with right`() {
+        // A rounded left turn: the stem on the right, bending over to a head pointing left.
+        val left = Canvas(size, size, dark).apply {
+            rect(52, 20, 56, 74, white)
+            rect(22, 14, 56, 18, white)
+            headLeft(6, 16, 9, 16, white)
+        }
+        val grey = 0xFF9A9EA4.toInt()
+        val straight = straight(Canvas(size, size, dark)).apply { for (i in px.indices) if (px[i] == white) px[i] = grey }
+        // The side branch of the third lane starts below the middle of the arrow.
+        val straightRight = Canvas(size, size, dark).apply {
+            rect(30, 14, 34, 74, grey)
+            headUp(32, 2, 9, 12, grey)
+            rect(32, 44, 58, 48, grey)
+            headRight(72, 46, 9, 14, grey)
+        }
+        assertEquals(setOf(NavLanes.Dir.LEFT), LaneShape.directions(size, size, left.px))
+        assertEquals(setOf(NavLanes.Dir.STRAIGHT), LaneShape.directions(size, size, straight.px))
+        assertEquals(setOf(NavLanes.Dir.STRAIGHT, NavLanes.Dir.RIGHT), LaneShape.directions(size, size, straightRight.px))
+    }
 }
