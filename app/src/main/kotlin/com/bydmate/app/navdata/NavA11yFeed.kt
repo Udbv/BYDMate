@@ -629,8 +629,13 @@ object NavA11yFeed {
         // The lane strip covers the arrow until the junction: an unknown arrow read off it keeps
         // the arrow read just before alive instead of letting the HUD fall back to straight
         // (2026-10-31: a right turn shown as straight for the whole approach).
+        // Only while the manoeuvre is still that arrow's: once Waze's text names the next one
+        // ("keep straight" after a roundabout), re-asserting the old arrow made the HUD flip
+        // between the two every second (2026-10-31 13:45).
         val icon = if (classification.panelIcon == 0 && classification.fromLanes) {
-            NavGuidanceHub.snapshot(nowMs).panelIcon
+            NavGuidanceHub.snapshot(nowMs).let { s ->
+                s.panelIcon.takeIf { it > 0 && NavGuidanceHub.gaodeOf(it) == s.maneuverGaode } ?: 0
+            }
         } else {
             classification.panelIcon
         }

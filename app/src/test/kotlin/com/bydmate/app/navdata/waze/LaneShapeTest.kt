@@ -125,4 +125,30 @@ class LaneShapeTest {
         assertEquals(setOf(NavLanes.Dir.STRAIGHT), LaneShape.directions(size, size, straight.px))
         assertEquals(setOf(NavLanes.Dir.STRAIGHT, NavLanes.Dir.RIGHT), LaneShape.directions(size, size, straightRight.px))
     }
+
+    private val grey = 0xFF7A7F86.toInt()
+
+    /** Straight and left in one lane, each branch in its own colour. */
+    private fun straightLeft(straightC: Int, leftC: Int) = Canvas(size, size, dark).apply {
+        rect(44, 44, 48, 74, white)          // shared stem
+        rect(44, 16, 48, 44, straightC)
+        headUp(46, 4, 9, 12, straightC)
+        rect(18, 40, 46, 44, leftC)
+        headLeft(5, 42, 9, 13, leftC)
+    }
+
+    @Test fun `the branch Waze lit is the active one`() {
+        val left = straightLeft(straightC = grey, leftC = white).let { LaneShape.read(it.w, it.h, it.px) }!!
+        assertEquals(setOf(NavLanes.Dir.STRAIGHT, NavLanes.Dir.LEFT), left.directions)
+        assertEquals(NavLanes.Dir.LEFT, left.lit)
+        val straight = straightLeft(straightC = white, leftC = grey).let { LaneShape.read(it.w, it.h, it.px) }!!
+        assertEquals(NavLanes.Dir.STRAIGHT, straight.lit)
+    }
+
+    @Test fun `branches lit alike name no active one`() {
+        val both = straightLeft(straightC = white, leftC = white).let { LaneShape.read(it.w, it.h, it.px) }!!
+        assertEquals(setOf(NavLanes.Dir.STRAIGHT, NavLanes.Dir.LEFT), both.directions)
+        assertNull(both.lit)
+        assertNull(straight().let { LaneShape.read(it.w, it.h, it.px) }!!.lit)
+    }
 }
