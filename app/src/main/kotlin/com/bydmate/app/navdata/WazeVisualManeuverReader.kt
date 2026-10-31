@@ -407,6 +407,8 @@ object WazeVisualManeuverReader {
     ) {
         /** Every lane's glyph matched a known drawable; otherwise the strip is not published. */
         var allMatched: Boolean = false
+        /** Per lane, what read it (a drawable name or `shape:` with each branch's brightness). */
+        var names: List<String> = emptyList()
     }
 
     /**
@@ -475,7 +477,10 @@ object WazeVisualManeuverReader {
             classifyPixels(widths[i], heights[i], crops[i]!!, exitNumber)
         }
         return LaneOutcome(codes, fronts, scores, grids.map { it ?: "" }, mainIndex, arrow)
-            .apply { allMatched = classes.all { it?.matched == true } }
+            .apply {
+                allMatched = classes.all { it?.matched == true }
+                names = classes.map { it?.name ?: "-" }
+            }
     }
 
     /**
@@ -483,12 +488,14 @@ object WazeVisualManeuverReader {
      * whole arrow either. The highlighted direction is the manoeuvre's when the lane allows it.
      */
     private fun shapeVerdict(w: Int, h: Int, crop: IntArray): WazeLaneSegmenter.LaneClass? {
-        val dirs = LaneShape.directions(w, h, crop) ?: return null
-        val active = WazeLaneReader.maneuverDirection()?.takeIf { it in dirs } ?: dirs.first()
+        val reading = LaneShape.read(w, h, crop) ?: return null
+        val dirs = reading.directions
+        // The branch Waze lit first; the manoeuvre says nothing at a roundabout, so it comes second.
+        val active = reading.lit ?: WazeLaneReader.maneuverDirection()?.takeIf { it in dirs } ?: dirs.first()
         return WazeLaneSegmenter.LaneClass(
             code = NavLaneCodes.codeFor(dirs),
             activeCode = NavLaneCodes.dirId(active),
-            name = "shape:" + dirs.joinToString("+"),
+            name = "shape:" + dirs.joinToString("+") { "${it.name.take(1)}${reading.luma[it]}" } + ">" + active.name.take(1),
         )
     }
 
@@ -546,6 +553,7 @@ object WazeVisualManeuverReader {
                 (if (result.mainIndex >= 0) "#${result.mainIndex}" else "none") +
                 " icon=${classification.panelIcon} name=${classification.matchedName ?: "-"}" +
                 (if (cells.isEmpty()) "" else " $cells") +
+                (if (result.names.any { it.startsWith("shape:") }) " ${result.names.joinToString(" | ")}" else "") +
                 (if (grids.isEmpty()) "" else " $grids"),
         )
     }

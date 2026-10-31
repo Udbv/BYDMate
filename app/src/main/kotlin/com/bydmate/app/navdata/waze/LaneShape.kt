@@ -20,7 +20,17 @@ import kotlin.math.abs
  */
 object LaneShape {
 
-    fun directions(w: Int, h: Int, px: IntArray): Set<NavLanes.Dir>? {
+    /**
+     * One lane arrow: its directions and, when they differ in brightness, the one Waze lit.
+     * In a lane with two directions Waze draws the route's branch bright and the other grey
+     * (2026-10-31: a straight-and-left lane before a roundabout's third exit sent «straight» to
+     * the HUD while Waze lit «left»). [luma] is each branch's mean brightness, for the log.
+     */
+    data class Reading(val directions: Set<NavLanes.Dir>, val lit: NavLanes.Dir?, val luma: Map<NavLanes.Dir, Int>)
+
+    fun directions(w: Int, h: Int, px: IntArray): Set<NavLanes.Dir>? = read(w, h, px)?.directions
+
+    fun read(w: Int, h: Int, px: IntArray): Reading? {
         if (w <= 0 || h <= 0 || px.size < w * h) return null
         val ink = inkMask(w, h, px) ?: return null
         val box = ink.box ?: return null
@@ -35,7 +45,30 @@ object LaneShape {
         val tipX = ink.centroidX(box.top, box.top + (height * TIP_BAND).toInt())
         if (tipX != null && abs(tipX - stemX) <= height * STRAIGHT_TOLERANCE) dirs += NavLanes.Dir.STRAIGHT
         dirs += turns(ink, box, height, stemX)
-        return dirs.takeIf { it.isNotEmpty() }
+        if (dirs.isEmpty()) return null
+        val luma = dirs.associateWith { branchLuma(ink, box, height, stemX, it) }
+        return Reading(dirs, litOf(luma), luma)
+    }
+
+    /** The brightest branch when it stands out from the rest by [LIT_MARGIN]; null otherwise. */
+    private fun litOf(luma: Map<NavLanes.Dir, Int>): NavLanes.Dir? {
+        if (luma.size < 2) return null
+        val sorted = luma.entries.sortedByDescending { it.value }
+        return sorted[0].key.takeIf { sorted[0].value - sorted[1].value >= LIT_MARGIN }
+    }
+
+    /** Mean brightness of the ink of one branch: the head over the stem, or the arm beside it. */
+    private fun branchLuma(ink: Ink, box: Box, height: Int, stemX: Double, dir: NavLanes.Dir): Int {
+        val reach = height * ARM_REACH
+        val armBottom = box.top + (height * ARM_BAND).toInt()
+        return when (dir) {
+            NavLanes.Dir.LEFT -> ink.meanLuma(box.top, armBottom, 0, (stemX - reach).toInt())
+            NavLanes.Dir.RIGHT -> ink.meanLuma(box.top, armBottom, (stemX + reach).toInt(), ink.w - 1)
+            else -> {
+                val half = (height * STRAIGHT_TOLERANCE).toInt()
+                ink.meanLuma(box.top, box.top + (height * TIP_BAND).toInt(), (stemX - half).toInt(), (stemX + half).toInt())
+            }
+        }
     }
 
     /**
@@ -74,7 +107,7 @@ object LaneShape {
         border.sort()
         val background = border[border.size / 2]
         val mask = BooleanArray(w * h) { abs(luma(px[it]) - background) > INK_CONTRAST }
-        return Ink(w, h, mask)
+        return Ink(w, h, mask, px)
     }
 
     private fun luma(color: Int): Int {
@@ -84,7 +117,7 @@ object LaneShape {
         return (r * LUMA_R + g * LUMA_G + b * LUMA_B) / LUMA_SUM
     }
 
-    private class Ink(val w: Int, val h: Int, val mask: BooleanArray) {
+    private class Ink(val w: Int, val h: Int, val mask: BooleanArray, val px: IntArray) {
         val count = mask.count { it }
 
         val box: Box? = run {
@@ -106,6 +139,17 @@ object LaneShape {
                 for (x in 0 until w) if (mask[y * w + x]) { sum += x; n++ }
             }
             return if (n == 0) null else sum / n
+        }
+
+        fun meanLuma(fromY: Int, toY: Int, fromX: Int, toX: Int): Int {
+            var sum = 0L
+            var n = 0
+            for (y in fromY.coerceAtLeast(0)..toY.coerceAtMost(h - 1)) {
+                for (x in fromX.coerceAtLeast(0)..toX.coerceAtMost(w - 1)) {
+                    if (mask[y * w + x]) { sum += luma(px[y * w + x]); n++ }
+                }
+            }
+            return if (n == 0) 0 else (sum / n).toInt()
         }
 
         fun anyIn(fromY: Int, toY: Int, fromX: Int, toX: Int): Boolean {
@@ -133,6 +177,8 @@ object LaneShape {
     private const val ARM_BAND = 0.70
     /** A branch reaching this share of the height beside the stem is a turn. */
     private const val ARM_REACH = 0.28
+    /** A branch this much brighter (luma) than the others is the one Waze lit. */
+    private const val LIT_MARGIN = 40
     private const val LUMA_R = 299
     private const val LUMA_G = 587
     private const val LUMA_B = 114
