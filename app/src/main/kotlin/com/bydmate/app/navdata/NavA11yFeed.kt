@@ -626,7 +626,15 @@ object NavA11yFeed {
         exitNumber: Int?,
         nowMs: Long = System.currentTimeMillis(),
     ) {
-        if (NavGuidanceHub.updateWazeArrow(classification.panelIcon, exitNumber, nowMs)) {
+        // The lane strip covers the arrow until the junction: an unknown arrow read off it keeps
+        // the arrow read just before alive instead of letting the HUD fall back to straight
+        // (2026-10-31: a right turn shown as straight for the whole approach).
+        val icon = if (classification.panelIcon == 0 && classification.fromLanes) {
+            NavGuidanceHub.snapshot(nowMs).panelIcon
+        } else {
+            classification.panelIcon
+        }
+        if (NavGuidanceHub.updateWazeArrow(icon, exitNumber, nowMs)) {
             Log.i(
                 TAG,
                 "Waze arrow '${classification.matchedName}' hamming=${classification.hamming} " +
