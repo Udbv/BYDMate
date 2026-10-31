@@ -31,8 +31,8 @@ android {
         // on DiLink Android 12 (requestLegacyExternalStorage works).
         // targetSdk 30+ would break listFiles() on /storage/emulated/0/energydata/
         targetSdk = 29
-        versionCode = 531
-        versionName = "4.1.0-dev.23"   // development pre-release; stable X.Y.Z only after a real-car test
+        versionCode = 532
+        versionName = "4.1.0-dev.24"   // development pre-release; stable X.Y.Z only after a real-car test
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -62,7 +62,12 @@ android {
             dimension = "dist"
             applicationIdSuffix = ".waze"
             buildConfigField("String", "UPDATE_REPO", "\"Udbv/BYDMate\"")
-            buildConfigField("String", "DEFAULT_UPDATE_CHANNEL", "\"dev\"")   // no stable releases until the real-car test
+            // A -dev build is a test build: Development channel, and with it the dev defaults
+            // (the full trip log and the trip journal sent to Telegram after every drive, ADAS
+            // shadow mode). The stable build (versionName X.Y.Z, release-stable.yml) is clean:
+            // Stable channel, all of those off until switched on in Settings.
+            val devBuild = defaultConfig.versionName?.contains("-dev") == true
+            buildConfigField("String", "DEFAULT_UPDATE_CHANNEL", if (devBuild) "\"dev\"" else "\"stable\"")
             buildConfigField("String", "HELPER_SERVICE", "\"bydmate_helper_waze\"")
             buildConfigField("String", "HELPER_PROCESS", "\"bydmate_waze\"")
         }
