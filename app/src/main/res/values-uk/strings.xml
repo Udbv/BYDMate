@@ -643,6 +643,23 @@
     <!-- Navigation bar tab labels -->
     <string name="nav_tab_dashboard">Головна</string>
     <string name="nav_tab_trips">Поїздки</string>
+    <string name="nav_tab_map">Карта</string>
+    <string name="map_search_hint">Куди поїхати: адреса, місце</string>
+    <string name="map_search">Знайти</string>
+    <string name="map_searching">Шукаємо…</string>
+    <string name="map_search_failed">Пошук не відповів (немає інтернету?)</string>
+    <string name="map_search_in_waze">Шукати у Waze</string>
+    <string name="map_close">Закрити</string>
+    <string name="map_range_unknown">Запас ходу невідомий</string>
+    <string name="map_range">Запас %1$d км</string>
+    <string name="map_reach_outer">Досяжно: ~%1$d км по прямій</string>
+    <string name="map_reach_inner">З запасом: ~%1$d км по прямій</string>
+    <string name="map_verdict_easy">Доїдемо з запасом: ~%1$d км дорогами</string>
+    <string name="map_verdict_tight">Впритул: ~%1$d км дорогами</string>
+    <string name="map_verdict_out">Не доїдемо без зарядки: ~%1$d км дорогами</string>
+    <string name="map_distance_only">~%1$d км дорогами</string>
+    <string name="map_route_waze">Маршрут у Waze</string>
+    <string name="map_you">Ви тут</string>
     <string name="nav_tab_charges">Зарядки</string>
     <string name="nav_tab_automation">Автоматизація</string>
     <string name="nav_tab_settings">Налаштування</string>
