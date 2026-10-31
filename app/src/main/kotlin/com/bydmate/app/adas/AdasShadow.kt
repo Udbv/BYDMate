@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.bydmate.app.data.remote.DiParsData
 import com.bydmate.app.data.vehicle.HelperClient
+import com.bydmate.app.diagnostics.TripDebugLog
 import com.bydmate.app.navdata.NavGuidanceHub
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -29,6 +30,7 @@ class AdasShadow @Inject constructor(
     private var lastFrames = emptyMap<Long, ShadowFrame>()
     private var lastReading: AdasCarReading? = null
     private var stats = AdasShadowStats()
+    private var episodes = newEpisodes()
     private var driving = false
 
     suspend fun onTick(carOn: Boolean, data: DiParsData?, nowMs: Long = System.currentTimeMillis()) {
@@ -44,9 +46,10 @@ class AdasShadow @Inject constructor(
         logFrames(snap)
         val reading = readCar(snap, data)
         if ((data.speed ?: 0) > 0) stats.add(wazeLimit(snap), reading?.carLimitKph)
+        episodes.add(nowMs, data.speed, wazeLimit(snap), reading?.carLimitKph)
         if (nowMs - lastHeartbeatMs >= HEARTBEAT_MS) {
             lastHeartbeatMs = nowMs
-            Log.i(TAG, "alive route=${snap.active} waze=${wazeLimit(snap) ?: "-"} car=${reading?.describe() ?: "no answer"} ${stats.summary()}")
+            Log.i(TAG, "alive route=${snap.active} waze=${wazeLimit(snap) ?: "-"} car=${reading?.describe() ?: "no answer"} ${stats.summary()} ${episodes.summary()}")
         }
     }
 
@@ -74,11 +77,19 @@ class AdasShadow @Inject constructor(
     private fun finish() {
         if (!driving) return
         driving = false
-        Log.i(TAG, "drive summary ${stats.summary()}")
+        episodes.finish(System.currentTimeMillis())
+        Log.i(TAG, "drive summary ${stats.summary()} ${episodes.summary()}")
+        TripDebugLog.event("ADAS", "drive summary ${stats.summary()} ${episodes.summary()}")
         stats = AdasShadowStats()
+        episodes = newEpisodes()
         lastFrames = emptyMap()
         lastReading = null
         lastHeartbeatMs = 0L
+    }
+
+    private fun newEpisodes() = AdasLimitEpisodes { line ->
+        Log.i(TAG, line)
+        TripDebugLog.event("ADAS", line)
     }
 
     private fun wazeLimit(snap: NavGuidanceHub.Snapshot): Int? = snap.speedLimit.takeIf { it > 0 }
