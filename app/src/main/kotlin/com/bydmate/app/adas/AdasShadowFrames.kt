@@ -42,47 +42,41 @@ object AdasShadowFrames {
     fun of(snap: NavGuidanceHub.Snapshot): List<ShadowFrame> {
         val camera = snap.cameraKind == WazeReportsReader.Kind.CAMERA && snap.cameraDistanceMeters > 0
         val cameraDist = if (camera) snap.cameraDistanceMeters else 0
-        if (!snap.active) return listOf(naviStatus(NAVI_STOPPED))
-        return listOf(
-            naviStatus(NAVI_ACTIVE),
-            trafficInfo(snap.speedLimit, cameraDist, snap.totalDistMeters, snap.etaSeconds),
-            actionAndCamera(snap.maneuverGaode, snap.distanceMeters, cameraDist),
+        val status = if (snap.active) NAVI_ACTIVE else NAVI_STOPPED
+        val frames = mutableListOf(
+            ShadowFrame(
+                TOPIC_NAVI_STATUS, "NavigationStatus_LinkInfoNotify", "NavigationStatus=$status",
+                wrap(Proto().varint(4, status.toLong()).bytes()),
+            ),
         )
-    }
-
-    fun naviStatus(status: Int) = ShadowFrame(
-        TOPIC_NAVI_STATUS, "NavigationStatus_LinkInfoNotify", "NavigationStatus=$status",
-        wrap(Proto().varint(4, status.toLong()).bytes()),
-    )
-
-    fun trafficInfo(limitKph: Int, cameraDist: Int, totalDist: Int = 0, etaSeconds: Int = 0) = ShadowFrame(
-        TOPIC_TRAFFIC_INFO, "TrafficInfoNotify",
-        "SpdLmtSpeedValue=$limitKph SpdLmtEleEyeDist=$cameraDist DistToDsttn=$totalDist TimeToDsttn=$etaSeconds",
-        wrap(
-            Proto()
-                .varint(8, limitKph.toLong())
-                .varint(10, cameraDist.toLong())
-                .varint(17, totalDist.toLong())
-                .varint(18, etaSeconds.toLong())
-                .bytes(),
-        ),
-    )
-
-    /** [cameraDist] > 0 puts a camera there ([CAMERA_PLACEHOLDER_TYPE]); 0 means none. */
-    fun actionAndCamera(icon: Int, distance: Int, cameraDist: Int): ShadowFrame {
-        val cameraType = if (cameraDist > 0) CAMERA_PLACEHOLDER_TYPE else 0
-        return ShadowFrame(
-            TOPIC_ACTION_CAMERA, "naviActionAndCamera",
-            "iconType=$icon distance=$distance cameraType=$cameraType cameraDistance=$cameraDist",
+        if (!snap.active) return frames
+        frames += ShadowFrame(
+            TOPIC_TRAFFIC_INFO, "TrafficInfoNotify",
+            "SpdLmtSpeedValue=${snap.speedLimit} SpdLmtEleEyeDist=$cameraDist " +
+                "DistToDsttn=${snap.totalDistMeters} TimeToDsttn=${snap.etaSeconds}",
             wrap(
                 Proto()
-                    .varint(1, icon.toLong())
-                    .varint(4, distance.toLong())
-                    .varint(5, cameraType.toLong())
+                    .varint(8, snap.speedLimit.toLong())
+                    .varint(10, cameraDist.toLong())
+                    .varint(17, snap.totalDistMeters.toLong())
+                    .varint(18, snap.etaSeconds.toLong())
+                    .bytes(),
+            ),
+        )
+        frames += ShadowFrame(
+            TOPIC_ACTION_CAMERA, "naviActionAndCamera",
+            "iconType=${snap.maneuverGaode} distance=${snap.distanceMeters} " +
+                "cameraType=${if (camera) CAMERA_PLACEHOLDER_TYPE else 0} cameraDistance=$cameraDist",
+            wrap(
+                Proto()
+                    .varint(1, snap.maneuverGaode.toLong())
+                    .varint(4, snap.distanceMeters.toLong())
+                    .varint(5, if (camera) CAMERA_PLACEHOLDER_TYPE.toLong() else 0L)
                     .varint(6, cameraDist.toLong())
                     .bytes(),
             ),
         )
+        return frames
     }
 
     /** Every `xNotify` wraps its struct as field 1. */

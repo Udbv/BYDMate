@@ -2369,11 +2369,6 @@
     <string name="settings_full_trip_log_desc">Запись лога приложения стартует сама, когда машина включается, и заканчивается, когда выключается. Файл сохраняется в «Загрузки» и, если бот подключён, отправляется в Telegram. В сборках «Разработка» включено по умолчанию.</string>
     <string name="settings_adas_shadow_title">Теневой режим ADAS</string>
     <string name="settings_adas_shadow_desc">Записывает в лог, что BYDMate передал бы системам помощи водителю из Waze (ограничение скорости, камера, манёвр), ничего не отправляя, и рядом то, что видит сама машина: знак с камеры, ограничение ассистента, круиз. В конце поездки — сколько раз ограничение Waze совпало со знаком.</string>
-    <string name="settings_adas_test_title">Тест ADAS на стоянке</string>
-    <string name="settings_adas_test_desc">30 секунд отправляет системам помощи водителю выбранное ограничение и камеру в %1$d м, как штатная карта, и показывает, что сообщает машина. Только на P и без движения; после теста всё очищается.</string>
-    <string name="settings_adas_test_start">Отправить 30 с</string>
-    <string name="settings_adas_test_car">знак %1$s · ассистент %2$s</string>
-    <string name="settings_adas_test_running">Отправляю: ограничение %1$d, камера %2$d м · ещё %3$d с</string>
     <string name="trip_page_energy_title">Куда ушла энергия</string>
     <string name="trip_page_rear">Тяга: зад</string>
     <string name="trip_page_front">Тяга: перед</string>

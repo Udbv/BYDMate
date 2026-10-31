@@ -2315,11 +2315,6 @@
     <string name="settings_full_trip_log_desc">车辆启动时自动开始记录应用日志，熄火时结束。文件保存到“下载”，如已绑定机器人则发送到 Telegram。开发版默认开启。</string>
     <string name="settings_adas_shadow_title">ADAS 影子模式</string>
     <string name="settings_adas_shadow_desc">在日志中记录 BYDMate 会从 Waze 传给驾驶辅助的内容（限速、摄像头、转向），但不实际发送；同时记录车辆自身看到的：摄像头识别的标志、辅助系统限速、巡航。行程结束时统计 Waze 限速与标志一致的次数。</string>
-    <string name="settings_adas_test_title">驻车 ADAS 测试</string>
-    <string name="settings_adas_test_desc">在 30 秒内像原厂地图一样向驾驶辅助发送所选限速和 %1$d 米处的摄像头，并显示车辆的反馈。仅在 P 挡且静止时可用；测试后全部清除。</string>
-    <string name="settings_adas_test_start">发送 30 秒</string>
-    <string name="settings_adas_test_car">标志 %1$s · 辅助 %2$s</string>
-    <string name="settings_adas_test_running">正在发送：限速 %1$d，摄像头 %2$d 米 · 剩余 %3$d 秒</string>
     <string name="trip_page_energy_title">能量去向</string>
     <string name="trip_page_rear">驱动：后轴</string>
     <string name="trip_page_front">驱动：前轴</string>

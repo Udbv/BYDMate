@@ -3267,8 +3267,6 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
             com.bydmate.app.adas.AdasShadow.setEnabled(tripLogContext, it)
         },
     )
-    // #23 step 2: a real send of a limit and a camera, parked only, on a tap.
-    AdasParkedTestRow()
     // Trip debug log: the car keeps its own record because Wi-Fi is gone the moment it
     // leaves the driveway, so logcat is unreachable for the drive that matters.
     var tripDebug by remember { mutableStateOf(com.bydmate.app.diagnostics.TripDebugLog.isEnabled(tripLogContext)) }

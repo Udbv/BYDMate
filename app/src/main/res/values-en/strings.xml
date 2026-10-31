@@ -2202,11 +2202,6 @@
     <string name="settings_full_trip_log_desc">The app log recording starts by itself when the car comes on and ends when it goes off. The file is saved to Downloads and, with a bot connected, sent to Telegram. On by default in development builds.</string>
     <string name="settings_adas_shadow_title">ADAS shadow mode</string>
     <string name="settings_adas_shadow_desc">Logs what BYDMate would pass from Waze to the driver assistance (speed limit, camera, manoeuvre) without sending anything, next to what the car itself sees: the camera\'s sign, the assist\'s limit, the cruise. At the end of a drive: how often Waze\'s limit matched the sign.</string>
-    <string name="settings_adas_test_title">Parked ADAS test</string>
-    <string name="settings_adas_test_desc">For 30 seconds sends the chosen speed limit and a camera at %1$d m to the driver assistance, as the factory map does, and shows what the car reports. Only in P and standing still; everything is cleared after the test.</string>
-    <string name="settings_adas_test_start">Send 30 s</string>
-    <string name="settings_adas_test_car">sign %1$s · assist %2$s</string>
-    <string name="settings_adas_test_running">Sending: limit %1$d, camera %2$d m · %3$d s left</string>
     <string name="trip_page_energy_title">Where the energy went</string>
     <string name="trip_page_rear">Traction: rear</string>
     <string name="trip_page_front">Traction: front</string>

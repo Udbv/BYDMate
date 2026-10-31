@@ -2199,11 +2199,6 @@
     <string name="settings_full_trip_log_desc">A gravação do registo da aplicação começa sozinha quando o carro liga e termina quando desliga. O ficheiro fica em Transferências e, com um bot ligado, é enviado para o Telegram. Ativo por omissão nas versões de desenvolvimento.</string>
     <string name="settings_adas_shadow_title">Modo sombra ADAS</string>
     <string name="settings_adas_shadow_desc">Regista o que o BYDMate passaria do Waze aos sistemas de assistência (limite de velocidade, radar, manobra) sem enviar nada, ao lado do que o próprio carro vê: o sinal da câmara, o limite do assistente, o cruise. No fim da viagem: quantas vezes o limite do Waze coincidiu com o sinal.</string>
-    <string name="settings_adas_test_title">Teste ADAS estacionado</string>
-    <string name="settings_adas_test_desc">Durante 30 segundos envia à assistência ao condutor o limite escolhido e um radar a %1$d m, como o mapa de fábrica, e mostra o que o carro reporta. Só em P e parado; tudo é limpo após o teste.</string>
-    <string name="settings_adas_test_start">Enviar 30 s</string>
-    <string name="settings_adas_test_car">placa %1$s · assistente %2$s</string>
-    <string name="settings_adas_test_running">A enviar: limite %1$d, radar %2$d m · faltam %3$d s</string>
     <string name="trip_page_energy_title">Para onde foi a energia</string>
     <string name="trip_page_rear">Tração: traseira</string>
     <string name="trip_page_front">Tração: dianteira</string>
