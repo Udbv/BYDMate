@@ -40,6 +40,19 @@ internal fun powerParts(data: DiParsData): PowerParts? {
 }
 
 /**
+ * The car is plugged in: the gun is in (2) or the BMS says it is charging (1). The battery then
+ * takes power from the charger, which on the power reading looks exactly like regen; a plugged
+ * car cannot drive, so such a tick belongs to no trip.
+ */
+fun isPluggedIn(data: DiParsData): Boolean = data.chargeGunState == GUN_CONNECTED || data.bmsState == BMS_CHARGING
+
+/**
+ * A minute that took energy while standing: regen needs wheels turning, so this was a charger
+ * (minutes recorded before [isPluggedIn] kept charging out). Such minutes are not trip data.
+ */
+fun TripMinuteEntity.looksLikeCharging(): Boolean = maxSpeed == 0 && regenKwh < -STANDING_REGEN_KWH
+
+/**
  * Folds poll ticks into clock minutes. [add] returns the minute that just ended when a tick
  * lands in a new one; [flush] the one in progress (the car went off). Pure: the clock comes in.
  */
@@ -176,7 +189,8 @@ class TripMinuteRecorder @Inject constructor(
     private val aggregator = MinuteAggregator()
 
     suspend fun onTick(carOn: Boolean, data: DiParsData?, now: Long = System.currentTimeMillis()) {
-        val row = if (carOn && data != null) aggregator.add(now, data) else aggregator.flush()
+        // Charging is not driving: the minute ends as if the car went off.
+        val row = if (carOn && data != null && !isPluggedIn(data)) aggregator.add(now, data) else aggregator.flush()
         row?.let { save(it) }
     }
 
@@ -200,6 +214,12 @@ private const val MS_PER_HOUR = 3_600_000.0
 
 /** The DC-DC's own losses: the 12 V load costs the battery a little more than it uses. */
 private const val DCDC_EFFICIENCY = 0.92
+
+private const val GUN_CONNECTED = 2
+private const val BMS_CHARGING = 1
+
+/** More than 3 kW on average returned in a minute without moving: no regen does that. */
+private const val STANDING_REGEN_KWH = 0.05
 
 /** Motors drawing less than this with no split are standing still, not an unknown split. */
 private const val IDLE_MOTORS_KW = 0.5

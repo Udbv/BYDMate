@@ -3,12 +3,15 @@ package com.bydmate.app.ui.map
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bydmate.app.data.repository.SettingsRepository
+import com.bydmate.app.domain.calculator.ConsumptionBoundsCache
 import com.bydmate.app.service.TrackingService
 import com.bydmate.app.util.AppStrings
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -19,49 +22,57 @@ data class MapTarget(val name: String, val address: String, val lat: Double, val
 data class MapUiState(
     val lat: Double? = null,
     val lon: Double? = null,
-    val reach: Reach? = null,
+    val scenarios: ReachScenarios? = null,
     val query: String = "",
     val searching: Boolean = false,
     val results: List<FoundPlace> = emptyList(),
     val searchFailed: Boolean = false,
     val target: MapTarget? = null,
-    val tileSource: String = SettingsRepository.DEFAULT_MAP_TILE_SOURCE,
+    val routing: Boolean = false,
+    val route: RoutePlan? = null,
+    val routeFailed: Boolean = false,
 ) {
-    /** Straight-line km from the car to the target; null without both. */
-    val targetStraightKm: Double?
+    val pieces: List<RoutePiece>
         get() {
-            val t = target ?: return null
-            return haversineKm(lat ?: return null, lon ?: return null, t.lat, t.lon)
+            val r = route ?: return emptyList()
+            val s = scenarios ?: return listOf(RoutePiece(ReachScenarios.Band.LIKELY, r.points))
+            return RouteBands.split(r.points, s)
         }
 }
 
 /**
- * The map page: the car on the map, how far the current range reaches, a place search and the
- * hand-over to Waze. Position and range come from the tracking service as they change.
+ * The map page: the car on the map, a place search, the road route to the picked target coloured
+ * by how far the charge reaches in three scenarios, and the hand-over to Waze. Position, range and
+ * the energy left come from the tracking service as they change.
  */
 @HiltViewModel
 class MapViewModel @Inject constructor(
     private val placeSearch: PlaceSearch,
+    private val routeClient: RouteClient,
+    private val boundsCache: ConsumptionBoundsCache,
     private val settingsRepository: SettingsRepository,
     private val appStrings: AppStrings,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
+    private var routeJob: Job? = null
 
     init {
-        viewModelScope.launch {
-            _uiState.update { it.copy(tileSource = settingsRepository.getMapTileSource()) }
-        }
         viewModelScope.launch {
             TrackingService.lastLocation.collect { loc ->
                 if (loc != null) _uiState.update { it.copy(lat = loc.latitude, lon = loc.longitude) }
             }
         }
         viewModelScope.launch {
-            TrackingService.lastRangeKm.collect { km ->
-                _uiState.update { it.copy(reach = km?.takeIf { r -> r > 0 }?.let(::Reach)) }
-            }
+            val bounds = boundsCache.get()
+            val capacity = settingsRepository.getBatteryCapacity()
+            combine(TrackingService.lastRangeKm, TrackingService.lastData) { km, data -> km to data }
+                .collect { (km, data) ->
+                    val remain = data?.batteryRemainKwh ?: data?.soc?.let { it / PERCENT * capacity }
+                    val scenarios = km?.takeIf { it > 0 }?.let { ReachScenarios.of(it, remain, bounds) }
+                    _uiState.update { it.copy(scenarios = scenarios) }
+                }
         }
     }
 
@@ -76,22 +87,36 @@ class MapViewModel @Inject constructor(
             val language = appStrings.context.resources.configuration.locales[0].language
             val result = placeSearch.search(q, s.lat, s.lon, language)
             _uiState.update {
-                it.copy(
-                    searching = false,
-                    results = result.getOrDefault(emptyList()),
-                    searchFailed = result.isFailure,
-                )
+                it.copy(searching = false, results = result.getOrDefault(emptyList()), searchFailed = result.isFailure)
             }
         }
     }
 
-    fun pick(place: FoundPlace) =
-        _uiState.update { it.copy(target = MapTarget(place.name, place.address, place.lat, place.lon), results = emptyList()) }
+    fun pick(place: FoundPlace) = setTarget(MapTarget(place.name, place.address, place.lat, place.lon))
 
-    fun pickPoint(lat: Double, lon: Double) =
-        _uiState.update { it.copy(target = MapTarget("", "", lat, lon), results = emptyList()) }
+    fun pickPoint(lat: Double, lon: Double) = setTarget(MapTarget("", "", lat, lon))
 
-    fun clearTarget() = _uiState.update { it.copy(target = null) }
+    fun clearTarget() {
+        routeJob?.cancel()
+        _uiState.update { it.copy(target = null, route = null, routing = false, routeFailed = false) }
+    }
 
     fun clearResults() = _uiState.update { it.copy(results = emptyList(), searchFailed = false) }
+
+    private fun setTarget(target: MapTarget) {
+        _uiState.update { it.copy(target = target, results = emptyList(), route = null, routeFailed = false) }
+        val s = _uiState.value
+        val lat = s.lat ?: return
+        val lon = s.lon ?: return
+        routeJob?.cancel()
+        _uiState.update { it.copy(routing = true) }
+        routeJob = viewModelScope.launch {
+            val result = routeClient.route(LatLon(lat, lon), LatLon(target.lat, target.lon))
+            _uiState.update { it.copy(routing = false, route = result.getOrNull(), routeFailed = result.isFailure) }
+        }
+    }
+
+    private companion object {
+        const val PERCENT = 100.0
+    }
 }

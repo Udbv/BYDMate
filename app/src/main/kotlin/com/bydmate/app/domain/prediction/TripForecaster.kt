@@ -6,6 +6,7 @@ import com.bydmate.app.data.local.dao.TripWeatherRow
 import com.bydmate.app.data.local.entity.TripEntity
 import com.bydmate.app.data.local.entity.TripMinuteEntity
 import com.bydmate.app.data.repository.TripRepository
+import com.bydmate.app.domain.tracker.looksLikeCharging
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -114,7 +115,10 @@ class TripForecaster @Inject constructor(
             val from = trip.startTs - MINUTE_MS + 1
             var i = all.binarySearchBy(from) { it.minuteTs }.let { if (it < 0) -it - 1 else it }
             val out = ArrayList<TripMinuteEntity>()
-            while (i < all.size && all[i].minuteTs <= end) out += all[i++]
+            while (i < all.size && all[i].minuteTs <= end) {
+                val m = all[i++]
+                if (!m.looksLikeCharging()) out += m
+            }
             return out
         }
 

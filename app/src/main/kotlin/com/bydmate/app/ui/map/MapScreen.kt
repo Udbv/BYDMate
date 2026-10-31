@@ -61,7 +61,8 @@ import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
-import org.osmdroid.views.overlay.Polygon
+import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.util.BoundingBox
 import kotlin.math.roundToInt
 
 /**
@@ -138,15 +139,25 @@ private fun Results(state: MapUiState, viewModel: MapViewModel) {
 
 @Composable
 private fun ReachLegend(state: MapUiState, modifier: Modifier) {
-    val reach = state.reach
+    val s = state.scenarios
     Panel(modifier) {
-        if (reach == null) {
+        if (s == null) {
             Text(stringResource(R.string.map_range_unknown), color = TextMuted, fontSize = 13.sp)
             return@Panel
         }
-        Text(stringResource(R.string.map_range, reach.rangeKm.roundToInt()), color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        Text(stringResource(R.string.map_reach_outer, reach.reachKm.roundToInt()), color = ReachColor, fontSize = 12.sp)
-        Text(stringResource(R.string.map_reach_inner, reach.safeKm.roundToInt()), color = AccentGreen, fontSize = 12.sp)
+        Text(stringResource(R.string.map_scenarios_title), color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        LegendRow(bandColor(ReachScenarios.Band.SURE), stringResource(R.string.map_scenario_heavy, s.heavyKm.roundToInt()))
+        LegendRow(bandColor(ReachScenarios.Band.LIKELY), stringResource(R.string.map_scenario_normal, s.normalKm.roundToInt()))
+        LegendRow(bandColor(ReachScenarios.Band.ECO_ONLY), stringResource(R.string.map_scenario_eco, s.ecoKm.roundToInt()))
+        LegendRow(bandColor(ReachScenarios.Band.OUT), stringResource(R.string.map_scenario_out))
+    }
+}
+
+@Composable
+private fun LegendRow(color: Color, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.width(18.dp).heightIn(min = 5.dp).clip(RoundedCornerShape(2.dp)).background(color))
+        Text(text, color = TextSecondary, fontSize = 12.sp)
     }
 }
 
@@ -164,18 +175,11 @@ private fun TargetCard(
             color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 2,
         )
         if (target.address.isNotBlank()) Text(target.address, color = TextMuted, fontSize = 12.sp, maxLines = 2)
-        val straight = state.targetStraightKm
-        val reach = state.reach
-        if (straight != null && reach != null) {
-            val road = reach.roadKm(straight)
-            val (text, color) = when (reach.verdict(straight)) {
-                Reach.Verdict.EASY -> stringResource(R.string.map_verdict_easy, road.roundToInt()) to AccentGreen
-                Reach.Verdict.TIGHT -> stringResource(R.string.map_verdict_tight, road.roundToInt()) to AccentOrange
-                Reach.Verdict.OUT -> stringResource(R.string.map_verdict_out, road.roundToInt()) to OutColor
-            }
-            Text(text, color = color, fontSize = 14.sp)
-        } else if (straight != null) {
-            Text(stringResource(R.string.map_distance_only, (straight * Reach.DETOUR).roundToInt()), color = TextSecondary, fontSize = 14.sp)
+        val route = state.route
+        when {
+            state.routing -> Text(stringResource(R.string.map_routing), color = TextMuted, fontSize = 14.sp)
+            route != null -> RouteSummary(route, state.scenarios)
+            state.routeFailed -> Text(stringResource(R.string.map_route_failed), color = AccentOrange, fontSize = 13.sp)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onRoute, colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)) {
@@ -186,103 +190,35 @@ private fun TargetCard(
     }
 }
 
+/** The route's length and time, then per scenario what is left at the end or what is missing. */
+@Composable
+private fun RouteSummary(route: RoutePlan, s: ReachScenarios?) {
+    Text(
+        stringResource(R.string.map_route_summary, route.distanceKm.roundToInt(), route.durationMin.roundToInt()),
+        color = TextPrimary, fontSize = 14.sp,
+    )
+    if (s == null) return
+    listOf(
+        Triple(R.string.map_scenario_name_heavy, s.heavyKm, ReachScenarios.Band.SURE),
+        Triple(R.string.map_scenario_name_normal, s.normalKm, ReachScenarios.Band.LIKELY),
+        Triple(R.string.map_scenario_name_eco, s.ecoKm, ReachScenarios.Band.ECO_ONLY),
+    ).forEach { (name, reach, band) ->
+        val left = reach - route.distanceKm
+        val text = if (left >= 0) {
+            stringResource(R.string.map_scenario_left, stringResource(name), left.roundToInt())
+        } else {
+            stringResource(R.string.map_scenario_short, stringResource(name), (-left).roundToInt())
+        }
+        LegendRow(if (left >= 0) bandColor(band) else bandColor(ReachScenarios.Band.OUT), text)
+    }
+}
+
 @Composable
 private fun Panel(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(
         modifier = modifier.clip(RoundedCornerShape(12.dp)).background(CardSurface.copy(alpha = 0.94f)).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) { content() }
-}
-
-/** OSM tiles (the Amap tiles are empty outside China), the car, the two reach rings, the target. */
-@Composable
-private fun ReachMap(state: MapUiState, onLongPress: (Double, Double) -> Unit, modifier: Modifier) {
-    val context = LocalContext.current
-    val mapView = remember {
-        MapView(context).apply {
-            setTileSource(TileSourceFactory.MAPNIK)
-            setMultiTouchControls(true)
-            zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
-            controller.setZoom(DEFAULT_ZOOM)
-        }
-    }
-    // The map centres on the car once and zooms to the reach once; after that the driver pans.
-    val view = remember { ViewMemory() }
-    DisposableEffect(mapView) {
-        mapView.onResume()
-        onDispose {
-            mapView.onPause()
-            mapView.onDetach()
-        }
-    }
-    AndroidView(factory = { mapView }, modifier = modifier, update = { map ->
-        map.overlays.clear()
-        map.overlays += MapEventsOverlay(object : MapEventsReceiver {
-            override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean = false
-            override fun longPressHelper(p: GeoPoint?): Boolean {
-                p?.let { onLongPress(it.latitude, it.longitude) }
-                return p != null
-            }
-        })
-        val lat = state.lat
-        val lon = state.lon
-        if (lat != null && lon != null) {
-            val here = GeoPoint(lat, lon)
-            state.reach?.let { reach ->
-                map.overlays += ring(here, reach.reachKm, ReachColor)
-                map.overlays += ring(here, reach.safeKm, AccentGreen)
-                if (!view.zoomed) {
-                    view.zoomed = true
-                    map.controller.setZoom(zoomFor(reach.reachKm))
-                }
-            }
-            map.overlays += Marker(map).apply {
-                position = here
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                title = context.getString(R.string.map_you)
-            }
-            if (!view.centered) {
-                view.centered = true
-                map.controller.setCenter(here)
-            }
-        }
-        state.target?.let { t ->
-            val p = GeoPoint(t.lat, t.lon)
-            map.overlays += Marker(map).apply {
-                position = p
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                title = t.name
-            }
-            if (view.shownTarget != t) {
-                view.shownTarget = t
-                map.controller.animateTo(p)
-            }
-        }
-        map.invalidate()
-    })
-}
-
-private class ViewMemory {
-    var centered = false
-    var zoomed = false
-    var shownTarget: MapTarget? = null
-}
-
-private fun ring(center: GeoPoint, km: Double, color: Color): Polygon = Polygon().apply {
-    points = Polygon.pointsAsCircle(center, km * METERS_PER_KM)
-    fillPaint.color = color.copy(alpha = 0.08f).toArgb()
-    outlinePaint.color = color.toArgb()
-    outlinePaint.strokeWidth = 4f
-    infoWindow = null
-}
-
-/** A zoom that shows the reach circle whole on a 1920 px wide screen, roughly. */
-private fun zoomFor(reachKm: Double): Double = when {
-    reachKm > 300 -> 6.0
-    reachKm > 150 -> 7.0
-    reachKm > 70 -> 8.0
-    reachKm > 30 -> 9.0
-    else -> 10.0
 }
 
 /** Waze by its own scheme; without Waze the web link still opens a browser or Waze's site. */
@@ -296,8 +232,3 @@ private fun openWaze(context: Context, uri: String) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(web)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 }
-
-private val ReachColor = Color(0xFF60A5FA)
-private val OutColor = Color(0xFFFB7185)
-private const val METERS_PER_KM = 1000.0
-private const val DEFAULT_ZOOM = 12.0

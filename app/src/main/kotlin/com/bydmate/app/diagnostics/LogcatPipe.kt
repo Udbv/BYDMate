@@ -5,6 +5,11 @@ package com.bydmate.app.diagnostics
  * what happens to our process and to the navigators (force stops, kills, deaths, ANRs), but on a
  * head unit it is mostly other apps' noise: non-protected broadcast stacks, a voice service the
  * firmware fails to start every second, memory pressure — thousands of lines an hour.
+ *
+ * The BYD framework tags (`BYDAutoSettingDevice`, `BYDAutoAcDevice`) are in the filter for the
+ * seat writes the stock climate app makes (#327/#341), but every process that listens to the car
+ * also echoes each car event as a `postEvent device_type: …` line: 24 thousand an hour on the
+ * Tang L, three quarters of a trip log. Those echoes are dropped; the writes stay.
  */
 internal object LogcatLineFilter {
 
@@ -21,7 +26,11 @@ internal object LogcatLineFilter {
     /** What the system does to a process, whoever it is: kept for any package. */
     private val KEYWORDS = Regex("""Killing|Force stopping|has died|ANR""")
 
+    /** A car event echoed by a listening process, not something anyone did. */
+    private const val EVENT_ECHO = "): postEvent device_type:"
+
     fun keep(line: String): Boolean {
+        if (line.contains(EVENT_ECHO)) return false
         if (!line.contains(ACTIVITY_MANAGER)) return true
         return PACKAGES.any { line.contains(it) } || KEYWORDS.containsMatchIn(line)
     }

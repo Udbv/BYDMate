@@ -80,4 +80,18 @@ class MinuteAggregatorTest {
         val row = agg.flush()!!
         assertEquals(36.0 * (1_000 + 5_000) / 3_600_000.0, row.motorsKwh, 1e-9)
     }
+
+    @Test fun `a plugged car is charging, not driving`() {
+        assertEquals(true, isPluggedIn(data(-40.0).copy(chargeGunState = 2)))
+        assertEquals(true, isPluggedIn(data(-40.0).copy(bmsState = 1)))
+        assertEquals(false, isPluggedIn(data(-40.0).copy(chargeGunState = 1, bmsState = 2)))
+    }
+
+    @Test fun `a standing minute that took energy was a charger, a moving one was regen`() {
+        val agg = MinuteAggregator()
+        for (s in 0 until 60) agg.add(s * 1000L, data(-40.0).copy(speed = 0))
+        assertEquals(true, agg.flush()!!.looksLikeCharging())
+        for (s in 0 until 60) agg.add(s * 1000L, data(-40.0).copy(speed = 30))
+        assertEquals(false, agg.flush()!!.looksLikeCharging())
+    }
 }

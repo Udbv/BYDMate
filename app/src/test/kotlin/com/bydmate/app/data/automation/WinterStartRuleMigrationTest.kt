@@ -90,4 +90,28 @@ class WinterStartRuleMigrationTest {
         assertEquals(0, migration().runOnce())
         assertEquals(listOf("主驾座椅加热2档", "后视镜加热"), commandsOf(id))
     }
+
+    @Test
+    fun `the stepped rule moves to the cabin temperature with its own threshold`() = runTest {
+        coEvery { settings.getString("winter_start_cabin_v1", "") } returns ""
+        coEvery { settings.setString("winter_start_cabin_v1", "true") } returns Unit
+        val staged = ruleDao.insert(
+            RuleEntity(name = "Зимний старт", triggers = triggers, actions = ActionDef.listToJson(WinterStartRuleMigration.stagedActions())),
+        )
+        val other = insert("主驾座椅加热2档")
+        assertEquals(1, migration().runCabinOnce())
+        val moved = TriggerDef.listFromJson(ruleDao.getById(staged)!!.triggers)
+        assertEquals(listOf("InsideTemp", "ServiceStart"), moved.map { it.param })
+        assertEquals("<", moved.first().operator)
+        assertEquals("15", moved.first().value)
+        assertEquals(triggers, ruleDao.getById(other)!!.triggers)
+        coVerify(exactly = 1) { settings.setString("winter_start_cabin_v1", "true") }
+    }
+
+    @Test
+    fun `the cabin move runs once`() = runTest {
+        coEvery { settings.getString("winter_start_cabin_v1", "") } returns "true"
+        ruleDao.insert(RuleEntity(name = "w", triggers = triggers, actions = ActionDef.listToJson(WinterStartRuleMigration.stagedActions())))
+        assertEquals(0, migration().runCabinOnce())
+    }
 }

@@ -6,6 +6,14 @@ import org.junit.Test
 
 class LogcatPipeTest {
 
+    @Test fun `car event echoes from listening processes are dropped, the framework's other lines stay`() {
+        assertFalse(LogcatLineFilter.keep("10-31 09:23:05.712 D/BYDAutoSettingDevice( 3177): postEvent device_type: 1023, event_type =2ec00020, value = 1"))
+        assertFalse(LogcatLineFilter.keep("10-31 09:23:05.712 I/BYDAutoAcDevice( 3177): postEvent device_type: 1000, event_type =12, value = 0"))
+        assertTrue(LogcatLineFilter.keep("10-31 09:35:36.086 I/BYDAutoSettingDevice( 7704): registerListener1"))
+        assertTrue(LogcatLineFilter.keep("10-31 09:40:00.000 I/AdasShadow(24400): car sign=50 sla=50"))
+    }
+
+
     private fun am(level: Char, text: String) = "10-05 15:56:25.574 $level/ActivityManager( 1116): $text"
 
     @Test fun `lines of other tags are always kept`() {
