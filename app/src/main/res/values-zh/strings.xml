@@ -2281,6 +2281,8 @@
     <string name="settings_fuel_price_hint">每升价格，适用于此日期起的行程</string>
     <string name="settings_full_trip_log_title">每次行程的完整日志</string>
     <string name="settings_full_trip_log_desc">车辆启动时自动开始记录应用日志，熄火时结束。文件保存到“下载”，如已绑定机器人则发送到 Telegram。开发版默认开启。</string>
+    <string name="settings_adas_shadow_title">ADAS 影子模式</string>
+    <string name="settings_adas_shadow_desc">在日志中记录 BYDMate 会从 Waze 传给驾驶辅助的内容（限速、摄像头、转向），但不实际发送；同时记录车辆自身看到的：摄像头识别的标志、辅助系统限速、巡航。行程结束时统计 Waze 限速与标志一致的次数。</string>
     <string name="trip_page_energy_title">能量去向</string>
     <string name="trip_page_rear">驱动：后轴</string>
     <string name="trip_page_front">驱动：前轴</string>

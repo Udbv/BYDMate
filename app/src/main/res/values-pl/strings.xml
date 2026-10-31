@@ -2319,6 +2319,8 @@
     <string name="settings_fuel_price_hint">za litr, dla podróży od tej daty</string>
     <string name="settings_full_trip_log_title">Pełny log każdej podróży</string>
     <string name="settings_full_trip_log_desc">Nagrywanie logu aplikacji startuje samo, gdy samochód się włącza, i kończy się, gdy się wyłącza. Plik trafia do «Pobrane», a gdy bot jest podłączony, jest wysyłany do Telegrama. W wersjach deweloperskich domyślnie włączone.</string>
+    <string name="settings_adas_shadow_title">Tryb cienia ADAS</string>
+    <string name="settings_adas_shadow_desc">Zapisuje w logu, co BYDMate przekazałby z Waze systemom wspomagania kierowcy (ograniczenie prędkości, kamera, manewr), niczego nie wysyłając, a obok to, co widzi samo auto: znak z kamery, limit asystenta, tempomat. Na koniec jazdy: jak często limit z Waze zgadzał się ze znakiem.</string>
     <string name="trip_page_energy_title">Dokąd poszła energia</string>
     <string name="trip_page_rear">Napęd: tył</string>
     <string name="trip_page_front">Napęd: przód</string>

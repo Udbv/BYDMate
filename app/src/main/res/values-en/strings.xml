@@ -2167,6 +2167,8 @@
     <string name="settings_fuel_price_hint">per litre, for trips from this date</string>
     <string name="settings_full_trip_log_title">Full log of every trip</string>
     <string name="settings_full_trip_log_desc">The app log recording starts by itself when the car comes on and ends when it goes off. The file is saved to Downloads and, with a bot connected, sent to Telegram. On by default in development builds.</string>
+    <string name="settings_adas_shadow_title">ADAS shadow mode</string>
+    <string name="settings_adas_shadow_desc">Logs what BYDMate would pass from Waze to the driver assistance (speed limit, camera, manoeuvre) without sending anything, next to what the car itself sees: the camera\'s sign, the assist\'s limit, the cruise. At the end of a drive: how often Waze\'s limit matched the sign.</string>
     <string name="trip_page_energy_title">Where the energy went</string>
     <string name="trip_page_rear">Traction: rear</string>
     <string name="trip_page_front">Traction: front</string>
