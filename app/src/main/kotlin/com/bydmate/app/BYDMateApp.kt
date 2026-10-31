@@ -144,6 +144,7 @@ class BYDMateApp : Application(), Configuration.Provider {
             startupStep("power state rules") { powerStateRuleMigration.runOnce() }
             // One-shot: the «Зимний старт» template warms fast and steps down instead of staying on.
             startupStep("winter start rule") { winterStartRuleMigration.runOnce() }
+            startupStep("winter start cabin") { winterStartRuleMigration.runCabinOnce() }
             // One-shot: the two start-up rules almost every car wants, so an update never
             // means adding them again by hand. Edits and deletions afterwards are respected.
             startupStep("default rules") { defaultRulesSeeder.runOnce() }

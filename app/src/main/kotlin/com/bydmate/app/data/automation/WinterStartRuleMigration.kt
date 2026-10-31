@@ -50,8 +50,49 @@ class WinterStartRuleMigration @Inject constructor(
         }
     }
 
+    /**
+     * One-shot move of the stepped «Зимний старт» from the outside temperature to the cabin's:
+     * the heat is for the people inside, and a cabin that kept warm overnight (garage, sun)
+     * needs none however cold it is out. The rule's own threshold and operator stay; only a rule
+     * with the stepped actions and a service-start trigger is touched.
+     */
+    @Suppress("TooGenericExceptionCaught") // any failure leaves the flag unset for a retry
+    suspend fun runCabinOnce(): Int {
+        if (settings.getString(KEY_CABIN_DONE, "") == "true") return 0
+        return try {
+            val staged = stagedActions().map { it.command }
+            val migrated = db.withTransaction {
+                val rules = ruleDao.getAllList().filter { rule ->
+                    val triggers = TriggerDef.listFromJson(rule.triggers)
+                    ActionDef.listFromJson(rule.actions).map { it.command } == staged &&
+                        triggers.any { it.kind == "service_start" } && triggers.any { it.param == OUTSIDE }
+                }
+                rules.forEach { rule ->
+                    val triggers = TriggerDef.listFromJson(rule.triggers).map { t ->
+                        if (t.param != OUTSIDE) t else cabinTrigger(t.operator, t.value)
+                    }
+                    ruleDao.update(rule.copy(triggers = TriggerDef.listToJson(triggers)))
+                }
+                rules.size
+            }
+            settings.setString(KEY_CABIN_DONE, "true")
+            Log.i(TAG, "Winter start cabin migration: cabin temperature in $migrated rule(s)")
+            migrated
+        } catch (e: Exception) {
+            Log.w(TAG, "Winter start cabin migration failed: ${e.message}")
+            0
+        }
+    }
+
     companion object {
         private const val TAG = "WinterStartMigration"
+        private const val KEY_CABIN_DONE = "winter_start_cabin_v1"
+        private const val OUTSIDE = "ExtTemp"
+        private const val CABIN = "InsideTemp"
+
+        /** The cabin temperature condition, named like the editor names it. */
+        fun cabinTrigger(operator: String, value: String) =
+            TriggerDef(CABIN, "车内温度", operator, value, "Темп. в салоне $operator $value°C")
 
         /** The template's actions before the steps: driver seat 2, mirror heat. */
         val TEMPLATE_COMMANDS = listOf("主驾座椅加热2档", "后视镜加热")

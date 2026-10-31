@@ -16,6 +16,7 @@ import com.bydmate.app.domain.cost.BatteryPriceLookup
 import com.bydmate.app.domain.cost.TripEnergyPrice
 import com.bydmate.app.domain.prediction.TripForecast
 import com.bydmate.app.domain.prediction.TripForecaster
+import com.bydmate.app.domain.tracker.looksLikeCharging
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,7 +75,7 @@ class TripPageViewModel @Inject constructor(
         }
         val end = trip.endTs ?: System.currentTimeMillis()
         // The minute holding the start began before it.
-        val minutes = tripMinuteDao.getInRange(trip.startTs - MINUTE_MS + 1, end)
+        val minutes = tripMinuteDao.getInRange(trip.startTs - MINUTE_MS + 1, end).filterNot { it.looksLikeCharging() }
         _uiState.update {
             it.copy(
                 loading = false,

@@ -64,7 +64,10 @@ class ClusterPowerWidget @Inject constructor(
         state.value = card
         // The peaks belong to one trip: a car coming on starts them afresh.
         if (carOn && !wasOn) history.value = CardHistory()
-        if (carOn) history.value = history.value.add(card, System.currentTimeMillis())
+        // A charger's power is no regen peak: the graphs and peaks keep to driving.
+        if (carOn && !com.bydmate.app.domain.tracker.isPluggedIn(data)) {
+            history.value = history.value.add(card, System.currentTimeMillis())
+        }
         wasOn = carOn
         when {
             enabled && carOn -> {

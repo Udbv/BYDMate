@@ -1281,8 +1281,9 @@ internal fun starterTemplates(lang: String): List<RuleEntity> {
             enabled = false,
             triggerLogic = "AND",
             triggers = TriggerDef.listToJson(listOf(
-                TriggerDef("ExtTemp", "车外温度", "<", "0",
-                    tName("车外温度 < 0°C", "Outside Temp < 0°C", "Темп. снаружи < 0°C")),
+                // The cabin, not the street: a warm garage needs no heat (WinterStartRuleMigration).
+                TriggerDef("InsideTemp", "车内温度", "<", "10",
+                    tName("车内温度 < 10°C", "Cabin Temp < 10°C", "Темп. в салоне < 10°C")),
                 TriggerDef("ServiceStart", "服务启动", "==", "true",
                     tName("BYDMate 启动", "BYDMate startup", "Запуск BYDMate"), kind = "service_start")
             )),
