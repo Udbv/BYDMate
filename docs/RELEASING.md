@@ -75,18 +75,19 @@ gh release create v3.15.0-dev.2 --repo Udbv/BYDMate --target develop --prereleas
 ```
 
 Stable (from `main`, ONLY after a real-car test of that exact build) — **CI does it**:
-`.github/workflows/release-stable.yml` runs on every push to `main` and promotes the pre-release that
-`develop` published for the same `versionName` to a full release marked latest. Nothing is rebuilt,
-so Stable users get the very APK that was tested in the car. The tag keeps its `-dev.N` name: the APK
-reports that versionName, and the in-app checker needs tag == `v` + versionName to see itself as
-current. The run fails, publishing nothing, when there is no such pre-release, it has no APK, or its
-tag is not in `main`.
-```bash
-git checkout main && git merge --ff-only develop && git push origin main
-```
+`.github/workflows/release-stable.yml` runs on every push to `main`. It takes the `versionName` on
+`main` (`X.Y.Z-dev.N`), checks that the pre-release `vX.Y.Z-dev.N` exists and is in `main`, and
+rebuilds that tag's commit with only the name changed to `X.Y.Z`. The result goes out as `vX.Y.Z`,
+a full release marked latest; the dev tag stays a pre-release. The code is exactly the tested code
+and `versionCode` is the dev build's, so it installs over the dev build in the car; only the name
+differs. Notes come from `docs/release-notes/vX.Y.Z.md`, or the dev build's notes when that file
+is missing. Release PR: `develop` -> `main` with a **merge commit**.
 
-A stable release with a plain `X.Y.Z` name still goes by hand: bump `versionName` to `X.Y.Z` on
-`develop` (CI publishes it as a pre-release), test that build, then fast-forward `main` as above.
+**After a stable `X.Y.Z` the next dev build must be above it** (`X.Y.(Z+1)-dev.1` or
+`X.(Y+1).0-dev.1`): `X.Y.Z-dev.N` sorts below `X.Y.Z`, and the Development channel would never offer it.
+
+(Until 2026-10-31 the dev pre-release itself was promoted, so the stable build was called
+`4.1.0-dev.23`; `v4.1.0` is the same build under its stable name.)
 
 Bump `versionCode` and `versionName` in `app/build.gradle.kts` before tagging; the tag must equal
 `v` + versionName so the in-app checker sees the running version as current.
