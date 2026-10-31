@@ -83,6 +83,9 @@ class MinuteAggregatorTest {
 
     @Test fun `a plugged car is charging, not driving`() {
         assertEquals(true, isPluggedIn(data(-40.0).copy(chargeGunState = 2)))
+        // DC reads 3 (2026-10-31 session at 140 kW).
+        assertEquals(true, isPluggedIn(data(-140.0).copy(chargeGunState = 3)))
+        assertEquals(false, isPluggedIn(data(-40.0).copy(chargeGunState = 0)))
         assertEquals(true, isPluggedIn(data(-40.0).copy(bmsState = 1)))
         assertEquals(false, isPluggedIn(data(-40.0).copy(chargeGunState = 1, bmsState = 2)))
     }
