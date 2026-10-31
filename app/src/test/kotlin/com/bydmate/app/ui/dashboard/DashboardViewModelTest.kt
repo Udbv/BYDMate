@@ -314,6 +314,7 @@ class DashboardViewModelTest {
             },
             costCalculator = costCalculatorOverride
                 ?: mockk(relaxed = true) { every { pricingVersion } returns MutableStateFlow(0L) },
+            tripMinuteDao = mockk(relaxed = true),
         )
     }
 

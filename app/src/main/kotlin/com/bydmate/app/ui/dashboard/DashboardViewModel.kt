@@ -97,6 +97,8 @@ data class DashboardUiState(
     val insideTemp: Int? = null,
     val tripDistanceKm: Double? = null,
     val sessionStartedAt: Long? = null,
+    /** The drive under way, drawn on top of the trip list (#42); null when there is none. */
+    val liveTrip: LiveTripUi? = null,
     val consumption: Double? = null,
     val consumptionTrend: Trend = Trend.NONE,
     val isCharging: Boolean = false,
@@ -170,6 +172,7 @@ class DashboardViewModel @Inject constructor(
     private val vehicleKindMonitor: VehicleKindMonitor,
     private val tariffPeriodDao: TariffPeriodDao,
     private val costCalculator: CostCalculator,
+    private val tripMinuteDao: com.bydmate.app.data.local.dao.TripMinuteDao,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DashboardUiState())
@@ -186,6 +189,32 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch { loadAutoserviceFlag() }
         observeTripCounters()
         observeVehicleKind()
+    }
+
+    private var liveTripAt = 0L
+    private var liveTripKey: Pair<Long?, Boolean>? = null
+
+    /**
+     * The drive under way (#42), from the session and its minutes. Called on every live update and
+     * done at most every [LIVE_TRIP_REFRESH_MS], or at once when the session starts or ends.
+     */
+    private fun refreshLiveTrip(nowMs: Long = System.currentTimeMillis()) {
+        val s = _uiState.value
+        val key = s.sessionStartedAt to s.isServiceRunning
+        if (key == liveTripKey && nowMs - liveTripAt < LIVE_TRIP_REFRESH_MS) return
+        liveTripKey = key
+        liveTripAt = nowMs
+        val start = s.sessionStartedAt
+        if (start == null || !s.isServiceRunning) {
+            _uiState.update { it.copy(liveTrip = null) }
+            return
+        }
+        viewModelScope.launch {
+            val minutes = runCatching { tripMinuteDao.getInRange(start - LIVE_TRIP_MINUTE_MS, nowMs) }
+                .getOrDefault(emptyList())
+            val live = LiveTrip.of(LiveSession(start, s.tripDistanceKm, s.consumption, s.exteriorTemp), nowMs, minutes)
+            _uiState.update { it.copy(liveTrip = live) }
+        }
     }
 
     /** The period cards read fuel sums only on a hybrid, so a kind change reloads them. */
@@ -332,6 +361,7 @@ class DashboardViewModel @Inject constructor(
                         fuelTotalL = data?.fuelTotalL,
                     )
                 }
+                refreshLiveTrip()
             }
         }
     }
@@ -603,3 +633,7 @@ class DashboardViewModel @Inject constructor(
         }
     }
 }
+
+/** The live trip row is a minute's data at most, so twice a minute is enough. */
+private const val LIVE_TRIP_REFRESH_MS = 30_000L
+private const val LIVE_TRIP_MINUTE_MS = 60_000L

@@ -2539,4 +2539,7 @@
         <item quantity="other">Ещё %1$d кода не поместились, все в окне «Диагностика»</item>
     </plurals>
     <string name="tech_value_pm25" translatable="false">%1$d µg/m³</string>
+    <string name="dashboard_live_trip_now">сейчас</string>
+    <string name="dashboard_live_trip_regen">рекуперация %1$.1f кВт·ч</string>
+    <string name="dashboard_live_trip_temp">снаружи %1$d °C</string>
 </resources>

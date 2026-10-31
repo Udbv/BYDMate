@@ -2519,4 +2519,7 @@
         <item quantity="many">Ще %1$d кодів не помістилися, усі у вікні «Діагностика»</item>
         <item quantity="other">Ще %1$d коду не помістилися, усі у вікні «Діагностика»</item>
     </plurals>
+    <string name="dashboard_live_trip_now">зараз</string>
+    <string name="dashboard_live_trip_regen">рекуперація %1$.1f кВт·год</string>
+    <string name="dashboard_live_trip_temp">надворі %1$d °C</string>
 </resources>

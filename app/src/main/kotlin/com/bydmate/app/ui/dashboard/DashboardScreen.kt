@@ -8,6 +8,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -581,12 +582,15 @@ fun DashboardScreen(
                     Text(stringResource(R.string.dashboard_col_per100), color = TextMuted, fontSize = 11.sp, textAlign = TextAlign.End, modifier = Modifier.weight(weights[weights.size - 2]))
                     Text(state.currencySymbol, color = TextMuted, fontSize = 11.sp, textAlign = TextAlign.End, modifier = Modifier.weight(weights.last()))
                 }
+                state.liveTrip?.let { live ->
+                    LiveTripRow(live, state.currencySymbol, showFuel)
+                }
                 if (state.recentTrips.isNotEmpty()) {
                     // The bottom padding matches the left column's, so the last row ends level
                     // with the TRIP cards.
                     WholeRowsColumn(
                         rowSpacing = 4.dp,
-                        maxRows = DASHBOARD_TRIP_ROWS,
+                        maxRows = if (state.liveTrip != null) DASHBOARD_TRIP_ROWS - 1 else DASHBOARD_TRIP_ROWS,
                         modifier = Modifier.weight(1f).padding(bottom = 4.dp),
                     ) {
                         state.recentTrips.forEach { trip ->
@@ -608,6 +612,39 @@ fun DashboardScreen(
 }
 
 private val GaugeMaxSize = 180.dp
+
+/**
+ * The drive under way (#42): the same row as a finished trip, edged in green, and under it what
+ * a row has no column for: «now», the energy won back, the temperature outside.
+ */
+@Composable
+private fun LiveTripRow(live: LiveTripUi, currencySymbol: String, showFuel: Boolean) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 4.dp)
+            .border(1.dp, AccentGreen, RoundedCornerShape(8.dp)),
+    ) {
+        TripCard(
+            trip = live.trip,
+            onClick = { },
+            currencySymbol = currencySymbol,
+            verticalPadding = 6.dp,
+            showFuel = showFuel,
+        )
+        val details = buildList {
+            add(stringResource(R.string.dashboard_live_trip_now))
+            live.regenKwh?.let { add(stringResource(R.string.dashboard_live_trip_regen, -it)) }
+            live.extTemp?.let { add(stringResource(R.string.dashboard_live_trip_temp, it)) }
+        }
+        Text(
+            details.joinToString(" · "),
+            color = AccentGreen,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
+        )
+    }
+}
 
 private const val DASHBOARD_TRIP_ROWS = 6
 
