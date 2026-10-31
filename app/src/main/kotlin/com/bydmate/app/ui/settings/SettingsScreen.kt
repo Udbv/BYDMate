@@ -3256,6 +3256,17 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
             com.bydmate.app.diagnostics.AutoTripLog.setEnabled(tripLogContext, it)
         },
     )
+    // ADAS shadow mode (#23): what Waze would offer the driving computer, logged, never sent.
+    var adasShadow by remember { mutableStateOf(com.bydmate.app.adas.AdasShadow.isEnabled(tripLogContext)) }
+    SettingToggleRow(
+        title = stringResource(R.string.settings_adas_shadow_title),
+        description = stringResource(R.string.settings_adas_shadow_desc),
+        checked = adasShadow,
+        onCheckedChange = {
+            adasShadow = it
+            com.bydmate.app.adas.AdasShadow.setEnabled(tripLogContext, it)
+        },
+    )
     // Trip debug log: the car keeps its own record because Wi-Fi is gone the moment it
     // leaves the driveway, so logcat is unreachable for the drive that matters.
     var tripDebug by remember { mutableStateOf(com.bydmate.app.diagnostics.TripDebugLog.isEnabled(tripLogContext)) }

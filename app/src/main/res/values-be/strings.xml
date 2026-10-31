@@ -2319,6 +2319,8 @@
     <string name="settings_fuel_price_hint">за літр, на паездкі з гэтай даты</string>
     <string name="settings_full_trip_log_title">Поўны лог кожнай паездкі</string>
     <string name="settings_full_trip_log_desc">Запіс логу праграмы пачынаецца сам, калі машына ўключаецца, і заканчваецца, калі выключаецца. Файл захоўваецца ў «Загрузкі» і, калі бот падключаны, адпраўляецца ў Telegram. У зборках «Распрацоўка» уключана па змаўчанні.</string>
+    <string name="settings_adas_shadow_title">Ценявы рэжым ADAS</string>
+    <string name="settings_adas_shadow_desc">Запісвае ў лог, што BYDMate перадаў бы сістэмам дапамогі кіроўцу з Waze (абмежаванне хуткасці, камера, манеўр), нічога не адпраўляючы, і побач тое, што бачыць сама машына: знак з камеры, абмежаванне асістэнта, круіз. У канцы паездкі — колькі разоў абмежаванне Waze супала са знакам.</string>
     <string name="trip_page_energy_title">Куды пайшла энергія</string>
     <string name="trip_page_rear">Цяга: зад</string>
     <string name="trip_page_front">Цяга: перад</string>
