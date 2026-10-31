@@ -653,6 +653,18 @@
     <string name="map_range_unknown">Запас ходу невідомий</string>
     <string name="map_route_waze">Маршрут у Waze</string>
     <string name="map_you">Ви тут</string>
+    <string name="map_speed_title">Швидше чи далі</string>
+    <string name="map_speed_kph">%1$d км/год</string>
+    <string name="map_speed_no_stops">без зарядок</string>
+    <string name="map_speed_kwh">%1$d кВт·год</string>
+    <string name="map_speed_cost">~%1$d %2$s</string>
+    <string name="map_speed_note">Зарядки %1$d кВт до 80 %%, старт з поточного заряду, приїзд з 10 %%. Час — із заїздом на зарядку.</string>
+    <plurals name="map_speed_stops">
+        <item quantity="one">%1$d зарядка, %2$d хв</item>
+        <item quantity="few">%1$d зарядки, %2$d хв</item>
+        <item quantity="many">%1$d зарядок, %2$d хв</item>
+        <item quantity="other">%1$d зарядки, %2$d хв</item>
+    </plurals>
     <string name="map_scenarios_title">Куди вистачить заряду</string>
     <string name="map_scenario_heavy">Важко (холод, траса): %1$d км</string>
     <string name="map_scenario_normal">Звично: %1$d км</string>

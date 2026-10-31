@@ -646,6 +646,15 @@
     <string name="map_range_unknown">续航未知</string>
     <string name="map_route_waze">在 Waze 中导航</string>
     <string name="map_you">您在这里</string>
+    <string name="map_speed_title">更快还是更远</string>
+    <string name="map_speed_kph">%1$d 公里/时</string>
+    <string name="map_speed_no_stops">无需充电</string>
+    <string name="map_speed_kwh">%1$d 千瓦时</string>
+    <string name="map_speed_cost">约 %1$d %2$s</string>
+    <string name="map_speed_note">%1$d 千瓦充电桩充至 80%%，从当前电量出发，到达时剩 10%%。时间含进站充电。</string>
+    <plurals name="map_speed_stops">
+        <item quantity="other">%1$d 次充电，%2$d 分钟</item>
+    </plurals>
     <string name="map_scenarios_title">电量能到哪里</string>
     <string name="map_scenario_heavy">严苛（寒冷、高速）：%1$d 公里</string>
     <string name="map_scenario_normal">通常：%1$d 公里</string>

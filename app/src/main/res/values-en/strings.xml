@@ -683,6 +683,16 @@
     <string name="map_range_unknown">Range unknown</string>
     <string name="map_route_waze">Route in Waze</string>
     <string name="map_you">You are here</string>
+    <string name="map_speed_title">Faster or further</string>
+    <string name="map_speed_kph">%1$d km/h</string>
+    <string name="map_speed_no_stops">no charging</string>
+    <string name="map_speed_kwh">%1$d kWh</string>
+    <string name="map_speed_cost">~%1$d %2$s</string>
+    <string name="map_speed_note">%1$d kW chargers to 80 %%, start from the charge now, arrive with 10 %%. Time includes pulling in to charge.</string>
+    <plurals name="map_speed_stops">
+        <item quantity="one">%1$d stop, %2$d min</item>
+        <item quantity="other">%1$d stops, %2$d min</item>
+    </plurals>
     <string name="map_scenarios_title">How far the charge reaches</string>
     <string name="map_scenario_heavy">Heavy (cold, highway): %1$d km</string>
     <string name="map_scenario_normal">Usual: %1$d km</string>

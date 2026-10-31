@@ -800,6 +800,18 @@
     <string name="map_range_unknown">Zasięg nieznany</string>
     <string name="map_route_waze">Trasa w Waze</string>
     <string name="map_you">Jesteś tutaj</string>
+    <string name="map_speed_title">Szybciej czy dalej</string>
+    <string name="map_speed_kph">%1$d km/h</string>
+    <string name="map_speed_no_stops">bez ładowania</string>
+    <string name="map_speed_kwh">%1$d kWh</string>
+    <string name="map_speed_cost">~%1$d %2$s</string>
+    <string name="map_speed_note">Ładowarki %1$d kW do 80 %%, start z obecnego ładunku, dojazd z 10 %%. Czas z zjazdem na ładowanie.</string>
+    <plurals name="map_speed_stops">
+        <item quantity="one">%1$d ładowanie, %2$d min</item>
+        <item quantity="few">%1$d ładowania, %2$d min</item>
+        <item quantity="many">%1$d ładowań, %2$d min</item>
+        <item quantity="other">%1$d ładowania, %2$d min</item>
+    </plurals>
     <string name="map_scenarios_title">Na ile starczy ładunku</string>
     <string name="map_scenario_heavy">Ciężko (zimno, trasa): %1$d km</string>
     <string name="map_scenario_normal">Zwykle: %1$d km</string>
