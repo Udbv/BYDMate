@@ -602,7 +602,10 @@ class TrackingService : Service(), LocationListener {
         Log.i(TAG, "onCreate: starting TrackingService")
         // One trip log per ignition cycle: the service is created when the car wakes and
         // destroyed when it sleeps, which is the boundary the owner thinks of as a trip.
-        com.bydmate.app.diagnostics.TripDebugLog.startTrip(applicationContext, "service start")
+        com.bydmate.app.diagnostics.TripDebugLog.startTrip(
+            applicationContext,
+            com.bydmate.app.diagnostics.TripDebugLog.startReason(applicationContext),
+        )
         Trace.event(TraceArea.APP, "service-start")
         com.bydmate.app.platform.LegacyHeadUnit.noteServiceStart()
         ChainLog.append(this, "TrackingService onCreate")

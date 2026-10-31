@@ -37,6 +37,7 @@ object TripDebugLog {
 
     /** Rolling window of trips kept on the car. */
     const val MAX_FILES = 12
+    private const val UPDATE_WINDOW_MS = 3 * 60 * 1000L
 
     /** A single trip's log is capped so a long drive cannot fill the partition. */
     private const val MAX_BYTES = 4L * 1024 * 1024
@@ -108,6 +109,17 @@ object TripDebugLog {
      * Opens a new trip file. Safe to call repeatedly: a trip already open is kept, so a
      * restarted service does not split one drive across two files.
      */
+    /**
+     * Why the service is starting, for the log header: an app installed or updated within the last
+     * [UPDATE_WINDOW_MS] means the start follows an update, possibly in the middle of a drive (#44).
+     */
+    fun startReason(context: Context, nowMs: Long = System.currentTimeMillis()): String {
+        val updated = runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+        }.getOrNull()
+        return if (updated != null && nowMs - updated in 0..UPDATE_WINDOW_MS) "app update" else "service start"
+    }
+
     @Synchronized
     fun startTrip(context: Context, reason: String) {
         refresh(context)
