@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.DirectionsCar
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -88,6 +89,7 @@ private val NavBarItemChrome = 40.dp
 enum class Screen(val route: String, val labelRes: Int, val icon: ImageVector) {
     Dashboard("dashboard", R.string.nav_tab_dashboard, Icons.Outlined.Home),
     Trips("trips", R.string.nav_tab_trips, Icons.Outlined.DirectionsCar),
+    Map("map", R.string.nav_tab_map, Icons.Outlined.Map),
     Charges("charges", R.string.nav_tab_charges, Icons.Outlined.BatteryChargingFull),
     Automation("automation", R.string.nav_tab_automation, Icons.Outlined.Bolt),
     Settings("settings", R.string.nav_tab_settings, Icons.Outlined.Settings)
@@ -305,6 +307,7 @@ fun AppNavigation(
                     onOpenTrip = { id -> navController.navigate(com.bydmate.app.ui.trips.TripPageViewModel.route(id)) },
                 )
             }
+            composable(Screen.Map.route) { com.bydmate.app.ui.map.MapScreen() }
             composable(Screen.Charges.route) {
                 ChargesScreen(onNavigateSettings = { navController.navigate(Screen.Settings.route) })
             }

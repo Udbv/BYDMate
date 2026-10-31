@@ -636,6 +636,23 @@
     <!-- Navigation bar tab labels -->
     <string name="nav_tab_dashboard">首页</string>
     <string name="nav_tab_trips">行程</string>
+    <string name="nav_tab_map">地图</string>
+    <string name="map_search_hint">去哪里：地址、地点</string>
+    <string name="map_search">搜索</string>
+    <string name="map_searching">搜索中…</string>
+    <string name="map_search_failed">搜索无响应（没有网络？）</string>
+    <string name="map_search_in_waze">在 Waze 中搜索</string>
+    <string name="map_close">关闭</string>
+    <string name="map_range_unknown">续航未知</string>
+    <string name="map_range">续航 %1$d 公里</string>
+    <string name="map_reach_outer">可达：直线约 %1$d 公里</string>
+    <string name="map_reach_inner">留有余量：直线约 %1$d 公里</string>
+    <string name="map_verdict_easy">可余量到达：道路约 %1$d 公里</string>
+    <string name="map_verdict_tight">勉强：道路约 %1$d 公里</string>
+    <string name="map_verdict_out">不充电无法到达：道路约 %1$d 公里</string>
+    <string name="map_distance_only">道路约 %1$d 公里</string>
+    <string name="map_route_waze">在 Waze 中导航</string>
+    <string name="map_you">您在这里</string>
     <string name="nav_tab_charges">充电</string>
     <string name="nav_tab_automation">自动化</string>
     <string name="nav_tab_settings">设置</string>

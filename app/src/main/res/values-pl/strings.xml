@@ -790,6 +790,23 @@
     <!-- Navigation bar tab labels -->
     <string name="nav_tab_dashboard">Główna</string>
     <string name="nav_tab_trips">Przejazdy</string>
+    <string name="nav_tab_map">Mapa</string>
+    <string name="map_search_hint">Dokąd: adres, miejsce</string>
+    <string name="map_search">Szukaj</string>
+    <string name="map_searching">Szukamy…</string>
+    <string name="map_search_failed">Wyszukiwanie nie odpowiedziało (brak internetu?)</string>
+    <string name="map_search_in_waze">Szukaj w Waze</string>
+    <string name="map_close">Zamknij</string>
+    <string name="map_range_unknown">Zasięg nieznany</string>
+    <string name="map_range">Zasięg %1$d km</string>
+    <string name="map_reach_outer">Osiągalne: ~%1$d km w linii prostej</string>
+    <string name="map_reach_inner">Z zapasem: ~%1$d km w linii prostej</string>
+    <string name="map_verdict_easy">Dojedziemy z zapasem: ~%1$d km drogami</string>
+    <string name="map_verdict_tight">Na styk: ~%1$d km drogami</string>
+    <string name="map_verdict_out">Bez ładowania nie dojedziemy: ~%1$d km drogami</string>
+    <string name="map_distance_only">~%1$d km drogami</string>
+    <string name="map_route_waze">Trasa w Waze</string>
+    <string name="map_you">Jesteś tutaj</string>
     <string name="nav_tab_charges">Ładowania</string>
     <string name="nav_tab_automation">Automatyzacja</string>
     <string name="nav_tab_settings">Ustawienia</string>
