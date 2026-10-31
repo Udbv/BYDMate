@@ -2356,6 +2356,11 @@
     <string name="settings_full_trip_log_desc">Nagrywanie logu aplikacji startuje samo, gdy samochód się włącza, i kończy się, gdy się wyłącza. Plik trafia do «Pobrane», a gdy bot jest podłączony, jest wysyłany do Telegrama. W wersjach deweloperskich domyślnie włączone.</string>
     <string name="settings_adas_shadow_title">Tryb cienia ADAS</string>
     <string name="settings_adas_shadow_desc">Zapisuje w logu, co BYDMate przekazałby z Waze systemom wspomagania kierowcy (ograniczenie prędkości, kamera, manewr), niczego nie wysyłając, a obok to, co widzi samo auto: znak z kamery, limit asystenta, tempomat. Na koniec jazdy: jak często limit z Waze zgadzał się ze znakiem.</string>
+    <string name="settings_adas_test_title">Test ADAS na postoju</string>
+    <string name="settings_adas_test_desc">Przez 30 sekund wysyła do systemów wspomagania kierowcy wybrane ograniczenie i fotoradar za %1$d m, jak fabryczna mapa, i pokazuje, co zgłasza auto. Tylko na P i bez ruchu; po teście wszystko jest czyszczone.</string>
+    <string name="settings_adas_test_start">Wyślij 30 s</string>
+    <string name="settings_adas_test_car">znak %1$s · asystent %2$s</string>
+    <string name="settings_adas_test_running">Wysyłam: ograniczenie %1$d, fotoradar %2$d m · jeszcze %3$d s</string>
     <string name="trip_page_energy_title">Dokąd poszła energia</string>
     <string name="trip_page_rear">Napęd: tył</string>
     <string name="trip_page_front">Napęd: przód</string>
