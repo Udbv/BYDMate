@@ -2471,4 +2471,8 @@
     <string name="dashboard_live_trip_now">当前</string>
     <string name="dashboard_live_trip_regen">能量回收 %1$.1f kWh</string>
     <string name="dashboard_live_trip_temp">车外 %1$d °C</string>
+    <string name="map_points_count">我的标记点：%1$d</string>
+    <string name="map_points_export">导出</string>
+    <string name="map_point_delete">删除</string>
+    <string name="map_point_details">方向 %1$s · 经过 %2$d 次 · %3$s</string>
 </resources>

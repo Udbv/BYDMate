@@ -25,7 +25,13 @@ import kotlin.math.roundToInt
 
 /** OSM tiles (the Amap tiles are empty outside China), the car, the target and the coloured route. */
 @Composable
-internal fun ReachMap(state: MapUiState, onLongPress: (Double, Double) -> Unit, modifier: Modifier) {
+internal fun ReachMap(
+    state: MapUiState,
+    onLongPress: (Double, Double) -> Unit,
+    modifier: Modifier,
+    points: List<com.bydmate.app.data.local.entity.RoadPointEntity> = emptyList(),
+    onPointTap: (Long) -> Unit = {},
+) {
     val context = LocalContext.current
     val mapView = remember {
         MapView(context).apply {
@@ -54,6 +60,18 @@ internal fun ReachMap(state: MapUiState, onLongPress: (Double, Double) -> Unit, 
             }
         })
         drawRoute(map, state, view)
+        // «Мої точки» (#22): one marker per marked place; a tap opens its card.
+        points.forEach { p ->
+            map.overlays += Marker(map).apply {
+                position = GeoPoint(p.lat, p.lon)
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                title = pointTitle(p)
+                setOnMarkerClickListener { _, _ ->
+                    onPointTap(p.id)
+                    true
+                }
+            }
+        }
         val lat = state.lat
         val lon = state.lon
         if (lat != null && lon != null) {

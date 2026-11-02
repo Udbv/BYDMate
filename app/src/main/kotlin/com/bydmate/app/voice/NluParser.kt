@@ -15,6 +15,8 @@ sealed interface ParseResult {
     data class Ask(val question: VehicleQuestion) : ParseResult
     /** Yandex Music's personal mix, started like the agent's play_music with no query. */
     data object Music : ParseResult
+    /** «Лежачий тут»: the car's position marked as a [com.bydmate.app.data.roadpoints.RoadPointType] (#22). */
+    data class Mark(val type: com.bydmate.app.data.roadpoints.RoadPointType) : ParseResult
     data object Unrecognized : ParseResult
 }
 

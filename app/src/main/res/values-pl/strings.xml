@@ -2527,4 +2527,8 @@
     <string name="dashboard_live_trip_now">teraz</string>
     <string name="dashboard_live_trip_regen">rekuperacja %1$.1f kWh</string>
     <string name="dashboard_live_trip_temp">na zewnątrz %1$d °C</string>
+    <string name="map_points_count">Moje punkty: %1$d</string>
+    <string name="map_points_export">Eksport</string>
+    <string name="map_point_delete">Usuń</string>
+    <string name="map_point_details">kierunek %1$s · przejazdów %2$d · %3$s</string>
 </resources>

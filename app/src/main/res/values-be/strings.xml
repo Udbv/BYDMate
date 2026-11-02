@@ -2527,4 +2527,8 @@
     <string name="dashboard_live_trip_now">зараз</string>
     <string name="dashboard_live_trip_regen">рэкуперацыя %1$.1f кВт·г</string>
     <string name="dashboard_live_trip_temp">звонку %1$d °C</string>
+    <string name="map_points_count">Мае пункты: %1$d</string>
+    <string name="map_points_export">Экспарт</string>
+    <string name="map_point_delete">Выдаліць</string>
+    <string name="map_point_details">кірунак %1$s · праездаў %2$d · %3$s</string>
 </resources>

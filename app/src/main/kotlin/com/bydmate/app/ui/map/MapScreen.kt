@@ -73,9 +73,22 @@ import kotlin.math.roundToInt
 @Composable
 fun MapScreen(viewModel: MapViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val pointsVm: MapPointsViewModel = hiltViewModel()
+    val points by pointsVm.points.collectAsStateWithLifecycle()
+    val pointsUi by pointsVm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
     Box(Modifier.fillMaxSize().background(NavyDark)) {
-        ReachMap(state, onLongPress = viewModel::pickPoint, modifier = Modifier.fillMaxSize())
+        ReachMap(
+            state, onLongPress = viewModel::pickPoint, modifier = Modifier.fillMaxSize(),
+            points = points, onPointTap = { pointsVm.select(it) },
+        )
+        PointsPanel(
+            points, pointsUi,
+            onExport = pointsVm::export,
+            onDelete = pointsVm::delete,
+            onClose = { pointsVm.select(null) },
+            modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp).width(340.dp),
+        )
         Column(
             modifier = Modifier.align(Alignment.TopStart).padding(12.dp).width(420.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),

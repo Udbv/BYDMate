@@ -2542,4 +2542,8 @@
     <string name="dashboard_live_trip_now">сейчас</string>
     <string name="dashboard_live_trip_regen">рекуперация %1$.1f кВт·ч</string>
     <string name="dashboard_live_trip_temp">снаружи %1$d °C</string>
+    <string name="map_points_count">Мои точки: %1$d</string>
+    <string name="map_points_export">Экспорт</string>
+    <string name="map_point_delete">Удалить</string>
+    <string name="map_point_details">направление %1$s · проездов %2$d · %3$s</string>
 </resources>

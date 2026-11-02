@@ -671,3 +671,16 @@ utterance	expected	category	danger
 включи проекцию	UNRECOGNIZED	hud	
 выключи проекцию на приборке	UNRECOGNIZED	hud	
 худ	UNRECOGNIZED	hud	
+лежачий тут	MARK:speed_bump	points	
+лежачий полицейский здесь	MARK:speed_bump	points	
+здесь лежачий	MARK:speed_bump	points	
+отметь лежачий	MARK:speed_bump	points	
+позначь лежачий поліцейський	MARK:speed_bump	points	
+светофор тут	MARK:traffic_light	points	
+світлофор тут	MARK:traffic_light	points	
+запомни светофор	MARK:traffic_light	points	
+полосы тут	MARK:lanes	points	
+смуги тут	MARK:lanes	points	
+отметь полосы	MARK:lanes	points	
+отметь точку	MARK:other	points	
+запомни место	MARK:other	points	
