@@ -2527,4 +2527,10 @@
     <string name="dashboard_live_trip_now">зараз</string>
     <string name="dashboard_live_trip_regen">рэкуперацыя %1$.1f кВт·г</string>
     <string name="dashboard_live_trip_temp">звонку %1$d °C</string>
+    <string name="map_points_count">Мае пункты: %1$d</string>
+    <string name="map_points_export">Экспарт</string>
+    <string name="map_point_delete">Выдаліць</string>
+    <string name="map_point_details">кірунак %1$s · праездаў %2$d · %3$s</string>
+    <string name="settings_bump_recording_title">Фонавы запіс для ляжачых</string>
+    <string name="settings_bump_recording_desc">У кожнай паездцы рэгістратар датчыкаў сам піша падвеску, нахіл кузава, хуткасць і колы і кожныя 20 хвілін адпраўляе частку запісу ў Telegram-бот (пасля адпраўкі файл выдаляецца з машыны). З гэтых запісаў наладжваецца распазнаванне ляжачых паліцэйскіх. Запіс, уключаны ўручную, не чапае.</string>
 </resources>

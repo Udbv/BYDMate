@@ -117,6 +117,10 @@ internal sealed interface CommandExpr {
         override fun resolve(values: Map<String, String>) = ParseResult.Music
     }
 
+    class Mark(private val type: com.bydmate.app.data.roadpoints.RoadPointType) : CommandExpr {
+        override fun resolve(values: Map<String, String>) = ParseResult.Mark(type)
+    }
+
     class Commands(private val terms: List<String>) : CommandExpr {
         override fun resolve(values: Map<String, String>) = ParseResult.Command(terms.flatMap { fill(it, values) })
     }
@@ -128,6 +132,9 @@ internal sealed interface CommandExpr {
             text == "TEMP +1" -> Temp(1)
             text == "TEMP -1" -> Temp(-1)
             text == "MUSIC" -> Music
+            text.startsWith("MARK ") -> text.removePrefix("MARK ").trim().let { id ->
+                Mark(requireNotNull(com.bydmate.app.data.roadpoints.RoadPointType.of(id)) { "unknown point \"$id\" in \"$text\"" })
+            }
             text.startsWith("VOL ") -> Vol(text.removePrefix("VOL ").trim())
             text.startsWith("ASK ") -> text.removePrefix("ASK ").trim().let { id ->
                 Ask(requireNotNull(VehicleQuestion.of(id)) { "unknown question \"$id\" in \"$text\"" })

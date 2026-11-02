@@ -520,6 +520,8 @@ class LogRecorder internal constructor(
             "AmbientNight:*", "TripMinutes:*",
             // 4.1.0-dev.17: ADAS shadow mode (what Waze would pass to the driver assistance).
             "AdasShadow:*",
+            "BumpRec:*",
+            "RoadPoints:*",
             // Power-off report in the helper daemon: arm, power off/on, send attempts, outcome.
             "OffReport:*",
             // Agent tools (where_am_i steps, failed weather requests) and the two Overpass

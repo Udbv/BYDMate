@@ -29,6 +29,8 @@
 #                       the phrase to the agent
 #   MUSIC               Yandex Music's personal mix («Моя волна»), as the agent's play_music
 #                       starts it with no query
+#   MARK TYPE           the car's position marked for Waze's map editors («Мої точки», #22):
+#                       speed_bump, traffic_light, lanes, other; nothing is dispatched
 # Every template phrase has a row in app/src/test/resources/voice/ru_commands_golden.tsv.
 
 # ---- Verbs ---------------------------------------------------------------------------------
@@ -346,3 +348,23 @@ solo сколько заряда осталось => ASK soc
 solo [какой] запас хода => ASK range
 solo на сколько [градусов] стоит <ac> => ASK ac_temp
 solo какая температура [стоит] на климате => ASK ac_temp
+
+# ---- My points for Waze (#22) --------------------------------------------------------------
+# The car's position goes to «Мої точки» for Waze's map editors; nothing in the car changes.
+# Ukrainian words too: the owner speaks Ukrainian and the recognizer often spells them as said.
+# Without a verb the phrase is solo, so «лежачий тут и закрой окно» is never cut in two.
+
+rule here: тут|здесь
+rule mark: отметь|отмечай|запомни|поставь|позначь|познач|запам'ятай
+rule bump: лежачий [полицейский|поліцейський]|лежачего [полицейского]|лежачка
+rule light: светофор|світлофор
+rule lanes: полосы|смуги|рядность
+solo <bump> <here> => MARK speed_bump
+solo <here> <bump> => MARK speed_bump
+<mark> <bump> => MARK speed_bump
+solo <light> <here> => MARK traffic_light
+solo <here> <light> => MARK traffic_light
+<mark> <light> => MARK traffic_light
+solo <lanes> <here> => MARK lanes
+<mark> <lanes> => MARK lanes
+<mark> (точку|место|місце) => MARK other

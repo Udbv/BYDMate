@@ -63,6 +63,7 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
     private val echoFilter: SelfEchoFilter = SelfEchoFilter(),
     private val userPhrases: VoiceUserPhrases = VoiceUserPhrases(),
     private val autoVoiceDuck: AutoVoiceDuck = AutoVoiceDuck.OFF,
+    private val roadPoints: com.bydmate.app.data.roadpoints.RoadPointRecorder? = null,
 ) {
     // Process-lifetime scope (@Singleton): intentionally never cancelled.
     private val scope = CoroutineScope(SupervisorJob())
@@ -647,6 +648,7 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
             is ParseResult.RelativeTemp -> Resolution.RelTemp(r.sign)
             is ParseResult.Volume -> Resolution.Vol(r.payload)
             ParseResult.Music -> Resolution.Music
+            is ParseResult.Mark -> Resolution.Mark(r.type)
             // A value the car does not report goes to the agent, never a made-up answer; so does
             // every question while the snapshot is not live: it is never cleared on transport
             // loss, and the range, kept elsewhere, would be just as old.
@@ -666,6 +668,7 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
             is Resolution.RelTemp -> dispatchRelativeTemp(res.sign, transcript, decodeMs)
             is Resolution.Vol -> dispatchVolume(res.payload, transcript, decodeMs)
             Resolution.Music -> dispatchMusic(transcript, decodeMs)
+            is Resolution.Mark -> markPoint(res.type, transcript, decodeMs)
             is Resolution.Answer -> answer(res, transcript, decodeMs)
             is Resolution.Auto -> fireAutomation(res.match, transcript, decodeMs)
             is Resolution.None -> agentFallback(transcript, decodeMs)
@@ -873,6 +876,19 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
             announce("Голос", "Услышал: «$transcript». Отказ: $reason", "Не получилось")
         }
         return result.success
+    }
+
+    /** «Лежачий тут» (#22): the position goes to «Мої точки» and the answer says what became of it. */
+    private suspend fun markPoint(type: com.bydmate.app.data.roadpoints.RoadPointType, transcript: String, decodeMs: Long?) {
+        val result = roadPoints?.mark(type) ?: com.bydmate.app.data.roadpoints.MarkResult.NoPosition
+        val text = com.bydmate.app.data.roadpoints.RoadPointPhrases.answer(result)
+        val ok = result !is com.bydmate.app.data.roadpoints.MarkResult.NoPosition
+        if (ok) earcon.ok() else earcon.fail()
+        _state.value = if (ok) VoiceUiState.Done(transcript) else VoiceUiState.Blocked(text)
+        val outcome = if (ok) VoiceJournalEntry.Outcome.OK else VoiceJournalEntry.Outcome.BLOCKED
+        record(nluEntry(transcript, decodeMs, "mark:${type.id}", outcome).copy(answer = text),
+            "NLU mark: type=${type.id} result=$result transcript=\"$transcript\"")
+        announce("Голос", text, text, done = ok)
     }
 
     /** A dictionary question answered from the car's readings: said and shown like any other
@@ -1104,6 +1120,7 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
         data class RelTemp(val sign: Int) : Resolution
         data class Vol(val payload: String) : Resolution
         data object Music : Resolution
+        data class Mark(val type: com.bydmate.app.data.roadpoints.RoadPointType) : Resolution
         /** A dictionary question with the value known: [text] is said, nothing is dispatched. */
         data class Answer(val question: VehicleQuestion, val text: String) : Resolution {
             val label: String get() = "ask:${question.id}"
@@ -1115,7 +1132,7 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
         /** The route code of the trace. */
         val route: String get() = when (this) {
             is Cmd -> if (label.startsWith("phrase:")) "phrase" else "nlu"
-            is RelTemp, is Vol, Music, is Answer -> "nlu"
+            is RelTemp, is Vol, Music, is Answer, is Mark -> "nlu"
             is Auto -> "automation"
             is None -> "agent"
         }
