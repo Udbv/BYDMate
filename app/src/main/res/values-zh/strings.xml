@@ -2475,4 +2475,6 @@
     <string name="map_points_export">导出</string>
     <string name="map_point_delete">删除</string>
     <string name="map_point_details">方向 %1$s · 经过 %2$d 次 · %3$s</string>
+    <string name="settings_bump_recording_title">减速带后台记录</string>
+    <string name="settings_bump_recording_desc">每次行驶时，传感器记录器会自动记录悬架、车身俯仰、车速和车轮数据，并每 20 分钟将一段记录发送到 Telegram 机器人（发送后从车上删除）。减速带识别将基于这些记录进行调校。手动开启的记录不受影响。</string>
 </resources>

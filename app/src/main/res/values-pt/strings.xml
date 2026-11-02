@@ -2369,4 +2369,6 @@
     <string name="map_points_export">Exportar</string>
     <string name="map_point_delete">Apagar</string>
     <string name="map_point_details">direção %1$s · passagens %2$d · %3$s</string>
+    <string name="settings_bump_recording_title">Gravação em segundo plano para lombas</string>
+    <string name="settings_bump_recording_desc">Em cada viagem o gravador de sensores grava sozinho a suspensão, a inclinação da carroçaria, a velocidade e as rodas e envia uma parte ao bot do Telegram a cada 20 minutos (o ficheiro é apagado do carro depois de enviado). A deteção de lombas é afinada com estas gravações. Uma gravação iniciada à mão não é tocada.</string>
 </resources>

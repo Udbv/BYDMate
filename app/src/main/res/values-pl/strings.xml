@@ -2531,4 +2531,6 @@
     <string name="map_points_export">Eksport</string>
     <string name="map_point_delete">Usuń</string>
     <string name="map_point_details">kierunek %1$s · przejazdów %2$d · %3$s</string>
+    <string name="settings_bump_recording_title">Nagrywanie w tle dla progów zwalniających</string>
+    <string name="settings_bump_recording_desc">W każdej jeździe rejestrator czujników sam nagrywa zawieszenie, pochylenie nadwozia, prędkość i koła i co 20 minut wysyła część nagrania do bota Telegram (po wysłaniu plik jest usuwany z auta). Na tych nagraniach stroi się rozpoznawanie progów zwalniających. Nagrania włączonego ręcznie nie rusza.</string>
 </resources>

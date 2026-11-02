@@ -3256,6 +3256,17 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
             com.bydmate.app.diagnostics.AutoTripLog.setEnabled(tripLogContext, it)
         },
     )
+    // #22: the sensor recorder runs by itself every drive, for the speed bump detector.
+    var bumpRec by remember { mutableStateOf(com.bydmate.app.diagnostics.BumpRecording.isEnabled(tripLogContext)) }
+    SettingToggleRow(
+        title = stringResource(R.string.settings_bump_recording_title),
+        description = stringResource(R.string.settings_bump_recording_desc),
+        checked = bumpRec,
+        onCheckedChange = {
+            bumpRec = it
+            com.bydmate.app.diagnostics.BumpRecording.setEnabled(tripLogContext, it)
+        },
+    )
     // ADAS shadow mode (#23): what Waze would offer the driving computer, logged, never sent.
     var adasShadow by remember { mutableStateOf(com.bydmate.app.adas.AdasShadow.isEnabled(tripLogContext)) }
     SettingToggleRow(

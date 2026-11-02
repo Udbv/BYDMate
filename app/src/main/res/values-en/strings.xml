@@ -2367,4 +2367,6 @@
     <string name="map_points_export">Export</string>
     <string name="map_point_delete">Delete</string>
     <string name="map_point_details">heading %1$s · passes %2$d · %3$s</string>
+    <string name="settings_bump_recording_title">Background recording for speed bumps</string>
+    <string name="settings_bump_recording_desc">Every drive the sensor recorder records the suspension, body pitch, speed and wheels by itself and sends a part to the Telegram bot every 20 minutes (the file is deleted from the car once sent). The speed bump detection is tuned on these recordings. A recording started by hand is left alone.</string>
 </resources>

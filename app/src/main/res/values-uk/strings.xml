@@ -2526,4 +2526,6 @@
     <string name="map_points_export">Експорт</string>
     <string name="map_point_delete">Видалити</string>
     <string name="map_point_details">напрямок %1$s · проїздів %2$d · %3$s</string>
+    <string name="settings_bump_recording_title">Фоновий запис для лежачих</string>
+    <string name="settings_bump_recording_desc">У кожній поїздці реєстратор датчиків сам пише підвіску, нахил кузова, швидкість і колеса і кожні 20 хвилин надсилає частину запису в Telegram-бот (після надсилання файл видаляється з машини). З цих записів налаштовується розпізнавання лежачих поліцейських. Запис, увімкнений вручну, не чіпає.</string>
 </resources>

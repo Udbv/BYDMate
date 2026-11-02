@@ -95,6 +95,7 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var massageKeeper: com.bydmate.app.data.automation.MassageKeeper
     @Inject lateinit var clusterPowerWidget: com.bydmate.app.cluster.ClusterPowerWidget
     @Inject lateinit var autoTripLog: com.bydmate.app.diagnostics.AutoTripLog
+    @Inject lateinit var bumpRecording: com.bydmate.app.diagnostics.BumpRecording
     @Inject lateinit var tripMinuteRecorder: com.bydmate.app.domain.tracker.TripMinuteRecorder
     @Inject lateinit var adasShadow: com.bydmate.app.adas.AdasShadow
     @Inject lateinit var networkAvailableMonitor: com.bydmate.app.data.automation.NetworkAvailableMonitor
@@ -1813,6 +1814,8 @@ class TrackingService : Service(), LocationListener {
                         .onFailure { Log.w(TAG, "ClusterPowerWidget.onTick failed", it) }
                     runCatching { autoTripLog.onTick(data.powerState?.let { it >= 1 } == true) }
                         .onFailure { Log.w(TAG, "AutoTripLog.onTick failed", it) }
+                    runCatching { bumpRecording.onTick(data.powerState?.let { it >= 1 } == true) }
+                        .onFailure { Log.w(TAG, "BumpRecording.onTick failed", it) }
                     tripMinuteRecorder.onTick(data.powerState?.let { it >= 1 } == true, data)
                     runCatching { adasShadow.onTick(data.powerState?.let { it >= 1 } == true, data) }
                         .onFailure { Log.w(TAG, "AdasShadow.onTick failed", it) }
