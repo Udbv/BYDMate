@@ -52,7 +52,13 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # develop is not the default branch, so setup-gradle would only read the caches CI wrote.
+      # Writing lets the next dev release restore this one's Gradle home, build cache included
+      # (release-variant outputs nothing in CI produces). The save runs in the post step, after
+      # the release is already published.
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: false
 
       - name: Read version
         id: version
@@ -89,9 +95,12 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
+      # No lintVital here: ci.yml lints both flavors on every PR and develop push, and on this
+      # runner the release-variant lint ran ~2.5 min beside R8, both on the same 4 vCPUs and heap.
+      # A local `assembleWazeRelease` (and release-stable.yml) still runs it.
       - name: Build
         if: steps.version.outputs.skip != 'true'
-        run: ./gradlew :app:assembleWazeRelease --stacktrace
+        run: ./gradlew :app:assembleWazeRelease -x lintVitalWazeRelease --stacktrace
 
       # An unsigned APK would not install over the copy in the car, so never publish one.
       - name: Verify signature
