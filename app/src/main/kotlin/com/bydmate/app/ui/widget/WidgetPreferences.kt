@@ -81,6 +81,22 @@ class WidgetPreferences(private val prefs: SharedPreferences) {
         awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
+    /** Arrival reserve row (#6C). On by default: it shows only while a route is guided. */
+    fun isArrivalChipEnabled(): Boolean = prefs.getBoolean(KEY_ARRIVAL_CHIP, true)
+
+    fun setArrivalChipEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_ARRIVAL_CHIP, enabled).apply()
+    }
+
+    fun arrivalChipFlow(): Flow<Boolean> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->
+            if (changedKey == KEY_ARRIVAL_CHIP) trySend(isArrivalChipEnabled())
+        }
+        trySend(isArrivalChipEnabled())
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     fun getScale(): Float = prefs.getFloat(KEY_SCALE, 1.0f)
 
     fun setScale(scale: Float) {
@@ -321,6 +337,7 @@ class WidgetPreferences(private val prefs: SharedPreferences) {
         const val KEY_HIDE_ON_YOUTUBE = "widget_hide_on_youtube"
         const val KEY_HIDE_IN_APPS = "widget_hide_in_apps"
         const val KEY_POWER_GRAPH = "widget_power_graph"
+        const val KEY_ARRIVAL_CHIP = "widget_arrival_chip"
         const val KEY_HOME_ONLY = "widget_home_only"
         const val KEY_BUTTON_ICON_PREFIX = "widget_button_icon_"
         fun buttonIconKey(number: Int): String = "$KEY_BUTTON_ICON_PREFIX$number"

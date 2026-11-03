@@ -2395,4 +2395,8 @@
     <string name="map_point_status_confirmed">confirmed</string>
     <string name="map_point_status_rejected">rejected</string>
     <string name="map_point_status_in_waze">already in Waze</string>
+    <string name="widget_arrival_reserve">On arrival: ~%1$d km left</string>
+    <string name="widget_arrival_short">Short by ~%1$d km</string>
+    <string name="settings_widget_arrival_chip_label">Range on arrival</string>
+    <string name="settings_widget_arrival_chip_description">While Waze guides a route, a row at the bottom of the widget shows how many km will be left at the destination. Yellow: little reserve, red: not enough.</string>
 </resources>

@@ -2574,4 +2574,8 @@
     <string name="map_point_status_confirmed">подтверждено</string>
     <string name="map_point_status_rejected">отклонено</string>
     <string name="map_point_status_in_waze">уже в Waze</string>
+    <string name="widget_arrival_reserve">На прибытии: ~%1$d км запаса</string>
+    <string name="widget_arrival_short">Не хватит ~%1$d км</string>
+    <string name="settings_widget_arrival_chip_label">Запас на прибытии</string>
+    <string name="settings_widget_arrival_chip_description">Пока Waze ведёт по маршруту, внизу виджета строка: сколько км останется на финише. Жёлтым — запас мал, красным — не хватит.</string>
 </resources>

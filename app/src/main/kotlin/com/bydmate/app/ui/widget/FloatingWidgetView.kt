@@ -82,6 +82,8 @@ import kotlinx.coroutines.delay
  * Row 2 (center, main): SOC% (18sp, status color) · range km (28sp bold white) · consumption + trend (18sp).
  * Row 3 (bottom, service): cabin temp (🚗), battery temperature (🔋), 12V (⚡) — 13sp.
  * Row 4 (optional, [powerGraph]): Tesla-style power meter, adds [POWER_GRAPH_EXTRA_HEIGHT_DP].
+ * Row 5 (optional, [arrival] non-null): reserve at the destination of a guided route (#6C),
+ *   adds [ARRIVAL_CHIP_EXTRA_HEIGHT_DP].
  *
  * Icons are muted gray, values are white in service rows. Km is always white
  * regardless of SOC status (only the border + SOC % + trend text colorize).
@@ -108,6 +110,7 @@ fun FloatingWidgetView(
     kind: VehicleKind = VehicleKind.EV,
     fuelPercent: Int? = null,
     fuelRangeKm: Int? = null,
+    arrival: ArrivalReserve? = null,
 ) {
     val showFuel = widgetShowsFuel(kind)
     val status = widgetStatus(soc, voltage12v)
@@ -137,7 +140,7 @@ fun FloatingWidgetView(
         Column(
             modifier = Modifier
                 .alpha(alpha.coerceIn(0.3f, 1.0f))
-                .size(width = 260.dp, height = widgetHeightDp(powerGraph).dp)
+                .size(width = 260.dp, height = widgetHeightDp(powerGraph, arrival != null).dp)
                 .shadow(elevation = 8.dp, shape = RoundedCornerShape(14.dp))
                 .background(CardSurface, RoundedCornerShape(14.dp))
                 .then(borderModifier)
@@ -175,6 +178,10 @@ fun FloatingWidgetView(
                 WidgetDivider()
                 RowPowerGraph(powerSamples)
             }
+            if (arrival != null) {
+                WidgetDivider()
+                RowArrivalChip(arrival)
+            }
         }
     }
 }
@@ -184,8 +191,10 @@ internal const val TRIP_DISTANCE_TREND_THRESHOLD_KM = 0.3
 internal const val WIDGET_BASE_HEIGHT_DP = 108
 
 /** Panel height; the window follows it, so WidgetController sizes from the same function. */
-internal fun widgetHeightDp(powerGraph: Boolean): Int =
-    WIDGET_BASE_HEIGHT_DP + if (powerGraph) POWER_GRAPH_EXTRA_HEIGHT_DP else 0
+internal fun widgetHeightDp(powerGraph: Boolean, arrivalChip: Boolean = false): Int =
+    WIDGET_BASE_HEIGHT_DP +
+        (if (powerGraph) POWER_GRAPH_EXTRA_HEIGHT_DP else 0) +
+        (if (arrivalChip) ARRIVAL_CHIP_EXTRA_HEIGHT_DP else 0)
 
 // ---- Snake border (Wave B listening indication) ----
 

@@ -2559,4 +2559,8 @@
     <string name="map_point_status_confirmed">potwierdzony</string>
     <string name="map_point_status_rejected">odrzucony</string>
     <string name="map_point_status_in_waze">już w Waze</string>
+    <string name="widget_arrival_reserve">Na miejscu: ~%1$d km zapasu</string>
+    <string name="widget_arrival_short">Zabraknie ~%1$d km</string>
+    <string name="settings_widget_arrival_chip_label">Zasięg na miejscu</string>
+    <string name="settings_widget_arrival_chip_description">Gdy Waze prowadzi trasą, na dole widżetu pojawia się wiersz: ile km zostanie na miejscu. Żółty — mały zapas, czerwony — nie wystarczy.</string>
 </resources>

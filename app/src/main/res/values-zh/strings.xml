@@ -2503,4 +2503,8 @@
     <string name="map_point_status_confirmed">已确认</string>
     <string name="map_point_status_rejected">已拒绝</string>
     <string name="map_point_status_in_waze">已在 Waze 中</string>
+    <string name="widget_arrival_reserve">到达时：剩余约 %1$d 公里</string>
+    <string name="widget_arrival_short">还差约 %1$d 公里</string>
+    <string name="settings_widget_arrival_chip_label">到达剩余续航</string>
+    <string name="settings_widget_arrival_chip_description">Waze 导航时，小组件底部显示到达目的地时剩余的公里数。黄色：余量不足，红色：无法到达。</string>
 </resources>

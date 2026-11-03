@@ -851,6 +851,8 @@ private fun WidgetSection() {
         .collectAsStateWithLifecycle(initialValue = prefs.getHideInApps())
     val powerGraph by prefs.powerGraphFlow()
         .collectAsStateWithLifecycle(initialValue = prefs.isPowerGraphEnabled())
+    val arrivalChip by prefs.arrivalChipFlow()
+        .collectAsStateWithLifecycle(initialValue = prefs.isArrivalChipEnabled())
     var showLeftTapPicker by remember { mutableStateOf(false) }
     var showHideInAppsPicker by remember { mutableStateOf(false) }
 
@@ -893,6 +895,13 @@ private fun WidgetSection() {
                 description = stringResource(R.string.settings_widget_power_graph_description),
                 checked = powerGraph,
                 onCheckedChange = { prefs.setPowerGraphEnabled(it) },
+            )
+            SettingToggleRow(
+                title = stringResource(R.string.settings_widget_arrival_chip_label),
+                traceId = "widget_arrival_chip",
+                description = stringResource(R.string.settings_widget_arrival_chip_description),
+                checked = arrivalChip,
+                onCheckedChange = { prefs.setArrivalChipEnabled(it) },
             )
             SettingToggleRow(
                 title = stringResource(R.string.settings_widget_hide_youtube_label),
