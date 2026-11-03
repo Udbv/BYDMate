@@ -1128,6 +1128,7 @@ private fun DisplaySection() {
     }
 
     SectionHeader(text = stringResource(R.string.settings_section_display_title))
+    AdasLimitsRow()
     SettingCollapsibleCard(
         title = stringResource(R.string.settings_display_card_mirror_title),
         subtitle = if (enabled) {
@@ -3278,17 +3279,6 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
             com.bydmate.app.adas.AdasShadow.setEnabled(tripLogContext, it)
         },
     )
-    // #23: Waze's limits and cameras really sent to the car while driving; off by default.
-    var adasLive by remember { mutableStateOf(com.bydmate.app.adas.AdasLimitSender.isEnabled(tripLogContext)) }
-    SettingToggleRow(
-        title = stringResource(R.string.settings_adas_live_title),
-        description = stringResource(R.string.settings_adas_live_desc),
-        checked = adasLive,
-        onCheckedChange = {
-            adasLive = it
-            com.bydmate.app.adas.AdasLimitSender.setEnabled(tripLogContext, it)
-        },
-    )
     // #23 step 2: a real send of a limit and a camera, parked only, on a tap.
     AdasParkedTestRow()
     // Trip debug log: the car keeps its own record because Wi-Fi is gone the moment it
@@ -5431,4 +5421,21 @@ private fun cloudOverWifiStatusText(state: CloudOverWifiState): String? = when (
     CloudOverWifiState.ServerRefused -> stringResource(R.string.settings_cloud_wifi_status_refused)
     CloudOverWifiState.Connected -> stringResource(R.string.settings_cloud_wifi_status_connected)
     CloudOverWifiState.ReturnPending -> stringResource(R.string.settings_cloud_wifi_status_return_pending)
+}
+
+/** #23: Waze's limits and cameras sent to the car while driving; off by default. Kept on top of
+ *  «Дисплей», where the owner looks for what the car shows (3.11: not found under diagnostics). */
+@Composable
+private fun AdasLimitsRow() {
+    val context = LocalContext.current
+    var on by remember { mutableStateOf(com.bydmate.app.adas.AdasLimitSender.isEnabled(context)) }
+    SettingToggleRow(
+        title = stringResource(R.string.settings_adas_live_title),
+        description = stringResource(R.string.settings_adas_live_desc),
+        checked = on,
+        onCheckedChange = {
+            on = it
+            com.bydmate.app.adas.AdasLimitSender.setEnabled(context, it)
+        },
+    )
 }
