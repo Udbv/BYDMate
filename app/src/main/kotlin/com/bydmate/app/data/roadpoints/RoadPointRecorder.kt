@@ -40,9 +40,15 @@ class RoadPointRecorder @Inject constructor(
 
     fun observe(): Flow<List<RoadPointEntity>> = dao.observeAll()
 
-    suspend fun mark(type: RoadPointType): MarkResult {
-        val loc = location()?.takeIf { nowMs() - it.time <= MAX_FIX_AGE_MS && it.accuracy <= MAX_ACCURACY_M }
-            ?: return MarkResult.NoPosition
+    suspend fun mark(type: RoadPointType): MarkResult =
+        markAt(type, location()?.takeIf { nowMs() - it.time <= MAX_FIX_AGE_MS })
+
+    /**
+     * Marks [type] at [at]: the fix the caller chose (the car's position now, or where a confirmed
+     * bump was felt seconds ago, #22). Nothing without a fix as precise as [MAX_ACCURACY_M].
+     */
+    suspend fun markAt(type: RoadPointType, at: Location?): MarkResult {
+        val loc = at?.takeIf { it.accuracy <= MAX_ACCURACY_M } ?: return MarkResult.NoPosition
         val heading = loc.bearing.toDouble().takeIf { loc.hasBearing() && loc.hasSpeed() && loc.speed >= MIN_SPEED_MPS }
         val box = RoadPoints.box(loc.latitude, loc.longitude)
         val near = dao.inBox(type.name, box[0], box[1], box[2], box[3])

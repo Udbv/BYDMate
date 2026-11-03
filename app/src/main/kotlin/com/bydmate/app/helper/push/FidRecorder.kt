@@ -58,6 +58,7 @@ internal object FidRecorder {
     private val rows = linkedMapOf<Int, FidRecDeviceRow>()
     private val counters = linkedMapOf<Int, Counters>()
     private val fast = FastTrack()
+    private var bumpWatch = BumpWatch(fast)
 
     @Volatile private var running = false
     @Volatile private var log: FidRecLog? = null
@@ -96,6 +97,7 @@ internal object FidRecorder {
             rows.clear()
             counters.clear()
             fast.clear()
+            bumpWatch = BumpWatch(fast)
             startedAtMs = startedAt
             lastSummaryMs = startedAt
             fileBytes = 0L
@@ -161,6 +163,7 @@ internal object FidRecorder {
                 .map { (fid, c) -> FidRecTopRow(fid, c.symbol, c.events, c.lastInt, c.lastDouble) },
             filePath = filePath,
             fileBytes = log?.bytes ?: fileBytes,
+            bumps = bumpWatch.bumps(),
         )
     }
 
@@ -347,6 +350,7 @@ internal object FidRecorder {
             if (!changed) return@synchronized out
             val e = RecEvent(now, dev, fid, c.symbol, intValue, doubleValue)
             if (c.symbol in FID_REC_EVENT_SYMBOLS) fast.trigger(now, "${c.symbol}=$intValue", out)
+            bumpWatch.feed(e, out)
             when {
                 fast.isFast(fid) -> fast.sample(e, out)
                 !c.written || now - c.lastWritten >= MIN_LINE_INTERVAL_MS -> {

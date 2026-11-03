@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
@@ -104,6 +105,36 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
      * Used by VoiceAutomationActions to gate speak/agent_query actions.
      */
     fun sessionActive(): Boolean = listening.value || busy.get()
+
+    private fun canAsk(): Boolean =
+        gate.isEnabled() && !sessionActive() && pendingAnswer == null && continuousAsr.isReady()
+
+    /** A yes/no question waiting for the next phrase ([askYesNo]); null when none is. */
+    @Volatile private var pendingAnswer: ((Boolean?) -> Unit)? = null
+
+    /**
+     * Asks [question] aloud and opens the microphone for [windowMs] for «да / так» or «нет / ні»
+     * (#22: «Лежачий?» after a bump). [onAnswer] gets true, false, or null when nobody answered,
+     * the voice is off or a session is already running (a driver mid-command is never cut off).
+     */
+    fun askYesNo(question: String, windowMs: Long = ASK_WINDOW_MS, onAnswer: (Boolean?) -> Unit) {
+        if (!canAsk()) {
+            onAnswer(null)
+            return
+        }
+        scope.launch {
+            announce("Голос", question, question)
+            ttsEngine.speaking.first { !it }
+            pendingAnswer = onAnswer
+            withContext(Dispatchers.Main) { if (!_listening.value) onPttPressed() }
+            delay(windowMs)
+            pendingAnswer?.let { cb ->
+                pendingAnswer = null
+                cb(null)
+                withContext(Dispatchers.Main) { if (_listening.value) stopContinuousSession("ask-timeout") }
+            }
+        }
+    }
 
     /** Test seams, same rationale as [lastSpeakingSeenMs]: deterministic await conditions
      *  instead of fixed sleeps, no public API surface added. */
@@ -589,6 +620,17 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
                 reason = "Эхо своей речи", refusal = VoiceRefusal.ECHO, asrMs = decodeMs),
                 "Echo filtered: transcript=\"$transcript\"")
             return
+        }
+        // The answer to askYesNo() outranks everything: «да» here is not a command.
+        pendingAnswer?.let { cb ->
+            YesNo.of(command)?.let { yes ->
+                pendingAnswer = null
+                cb(yes)
+                earcon.ok()
+                _state.value = VoiceUiState.Done(transcript)
+                stopContinuousSession("answered")
+                return
+            }
         }
         // The driver goes on talking: a pending close stays off. After the echo check, or our own
         // voice heard back would cancel it; the play_music close is left as it always was.
@@ -1144,6 +1186,8 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
             detail = withDecodeMs(transcript, decodeMs), outcome = outcome, command = command, asrMs = decodeMs)
 
     companion object {
+        /** How long the microphone waits for the answer to [askYesNo]. */
+        const val ASK_WINDOW_MS = 8_000L
         private const val TAG = "VoiceController"
 
         // Longest value one logcat summary field may carry (an automation name, an utterance).
