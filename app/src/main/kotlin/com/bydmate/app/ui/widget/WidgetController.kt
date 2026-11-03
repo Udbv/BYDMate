@@ -596,9 +596,11 @@ object WidgetController {
             return
         }
         while (true) {
-            val route = NavGuidanceHub.snapshot()
+            val nowMs = System.currentTimeMillis()
+            val route = NavGuidanceHub.snapshot(nowMs)
             val range = hybridState.value.rangeKm(rangeState.value)
-            setArrival(arrivalReserve(range, route.active, route.totalDistMeters))
+            val meters = freshRouteMeters(route.totalDistMeters, route.totalDistMs, nowMs)
+            setArrival(arrivalReserve(range, route.active, meters))
             delay(ARRIVAL_POLL_MS)
         }
     }

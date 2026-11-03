@@ -85,4 +85,18 @@ class ArrivalReserveTest {
             widgetHeightDp(powerGraph = true, arrivalChip = true),
         )
     }
+
+    @Test fun `a distance read within the freshness window counts`() {
+        assertEquals(50_000, freshRouteMeters(50_000, readAtMs = 1_000, nowMs = 1_000 + ARRIVAL_DISTANCE_FRESH_MS))
+    }
+
+    @Test fun `a held distance older than the window hides the chip`() {
+        val meters = freshRouteMeters(50_000, readAtMs = 1_000, nowMs = 1_001 + ARRIVAL_DISTANCE_FRESH_MS)
+        assertEquals(0, meters)
+        assertNull(arrivalReserve(rangeKm = 300.0, routeActive = true, routeMeters = meters))
+    }
+
+    @Test fun `a distance never read counts as none`() {
+        assertEquals(0, freshRouteMeters(50_000, readAtMs = 0L, nowMs = 5_000))
+    }
 }
