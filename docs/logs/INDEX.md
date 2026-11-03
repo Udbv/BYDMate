@@ -160,26 +160,32 @@ Times are car local time, 2026-11-03 unless a date is given. File names are in `
 
 ### 3.1 ADAS parked tests (app builds 4.2.0-dev.1, dev.6, dev.11, dev.15)
 
-Nine runs in 4 sessions (each appears twice: trip log + log part). No `refused` or `frames refused` lines in any run.
+Five distinct runs (the 10-31 pair is one session) in 4 sessions (each appears twice: trip log + log part). No `refused` or `frames refused` lines in any run
+(refusals were not logged before 4.2.0-dev.18). Two test kinds exist: the single-limit test (limit + camera 300 m) and the limit change test
+(`AdasLimitChangePlan`, variants plain/link/class/link+class, limits 70 and 110 alternating every 6 s).
 `fires={rc=count}`: rc 0 = frame delivered, rc 11 = gateway refused (services not started or stopped by someone else).
 
 | # | file (trip log) | time | kind | fires | car before -> after |
 |---|---|---|---|---|---|
-| 1 | trip-20261031-170224 (dev.1) | 10-31 17:02:59 | `limit=70 camera=300m` | 0=438 | sign=- -> 70 within 1 s |
-| 2 | same | 10-31 17:03:42 | `limit=110 camera=300m` | 0=444 | 70 -> 110 within 2 s |
-| 3 | trip-20261103-175157 (dev.6) | 19:04:23 | `limit=110 camera=300m` | 0=444 | sign=50 -> 50, no change (acc=2) |
-| 4 | trip-20261103-194542 (dev.11) | 20:27:22 | `limit change pathID=...` (route, limits 70/110 alternating every 6 s) | 0=2, 11=1694 | 50 -> 50, no change (acc=2) |
-| 5 | trip-20261103-213653 (dev.15) | 21:37:40 | `limit change pathID=...` | 0=1681 (all delivered) | 5 -> 70 at 21:38:48 (acc 2 -> 1) |
+| 1 | trip-20261031-170224 (dev.1) | 10-31 17:02:59 | single-limit, `limit=70 camera=300m` | 0=438 | sign=- -> 70 within 1 s |
+| 2 | same | 10-31 17:03:42 | single-limit, `limit=110 camera=300m` | 0=444 | 70 -> 110 within 2 s |
+| 3 | trip-20261103-175157 (dev.6) | 19:04:23 | single-limit, `limit=110 camera=300m` | 0=444 | sign=50 -> 50, no change (acc=2) |
+| 4 | trip-20261103-194542 (dev.11) | 20:27:22 | limit change test - INVALID | 0=2, 11=1694 | 50 -> 50, no change (acc=2) |
+| 5 | trip-20261103-213653 (dev.15) | 21:37:40 | limit change test (`limit change pathID=...`) | 0=1681 (all delivered) | 5 -> 70 at 21:38:48 (acc 2 -> 1) |
 
 Details:
 - Run 1 end line says "шлюз SOME/IP недоступний" although fires were all rc 0; run 2 says "завершено". The first-frames rc
   is `[11, 11, 11]` in every run (services not yet started), then `startService(...) rc=0` for 2-4 services.
-- The camera variant (runs 1-3) worked on 10-31 (dev.1) with acc=1, and did not on 11-03 (dev.6) with acc=2. Hypothesis, not proven:
-  the car only takes a sign from the app when acc is 1 (ICA/ACC state) - the one successful run on 11-03 (run 5) also shows acc=1 after.
-- Run 4 (dev.11) is the run where almost all frames were refused (rc=11 x1694): the services were stopped, so "no change" says nothing about the route variant.
-  Run 5 (dev.15) delivered everything; the route variant (NavigationStatus 8/9, TrafficInfoNotify, naviSDRouteNotify, sdVehicleLocation)
-  made the car show 70 (one of the two alternating test limits). Whether it also showed 110 is not in the logs (only one `car:` line, at 21:38:48).
-- Note run 4 and 5 test kind is "limit change pathID" (route with 7 links, 1999 m); no "camera" or "route pathID" kind appears in the parked tests.
+- The single-limit test (runs 1-3) worked on 10-31 (dev.1) with acc=1, and did not on 11-03 (dev.6, run 3: car stayed at 50, the camera sign) with acc=2.
+  Hypothesis, not proven: the car only takes a sign from the app when acc is 1 (ICA/ACC state) - the one successful run on 11-03 (run 5) also shows acc=1 after.
+- Run 4 (dev.11, 20:27 session) is invalid: fires 0=2, 11=1694, because the drive-time sender stopped the gateway services (fixed in dev.14).
+  "No change" says nothing about the limit change variants.
+- Run 5 (dev.15, 21:37) delivered all 1681 frames. The car showed sign=5 before, took nothing in the plain and link variants, switched to 70 at 21:38:48
+  during the `class` variant (2 s into the second 70 step, RoadClass=2) and stayed at 70 to the end. 110 was always sent with RoadClass 0
+  (omitted by proto3) and was never taken. Only one `car:` line exists (21:38:48).
+- Round 2 (dev.16: class and link+class variants, RoadClass 1 and 2, 12 s per value) is pending; no log yet.
+- There is no route test: the start line `parked test start route pathID=` does not occur in any log. Three attempts by the owner from the map left no
+  trace because refusals were not logged (fixed in 4.2.0-dev.18).
 
 ### 3.2 ADAS live sending (from dev.6, 2026-11-03 18:03)
 
@@ -195,6 +201,9 @@ Details:
   (then back to 70 and 50 within 25 s); 21:23:00 send 20 -> sign=20 in 3 s; 21:32:04 send 5 -> sign=5 in 2 s (trip-20261103-213134, log 213138);
   and the car stayed at 5 after the next send of 50 at 21:32:27 (episode "waze>lost waze=50 car=5" at 21:34:46).
   Before 18:39 the car showed 90 while Waze said 50 and the app sent 50 (18:07:15, 18:10:31, 18:16:29, 18:23:40): no follow.
+- dev.10-15 restarted navigation and the gateway services on every new limit; on 11-03 20:46-21:03 eleven restarts were never followed by the car.
+- On the evening of 11-03 the head unit's ADAS view froze (car parked, no surroundings) until the multimedia was restarted. 4.2.0-dev.17 removed the restart
+  and never stops the services.
 - Conclusion so far: the live feed is accepted (rc 0) but the car's displayed sign is usually decided by the car itself; following happened
   only in short windows and for unusual values. No evidence in the logs of the car losing its own sign because of the app.
 
@@ -213,11 +222,13 @@ Details:
 
 - Ran twice, 19:46:41-19:47:19 and 19:47:22-19:48:00 (`start variants=8 voice_ready=false`, so the "voice" was a tone, `voice=tone`).
   Spotify (com.spotify.music) held audio focus (GAIN) throughout.
+- During assistant+duck in the first run (19:47:01) the focus stack also held com.android.server.telecom client "AudioFocus_For_Phone_Ring_And_Calls"
+  (GAIN_TRANSIENT, flags LOCK) and Spotify showed `loss: LOSS_TRANSIENT`. In the second run (19:47:42) assistant+duck had only Spotify (GAIN, loss none).
 - Variants (each with and without focus request, "+duck" = focus granted, "-nofocus" = not requested): media, navigation, assistant, notification.
   Results are identical in both runs: media, navigation and assistant variants `played=true` (durations 2.1/2.5, 2.7/3.0, 3.3/3.6 s);
   notification+duck and notification-nofocus `played=false` (3.9 s, 4.2 s).
 - `played` is the player state, not what the driver heard. What the owner heard per variant is **not in the logs** (see open questions).
-  The focus-stack dumps ("before/during") are in the file; the ducking of Spotify (`ducked players piids:` list) is empty in all variants.
+  The focus-stack dumps ("before/during") are in the file; the ducking of Spotify (`ducked players piids:` list) is empty in all variants: no variant ducked.
 
 ### 3.5 Navigation voice
 
@@ -267,10 +278,10 @@ Details:
 
 ## 4. Open questions the logs have not answered
 
-1. Does the car's SLA/ADAS display follow the live Waze limit at all while driving? Cases of following exist (5, 20, 90 once), but the car's own sign
+1. Does the car's SLA/ADAS display follow the live Waze limit at all while driving? Cases of following exist (5, 20, 90 once); the dev.16 round 2 (RoadClass 1/2) is pending, but the car's own sign
    usually wins; no test compared the car with the app on a stable stretch with the app sending and the car's own sign deliberately absent.
 2. Is `acc=1` (or the ICA/ACC state) the condition under which the car takes the parked-test sign? Only runs 1, 2 and 5 had acc=1 afterwards.
-   Run 5 only logged one `car:` line; did the car show 110 too?
+   Run 5 only logged one `car:` line; 110 was sent with RoadClass 0 and never taken - does the car need RoadClass for 110?
 3. Why does the car stay at 50 so often against Waze 90/110 (and show 5/10)? Is that the car's own map limit, or a stale value left by the app's earlier frames?
 4. Audio test: which of the 8 variants was actually audible, and was Spotify ducked or paused? `played=true` does not say it. The owner's heard-result was not recorded.
    The notification variant `played=false` - is it blocked by the car's audio policy?
