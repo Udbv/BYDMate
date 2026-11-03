@@ -99,6 +99,7 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var tripMinuteRecorder: com.bydmate.app.domain.tracker.TripMinuteRecorder
     @Inject lateinit var adasShadow: com.bydmate.app.adas.AdasShadow
     @Inject lateinit var adasLimitSender: com.bydmate.app.adas.AdasLimitSender
+    @Inject lateinit var cruiseAdvisor: com.bydmate.app.adas.CruiseAdvisor
     @Inject lateinit var networkAvailableMonitor: com.bydmate.app.data.automation.NetworkAvailableMonitor
     @Inject lateinit var alicePollingManager: AlicePollingManager
     @Inject lateinit var odometerBuffer: OdometerConsumptionBuffer
@@ -115,6 +116,7 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var adbVerdictMonitor: com.bydmate.app.data.autoservice.AdbVerdictMonitor
     @Inject lateinit var iternioTelemetryClient: IternioTelemetryClient
     @Inject lateinit var webhookTelemetryClient: WebhookTelemetryClient
+    @Inject lateinit var homeAssistantPublisher: com.bydmate.app.data.homeassistant.HomeAssistantPublisher
     @Inject lateinit var lastSessionRepository: com.bydmate.app.data.repository.LastSessionRepository
     @Inject lateinit var odometerMarks: com.bydmate.app.data.repository.OdometerMarks
     @Inject lateinit var sharedAdaptiveLoop: com.bydmate.app.data.loop.SharedAdaptiveLoop
@@ -1822,9 +1824,13 @@ class TrackingService : Service(), LocationListener {
                         .onFailure { Log.w(TAG, "AdasShadow.onTick failed", it) }
                     runCatching { adasLimitSender.onTick(data.powerState?.let { it >= 1 } == true) }
                         .onFailure { Log.w(TAG, "AdasLimitSender.onTick failed", it) }
+                    runCatching { cruiseAdvisor.onTick(data.powerState?.let { it >= 1 } == true, data) }
+                        .onFailure { Log.w(TAG, "CruiseAdvisor.onTick failed", it) }
                     updateNotification(data)
                     maybeLogSessionSummary(nowMs, data, sessionId)
                     maybeSendIternioTelemetry(data, nowMs)
+                    // Own IO scope and a once-a-minute gate inside: never waits on the network here.
+                    homeAssistantPublisher.onSample(data, _lastRangeKm.value, nowMs)
 
                     // Native trip recorder (writes only when energydata absent — i.e. Song/Atto/non-Leopard3)
                     runCatching { tripRecorder.consume(data) }

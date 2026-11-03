@@ -162,6 +162,9 @@ class TtsRouter @Suppress("LongParameterList") constructor( // DI-provided lambd
 
     override fun playPcm(samples: FloatArray, sampleRate: Int): Boolean = delegate.playPcm(samples, sampleRate)
 
+    override fun synthesizePcm(text: String, timeoutMs: Long): TtsEngine.Pcm? =
+        delegate.synthesizePcm(text, timeoutMs)
+
     override fun playPcmStream(chunks: BlockingQueue<FloatArray>, sampleRate: Int): Boolean =
         delegate.playPcmStream(chunks, sampleRate)
 

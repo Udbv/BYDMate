@@ -78,6 +78,8 @@ object BackupParts {
         "custom_llm_base_url",
         "tg_backup_bot_name",
         "tg_backup_chat_name",
+        "ha_token",
+        "ha_url",
     )
 
     val RUNTIME_SETTINGS_KEYS: Set<String> = setOf(
@@ -97,6 +99,14 @@ object BackupParts {
         "auto_backup_last_result",
         "auto_backup_pending_upload",
         "tg_report_outbox",
+        // Home Assistant registration of THIS head unit: the webhook id is a bearer secret and
+        // belongs to one device; restored elsewhere it would make two cars write one HA device.
+        "ha_device_id",
+        "ha_webhook_id",
+        "ha_cloudhook_url",
+        "ha_remote_ui_url",
+        "ha_registered_base",
+        "ha_sensors_registered",
     )
 
     fun tablesOf(part: BackupPart): List<String> = when (part) {

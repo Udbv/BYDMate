@@ -5,6 +5,8 @@ object RoadPointPhrases {
     fun answer(result: MarkResult): String = when (result) {
         is MarkResult.Added -> "Отметил: ${name(result.type)}"
         is MarkResult.Passed -> "${name(result.type).replaceFirstChar { it.uppercase() }}, уже отмечен: проезд ${result.passes}"
+        // Said so the driver knows the mark was heard but the place stays out of the export.
+        is MarkResult.Rejected -> "Это место отклонено раньше: ${name(result.type)} не отмечаю"
         MarkResult.NoPosition -> "Нет точной позиции GPS, точка не сохранена"
     }
 

@@ -105,6 +105,23 @@ open class SettingsRepository @Inject constructor(
         const val KEY_WEBHOOK_SECRET = "webhook_secret"
         /** Отправлять GPS-координаты и курс на вебхук (opt-in, по умолчанию выкл). */
         const val KEY_WEBHOOK_SEND_LOCATION = "webhook_send_location"
+        // Home Assistant native device (#26) via the Mobile App integration API.
+        /** "true" = push sensor states to Home Assistant once a minute while the car is on. */
+        const val KEY_HA_ENABLED = "ha_enabled"
+        /** Home Assistant base URL, https only (e.g. the owner's own domain). */
+        const val KEY_HA_URL = "ha_url"
+        /** Long-lived access token; only the registration call needs it. Secret, never logged. */
+        const val KEY_HA_TOKEN = "ha_token"
+        /** Random id this head unit registers under; stays put across re-registrations. */
+        const val KEY_HA_DEVICE_ID = "ha_device_id"
+        /** Registration result: the webhook id plus the optional cloud / remote UI addresses. */
+        const val KEY_HA_WEBHOOK_ID = "ha_webhook_id"
+        const val KEY_HA_CLOUDHOOK_URL = "ha_cloudhook_url"
+        const val KEY_HA_REMOTE_UI_URL = "ha_remote_ui_url"
+        /** Base URL the stored webhook id was obtained from: a different URL means a new registration. */
+        const val KEY_HA_REGISTERED_BASE = "ha_registered_base"
+        /** "<webhook id>:<sensor schema version>" once every sensor is registered on that webhook. */
+        const val KEY_HA_SENSORS_REGISTERED = "ha_sensors_registered"
         // Automatic backup (#237). Period = AutoBackupPeriod.key; last_ts = 0 until the first export.
         const val KEY_AUTO_BACKUP_PERIOD = "auto_backup_period"
         const val KEY_AUTO_BACKUP_LAST_TS = "auto_backup_last_ts"

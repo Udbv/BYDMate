@@ -22,6 +22,8 @@ import com.bydmate.app.diagnostics.TraceArea
  *  - a Navigator-window read WITHOUT guidance widgets ends nothing, as in the donor: on some
  *    cars the window loses its widgets mid-route (issue #199), so only silence ends a route;
  *  - a read whose widgets are there but carry no text keeps the route alive (keepAlive).
+ *  - the trip totals (ETA, distance to the destination) end with their route, so a new route
+ *    never starts from the last one's; [Snapshot.totalDistMs] dates the held distance.
  *
  *  A route's start and end are one HUD trace line each, the end followed by one route-summary
  *  line of [NavRouteStats] counters: reads and frames are counted, never traced one by one. */
@@ -98,6 +100,11 @@ object NavGuidanceHub {
         // Where the held maneuver was read (#294): Source name and the raw input behind the code.
         val maneuverSource: String = "",
         val maneuverRaw: String = "",
+        /** When a read last carried [totalDistMeters]: the field-wise merge holds the value when
+         *  the navigator stops showing it, so consumers that must not show a frozen distance
+         *  (the widget's arrival row) judge its age by this. Appended with a default for the
+         *  same positional-constructor reason as the fields above. */
+        val totalDistMs: Long = 0L,
     )
 
     /** Rich notification payload (donor listener merge). applyCamera=false is the
@@ -179,6 +186,11 @@ object NavGuidanceHub {
         panelIcon = 0,
         exitNumber = null,
         thenText = "",
+        // The trip totals belong to the route that ended: held over, the next route's first reads
+        // without them would show the old route's distance and ETA as its own.
+        etaSeconds = 0,
+        totalDistMeters = 0,
+        totalDistMs = 0L,
     )
 
     // @Synchronized because expiry writes back: an unsynchronized write here could
@@ -384,6 +396,7 @@ object NavGuidanceHub {
             road = data.road.ifEmpty { prev.road },
             etaSeconds = if (data.etaSeconds > 0) data.etaSeconds else prev.etaSeconds,
             totalDistMeters = if (data.totalDistMeters > 0) data.totalDistMeters else prev.totalDistMeters,
+            totalDistMs = if (data.totalDistMeters > 0) nowMs else prev.totalDistMs,
             speedLimit = if (data.speedLimit > 0) data.speedLimit else prev.speedLimit,
             speedLimitMs = if (data.speedLimit > 0) nowMs else prev.speedLimitMs,
             lastUpdateMs = nowMs,
@@ -487,19 +500,23 @@ object NavGuidanceHub {
                 maneuverPng = rich.maneuverPng ?: prev.maneuverPng,
             )
             a11yFresh -> prev
-            else -> held.copy(
-                maneuverGaode = if (rich.maneuverGaode > 0) rich.maneuverGaode else held.maneuverGaode,
-                maneuverGaodeMs = if (rich.maneuverGaode > 0) nowMs else held.maneuverGaodeMs,
-                maneuverSource = if (rich.maneuverGaode > 0) Source.NOTIFICATION.label() else held.maneuverSource,
-                maneuverRaw = if (rich.maneuverGaode > 0) rich.maneuverRaw else held.maneuverRaw,
-                distanceMeters = if (rich.distanceMeters > 0) rich.distanceMeters else held.distanceMeters,
-                road = rich.road.ifEmpty { held.road },
-                etaSeconds = if (rich.etaSeconds > 0) rich.etaSeconds else held.etaSeconds,
-                totalDistMeters = if (rich.totalDistMeters > 0) rich.totalDistMeters else held.totalDistMeters,
-                maneuverPng = rich.maneuverPng ?: held.maneuverPng,
-            )
+            else -> merged(held, rich, nowMs)
         }
     }
+
+    /** A notification's fields over the held snapshot: what it carries wins, the rest is kept. */
+    private fun merged(held: Snapshot, rich: RichUpdate, nowMs: Long): Snapshot = held.copy(
+        maneuverGaode = if (rich.maneuverGaode > 0) rich.maneuverGaode else held.maneuverGaode,
+        maneuverGaodeMs = if (rich.maneuverGaode > 0) nowMs else held.maneuverGaodeMs,
+        maneuverSource = if (rich.maneuverGaode > 0) Source.NOTIFICATION.label() else held.maneuverSource,
+        maneuverRaw = if (rich.maneuverGaode > 0) rich.maneuverRaw else held.maneuverRaw,
+        distanceMeters = if (rich.distanceMeters > 0) rich.distanceMeters else held.distanceMeters,
+        road = rich.road.ifEmpty { held.road },
+        etaSeconds = if (rich.etaSeconds > 0) rich.etaSeconds else held.etaSeconds,
+        totalDistMeters = if (rich.totalDistMeters > 0) rich.totalDistMeters else held.totalDistMeters,
+        totalDistMs = if (rich.totalDistMeters > 0) nowMs else held.totalDistMs,
+        maneuverPng = rich.maneuverPng ?: held.maneuverPng,
+    )
 
     /** #294: a held maneuver belongs to the next street it was read with. A read that names
      *  another street and carries no maneuver of its own means that turn is behind: the arrow

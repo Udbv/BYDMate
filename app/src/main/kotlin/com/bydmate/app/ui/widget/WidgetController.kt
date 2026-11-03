@@ -36,6 +36,7 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import com.bydmate.app.data.nativestack.VehicleKind
 import com.bydmate.app.data.nativestack.VehicleKindMonitor
+import com.bydmate.app.navdata.NavGuidanceHub
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import java.util.Locale
@@ -44,6 +45,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import com.bydmate.app.R
 import com.bydmate.app.domain.calculator.ConsumptionAggregator
 import com.bydmate.app.domain.calculator.ConsumptionState
@@ -163,6 +165,9 @@ object WidgetController {
     private const val BUTTON_DP = WidgetButtonLayout.BUTTON_DP
     private const val GAP_DP = WidgetButtonLayout.GAP_DP
     private const val SUPPRESSED_PREFIX = "suppressed:"
+    // The guidance hub has no flow of its own; NavA11yFeed refreshes it about every 5 s while a
+    // route is live, so polling at the same pace shows each new distance without busy work.
+    private const val ARRIVAL_POLL_MS = 5_000L
 
     @Volatile private var appForegrounded: Boolean = false
     @Volatile private var previewMode: Boolean = false
@@ -192,6 +197,7 @@ object WidgetController {
     private lateinit var prefsHideInAppsFlow: kotlinx.coroutines.flow.Flow<Set<String>>
     private lateinit var prefsPowerGraphFlow: kotlinx.coroutines.flow.Flow<Boolean>
     private lateinit var prefsHomeOnlyFlow: kotlinx.coroutines.flow.Flow<Boolean>
+    private lateinit var prefsArrivalChipFlow: kotlinx.coroutines.flow.Flow<Boolean>
     // Launcher packages for the "only on the home screen" rule; null until resolved non-empty.
     @Volatile private var resolvedHomePackages: Set<String>? = null
 
@@ -214,6 +220,8 @@ object WidgetController {
     // Optional Tesla-style power row: the flag changes the window height, the samples only redraw.
     private var powerGraphState = mutableStateOf(false)
     private var powerSamplesState = mutableStateOf<List<PowerSample>>(emptyList())
+    // Arrival reserve row (#6C): null hides it; showing or hiding it resizes the window.
+    private var arrivalState = mutableStateOf<ArrivalReserve?>(null)
 
     // Expandable-buttons state. expandedState drives the button layer's slide
     // animation; collapsedX/Y remember the window origin so an edge-clamped
@@ -251,13 +259,15 @@ object WidgetController {
         prefsHideInAppsFlow = prefs.hideInAppsFlow()
         prefsPowerGraphFlow = prefs.powerGraphFlow()
         prefsHomeOnlyFlow = prefs.homeOnlyFlow()
+        prefsArrivalChipFlow = prefs.arrivalChipFlow()
+        arrivalState.value = null
         val metrics = viewCtx.resources.displayMetrics
 
         val initialScale = prefs.getScale()
         scaleState.value = initialScale
         val widgetWpx = (dp(viewCtx, WIDGET_WIDTH_DP) * initialScale).toInt()
         powerGraphState.value = prefs.isPowerGraphEnabled()
-        val widgetHpx = (dp(viewCtx, widgetHeightDp(powerGraphState.value)) * initialScale).toInt()
+        val widgetHpx = (dp(viewCtx, widgetHeightDp(powerGraphState.value, arrivalState.value != null)) * initialScale).toInt()
         currentWidgetWpx = widgetWpx
         currentWidgetHpx = widgetHpx
         val (startX, startY) = resolveStartPosition(prefs, metrics, widgetWpx, widgetHpx)
@@ -312,6 +322,7 @@ object WidgetController {
                     kind = hybrid.kind,
                     fuelPercent = hybrid.fuelPercent,
                     fuelRangeKm = hybrid.fuelRangeKm,
+                    arrival = arrivalState.value,
                 )
             }
             setOnTouchListener(WidgetTouchListener(viewCtx, prefs, metrics))
@@ -554,6 +565,7 @@ object WidgetController {
             }
         }
         scope.launch { collectVehicleKind(appCtx) { hybridState.value = hybridState.value.copy(kind = it) } }
+        scope.launch { prefsArrivalChipFlow.collectLatest { on -> pollArrival(on) } }
 
         // Voice-session listening indicator (Wave B): reuses the existing ClusterEntryPoint Hilt
         // bridge (already used by SteeringWheelKeyService) to reach the @Singleton VoiceController
@@ -573,6 +585,36 @@ object WidgetController {
         }
     }
 
+    /**
+     * Keeps the arrival row in step with the guided route while the toggle is on. Uses the range
+     * the widget shows (the car's battery range on a hybrid), so the chip never disagrees with
+     * the big number above it.
+     */
+    private suspend fun pollArrival(enabled: Boolean) {
+        if (!enabled) {
+            setArrival(null)
+            return
+        }
+        while (true) {
+            val nowMs = System.currentTimeMillis()
+            val route = NavGuidanceHub.snapshot(nowMs)
+            val range = hybridState.value.rangeKm(rangeState.value)
+            val meters = freshRouteMeters(route.totalDistMeters, route.totalDistMs, nowMs)
+            setArrival(arrivalReserve(range, route.active, meters))
+            delay(ARRIVAL_POLL_MS)
+        }
+    }
+
+    private fun setArrival(reserve: ArrivalReserve?) {
+        val old = arrivalState.value
+        if (old == reserve) return
+        arrivalState.value = reserve
+        if ((old == null) != (reserve == null)) {
+            Log.i(TAG, "widget: arrival row " + if (reserve != null) "shown" else "hidden")
+            applyScaleChange(scaleState.value)
+        }
+    }
+
     @Synchronized
     private fun applyScaleChange(scale: Float) {
         val view = widgetView ?: return
@@ -581,7 +623,7 @@ object WidgetController {
         val ctx = view.context ?: return
         val metrics = ctx.resources.displayMetrics
         val widgetWpx = (dp(ctx, WIDGET_WIDTH_DP) * scale).toInt()
-        val widgetHpx = (dp(ctx, widgetHeightDp(powerGraphState.value)) * scale).toInt()
+        val widgetHpx = (dp(ctx, widgetHeightDp(powerGraphState.value, arrivalState.value != null)) * scale).toInt()
         currentWidgetWpx = widgetWpx
         currentWidgetHpx = widgetHpx
         // Force-fit the explicit pixel size so WindowManager respects the new

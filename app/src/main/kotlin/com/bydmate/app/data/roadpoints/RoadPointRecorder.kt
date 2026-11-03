@@ -17,10 +17,14 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** What a mark did: a new point, one more pass of a known one, or nothing for want of a position. */
+/**
+ * What a mark did: a new point, one more pass of a known one, a pass of a place the driver already
+ * rejected (it stays rejected), or nothing for want of a position.
+ */
 sealed interface MarkResult {
     data class Added(val type: RoadPointType) : MarkResult
     data class Passed(val type: RoadPointType, val passes: Int) : MarkResult
+    data class Rejected(val type: RoadPointType, val passes: Int) : MarkResult
     data object NoPosition : MarkResult
 }
 
@@ -56,8 +60,10 @@ class RoadPointRecorder @Inject constructor(
         val target = RoadPoints.mergeTarget(loc.latitude, loc.longitude, heading, near)
         val result = if (target != null) {
             val passes = target.passes + 1
+            // The copy keeps the status: a rejected place is a blacklist entry, and marking it again
+            // (by voice or by a confirmed bump) must not bring it back into the export.
             dao.update(target.copy(passes = passes, lastTs = now, heading = target.heading ?: heading))
-            MarkResult.Passed(type, passes)
+            if (target.status == RoadPointStatus.REJECTED.name) MarkResult.Rejected(type, passes) else MarkResult.Passed(type, passes)
         } else {
             dao.insert(
                 RoadPointEntity(
@@ -74,6 +80,12 @@ class RoadPointRecorder @Inject constructor(
     }
 
     suspend fun delete(id: Long) = dao.delete(id)
+
+    /** The review on the map (#22): the driver confirms a point for Waze or rejects it for good. */
+    suspend fun setStatus(id: Long, status: RoadPointStatus) {
+        dao.setStatus(id, status.name)
+        TripDebugLog.event("POINT", "status #$id -> ${status.name}")
+    }
 
     /** The list and the GeoJSON to the bot; null on success, otherwise why not. */
     suspend fun exportToTelegram(): String? {

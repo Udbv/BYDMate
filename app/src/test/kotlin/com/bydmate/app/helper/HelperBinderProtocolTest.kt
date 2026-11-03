@@ -40,5 +40,6 @@ class HelperBinderProtocolTest {
         assertEquals(101, HelperBinderProtocol.TX_WRITE_BYTES)
         assertEquals(102, HelperBinderProtocol.TX_SDK_SET)
         assertEquals(103, HelperBinderProtocol.TX_SDK_NAVI)
+        assertEquals(104, HelperBinderProtocol.TX_AUDIO_FOCUS_DIAG)
     }
 }

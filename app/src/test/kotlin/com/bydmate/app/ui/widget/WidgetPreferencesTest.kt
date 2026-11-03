@@ -248,6 +248,17 @@ class WidgetPreferencesTest {
         assertEquals("unlock", prefs.buttonIconId(4))
     }
 
+    @Test fun `arrival chip is on by default`() {
+        assertTrue(prefs.isArrivalChipEnabled())
+    }
+
+    @Test fun `arrival chip can be turned off and back on`() {
+        prefs.setArrivalChipEnabled(false)
+        assertFalse(prefs.isArrivalChipEnabled())
+        prefs.setArrivalChipEnabled(true)
+        assertTrue(prefs.isArrivalChipEnabled())
+    }
+
     // --- Minimal fake of SharedPreferences used by WidgetPreferences ---
 
     // ── split launch panel: tap switch with restore ─────────────────────────────

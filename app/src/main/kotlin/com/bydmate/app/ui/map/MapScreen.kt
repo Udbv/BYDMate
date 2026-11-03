@@ -86,6 +86,7 @@ fun MapScreen(viewModel: MapViewModel = hiltViewModel()) {
             points, pointsUi,
             onExport = pointsVm::export,
             onDelete = pointsVm::delete,
+            onStatus = pointsVm::setStatus,
             onClose = { pointsVm.select(null) },
             modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp).width(340.dp),
         )

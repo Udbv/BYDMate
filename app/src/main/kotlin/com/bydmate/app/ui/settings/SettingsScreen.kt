@@ -650,6 +650,8 @@ private fun IntegrationsSection(state: SettingsUiState, viewModel: SettingsViewM
         }
     }
 
+    HomeAssistantSettingsSection()
+
     SectionHeader(text = stringResource(R.string.settings_ai_connections_header))
 
     ConnectionCard(
@@ -849,6 +851,8 @@ private fun WidgetSection() {
         .collectAsStateWithLifecycle(initialValue = prefs.getHideInApps())
     val powerGraph by prefs.powerGraphFlow()
         .collectAsStateWithLifecycle(initialValue = prefs.isPowerGraphEnabled())
+    val arrivalChip by prefs.arrivalChipFlow()
+        .collectAsStateWithLifecycle(initialValue = prefs.isArrivalChipEnabled())
     var showLeftTapPicker by remember { mutableStateOf(false) }
     var showHideInAppsPicker by remember { mutableStateOf(false) }
 
@@ -891,6 +895,13 @@ private fun WidgetSection() {
                 description = stringResource(R.string.settings_widget_power_graph_description),
                 checked = powerGraph,
                 onCheckedChange = { prefs.setPowerGraphEnabled(it) },
+            )
+            SettingToggleRow(
+                title = stringResource(R.string.settings_widget_arrival_chip_label),
+                traceId = "widget_arrival_chip",
+                description = stringResource(R.string.settings_widget_arrival_chip_description),
+                checked = arrivalChip,
+                onCheckedChange = { prefs.setArrivalChipEnabled(it) },
             )
             SettingToggleRow(
                 title = stringResource(R.string.settings_widget_hide_youtube_label),
@@ -3281,6 +3292,17 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
     )
     // #23 step 2: a real send of a limit and a camera, parked only, on a tap.
     AdasParkedTestRow()
+    // #23 safe class: a voice when Waze's limit drops below the set cruise; reads the car only.
+    var cruiseAdvice by remember { mutableStateOf(com.bydmate.app.adas.CruiseAdvisor.isEnabled(tripLogContext)) }
+    SettingToggleRow(
+        title = stringResource(R.string.settings_cruise_advice_title),
+        description = stringResource(R.string.settings_cruise_advice_desc),
+        checked = cruiseAdvice,
+        onCheckedChange = {
+            cruiseAdvice = it
+            com.bydmate.app.adas.CruiseAdvisor.setEnabled(tripLogContext, it)
+        },
+    )
     // Trip debug log: the car keeps its own record because Wi-Fi is gone the moment it
     // leaves the driveway, so logcat is unreachable for the drive that matters.
     var tripDebug by remember { mutableStateOf(com.bydmate.app.diagnostics.TripDebugLog.isEnabled(tripLogContext)) }
@@ -3400,6 +3422,8 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
             text = state.fidDumpStatus!!,
         )
     }
+    SettingDivider()
+    AudioChannelTestRow()
 }
 
 /** «Проверка HUD»: about 90 s of test hints on the glass; the recorded log and a video of the
@@ -5136,7 +5160,7 @@ private fun SearchStatusCard(state: SettingsUiState) {
 }
 
 @Composable
-private fun SectionHeader(text: String, onHelp: (() -> Unit)? = null) {
+internal fun SectionHeader(text: String, onHelp: (() -> Unit)? = null) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -5154,7 +5178,7 @@ private fun SectionHeader(text: String, onHelp: (() -> Unit)? = null) {
 }
 
 @Composable
-private fun SettingsTextField(
+internal fun SettingsTextField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,

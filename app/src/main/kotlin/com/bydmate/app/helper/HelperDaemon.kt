@@ -578,6 +578,8 @@ fun main(args: Array<String>) {
                     reply?.writeInt(-1); reply?.writeString(""); reply?.writeString(""); true
                 }
 
+                HelperBinderProtocol.TX_AUDIO_FOCUS_DIAG -> { replyAudioFocusDiag(reply); true }
+
                 HelperBinderProtocol.TX_PUT_GLOBAL_SETTING -> runCatching {
                     val key = data.readString() ?: ""
                     val value = data.readInt()
@@ -2673,6 +2675,25 @@ private fun logA11yFrameworkStateAsync(reassertOk: Boolean) {
     val t = Thread({ runCatching { logA11yFrameworkState(reassertOk) } }, "bydmate-a11ydiag")
     t.isDaemon = true
     t.start()
+}
+
+/**
+ * TX_AUDIO_FOCUS_DIAG: the focus stack and duck lines of `dumpsys audio` for the audio channel
+ * test. Read-only, bounded like every other diagnostic dumpsys; 512 KiB because the focus stack
+ * sits after the long per-stream volume tables. Any failure answers status -1, never throws.
+ */
+internal fun replyAudioFocusDiag(reply: Parcel?) {
+    runCatching {
+        com.bydmate.app.diagnostics.audio.AudioFocusDump.excerpt(shExecBounded("dumpsys audio", maxBytes = 512 * 1024))
+    }.onSuccess { lines ->
+        android.util.Log.i("bydmate_helper", "TX_AUDIO_FOCUS_DIAG lines=${lines.size}")
+        reply?.writeInt(0)
+        reply?.writeString(lines.joinToString("\n"))
+    }.onFailure {
+        android.util.Log.w("bydmate_helper", "TX_AUDIO_FOCUS_DIAG failed: ${it.message}")
+        reply?.writeInt(-1)
+        reply?.writeString("")
+    }
 }
 
 /** Diagnostics only; every dumpsys is time- and size-bounded so it can never wedge the daemon. */
