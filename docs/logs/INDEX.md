@@ -2,7 +2,7 @@
 
 Purpose: a future assistant session has no access to the raw car logs (they live only in the Telegram
 chat and in one old session's scratchpad). This file says what the logs contained as of 2026-11-03
-(~21:57 car time) so questions can be answered from it, and tells how to get the raw files again.
+(~22:34 car time) so questions can be answered from it, and tells how to get the raw files again.
 Privacy: no coordinates, no top speeds, no bot token or chat id are written here. Limits such as
 50/70/90/110 are road limits sent by the app, not vehicle speeds.
 
@@ -16,8 +16,8 @@ Privacy: no coordinates, no top speeds, no bot token or chat id are written here
 - Index: `python3 -I -B tools/tg-logs/index.py <ARCHIVE_DIR> <OUT_DIR>` writes `INDEX.md` + `index.json`
   (file, kind, version, time span, per-category counts, parked-test table, sample lines). Read the index
   first, then grep only the right file for the category regex.
-- `docs/logs/FILES.md` is the machine-made file table from the last index run (114 files indexed out of 159
-  fetched; 45 zips skipped because a same-named .txt exists). This file (`INDEX.md`) is the human reading of it.
+- `docs/logs/FILES.md` is the machine-made file table from the last index run (118 files indexed out of 164
+  fetched; 46 zips skipped because a same-named .txt exists). This file (`INDEX.md`) is the human reading of it.
 - Where the raw files were: `/tmp/claude-0/-home-user-BYDMate/13bace2c-94d2-5318-a86b-71357b91e275/scratchpad/log-archive`
   (session scratchpad, will vanish).
 - File kinds: `bydmate_logs_*` = 20-minute parts of the automatic logcat trip log (car local time, UTC+2;
@@ -25,7 +25,7 @@ Privacy: no coordinates, no top speeds, no bot token or chat id are written here
   `bydmate_fidrec_*` = sensor recorder dumps (large; only metadata and `#` notes indexed).
 - Category regexes: see `tools/tg-logs/README.md` and the task list in `index.py`.
 - A log part can start a minute before its trip log (same session). One trip log = one service run; its header says
-  `reason: service start` (34 times) or `app update` (5 times) and the version.
+  `reason: service start` (34 times; dev.15 trip-20261103-213653 is `app update`) or `app update` (5 times) and the version.
 - Caveats: the four oldest logs (2026-10-24/25) lack the version line (version "?"); `trip-20261025-113120.log`
   and `trip-20261029-142648.log` contain only a header. Fid dumps have no versionName, only versionCode.
 
@@ -150,9 +150,13 @@ Kinds: trip = trip-*.log, log = bydmate_logs_*, fid = bydmate_fidrec_*.
 | 2026-11-03 | trip | `trip-20261103-213134` | 4.2.0-dev.11 (543) | 21:31-21:36 | adas_live 5, adas_shadow 1, lanes_visual 29 |
 | 2026-11-03 | log | `logs_20261103_213138` | 4.2.0-dev.11 (543) | 21:31-21:36 | adas_live 5, adas_shadow 9, bump 3, errors 1 |
 | 2026-11-03 | fid | `fidrec_20261103_213138` | vc 543 | 21:31-21:36 | - |
-| 2026-11-03 | trip | `trip-20261103-213653` | 4.2.0-dev.15 (547) | 21:36-21:39 | adas_parked 27 |
+| 2026-11-03 | trip | `trip-20261103-213653` | 4.2.0-dev.15 (547) | 21:36-22:12 | adas_live 7, adas_parked 27, lanes_visual 360 |
 | 2026-11-03 | fid | `fidrec_20261103_213658` (zip) | vc 547 | 21:36-21:57 | - |
 | 2026-11-03 | log | `logs_20261103_213658` (zip) | 4.2.0-dev.15 (547) | 21:41-21:56 | adas_live 2, adas_shadow 15, errors 1 |
+| 2026-11-03 | log | `logs_20261103_215701` (zip) | 4.2.0-dev.15 (547) | 21:56-22:13 | adas_live 5, adas_shadow 17, bump 3 |
+| 2026-11-03 | fid | `fidrec_20261103_215701` (zip) | vc 547 | 21:57-22:13 | fid_notes 13 |
+| 2026-11-03 | log | `logs_20261103_221403` (zip) | 4.2.0-dev.15 (547) | 22:14-22:34 | adas_live 16, adas_shadow 63, bump 2, errors 2, tg_fail 2 |
+| 2026-11-03 | fid | `fidrec_20261103_221403` (zip) | vc 547 | 22:14-22:34 | fid_notes 33 |
 
 ## 3. Findings by topic
 
@@ -161,7 +165,7 @@ Times are car local time, 2026-11-03 unless a date is given. File names are in `
 ### 3.1 ADAS parked tests (app builds 4.2.0-dev.1, dev.6, dev.11, dev.15)
 
 Five distinct runs (the 10-31 pair is one session) in 4 sessions (each appears twice: trip log + log part). No `refused` or `frames refused` lines in any run
-(refusals were not logged before 4.2.0-dev.18). Two test kinds exist: the single-limit test (limit + camera 300 m) and the limit change test
+(refusals were not logged before 4.2.0-dev.18; the newest files, 22:34, are still dev.15 so run 5 is still the latest). Two test kinds exist: the single-limit test (limit + camera 300 m) and the limit change test
 (`AdasLimitChangePlan`, variants plain/link/class/link+class, limits 70 and 110 alternating every 6 s).
 `fires={rc=count}`: rc 0 = frame delivered, rc 11 = gateway refused (services not started or stopped by someone else).
 
@@ -183,6 +187,7 @@ Details:
 - Run 5 (dev.15, 21:37) delivered all 1681 frames. The car showed sign=5 before, took nothing in the plain and link variants, switched to 70 at 21:38:48
   during the `class` variant (2 s into the second 70 step, RoadClass=2) and stayed at 70 to the end. 110 was always sent with RoadClass 0
   (omitted by proto3) and was never taken. Only one `car:` line exists (21:38:48).
+- The files fetched at ~22:34 (dev.15, trip-20261103-213653 now complete to 22:12:48, logs 215701 and 221403) hold no new parked test: the only `parked test` lines are still run 5.
 - Round 2 (dev.16: class and link+class variants, RoadClass 1 and 2, 12 s per value) is pending; no log yet.
 - There is no route test: the start line `parked test start route pathID=` does not occur in any log. Three attempts by the owner from the map left no
   trace because refusals were not logged (fixed in 4.2.0-dev.18).
@@ -204,6 +209,16 @@ Details:
 - dev.10-15 restarted navigation and the gateway services on every new limit; on 11-03 20:46-21:03 eleven restarts were never followed by the car.
 - On the evening of 11-03 the head unit's ADAS view froze (car parked, no surroundings) until the multimedia was restarted. 4.2.0-dev.17 removed the restart
   and never stops the services.
+- New in the 21:56-22:34 files (dev.15, no `waze limit change` after 21:34 in the app, restart-per-limit still active):
+  - 21:42:10 first frames rc=[11,11,11] and the first send (50) also rc=[11,11,11] (not delivered). Next sends rc=[0,0,0]: 22:05:44 send 50, 22:10:27 restart 50 -> 110 send 110.
+    Car sign was "-" the whole time 21:57-22:12 (acc=1 ica=1, mostly standing/slow, `both=0 wazeOnly=111`): no sign to follow, no change after the 50 or 110 sends.
+    The 70 left by the parked test (21:38:48) was gone by 21:57.
+  - Car restarted the app process 22:14:01 (`service_start: new process`, new pid; the 215701 part ends 22:13:07). 22:14:29 first frames rc=[11,11,11] and send 110 rc=[11,11,11]
+    (not delivered, services started only now). Car sign "-" until 22:16:33, then sign=110 (Waze also 110; no send after 22:14:29 until 22:17:57, so probably the car's own value).
+  - 22:17:57 restart 110 -> 90, send 90 rc 0: car sign went 110 -> 70 at 22:18:07 (not 90) and **stayed at 70 until the end of the log (22:34)**, through seven more sends:
+    22:18:26 send 50, 22:20:27 send 110, 22:24:50 send 90, 22:26:48 send 50, 22:29:36 send 90, 22:29:51 send 110 (all rc 0, each with a service restart). Car acc 2/3, ica 1/3/5 flicker as before.
+    Shadow stats at 22:33: 558 samples, 498 with both signs, agree 41 (8%), differ 457, top pairs waze/car 110/70 x235, 50/70 x142, 90/70 x75, 90/110 x5. So the car's sign stayed 70 over the whole drive
+    while Waze said 50/90/110: either the car's own map limit, or a 70 stuck from the app's frames (the parked test also ended at 70); the logs cannot tell which.
 - Conclusion so far: the live feed is accepted (rc 0) but the car's displayed sign is usually decided by the car itself; following happened
   only in short windows and for unusual values. No evidence in the logs of the car losing its own sign because of the app.
 
@@ -215,6 +230,8 @@ Details:
 - Agreement is low: bydmate_logs_20261031_125559 ends with agree 4% (941 of 1111 samples differ, top pairs waze/car 90/50 x469, 90/5 x272, 50/5 x89);
   bydmate_logs_20261031_143016 ends with 29% (90/50 x525, 110/50 x154, 90/70 x118, 90/40 x106); bydmate_logs_20261103_194548 ends with 22%
   (90/50 x284, 110/50 x102). The car most often shows 50 where Waze says 90 or 110 (car sign appears sticky at 50, also 5/10/30/40 appear).
+- bydmate_logs_20261103_221403 ends at 8% agreement (110/70 x235, 50/70 x142, 90/70 x75): the car showed a constant 70 from 22:18:07 to 22:34 (see 3.2).
+- bydmate_logs_20261103_215701 (21:57-22:12): car sign "-" throughout, `both=0 wazeOnly=111` of 124 samples (route=true, waze 50 then 110).
 - Some windows have no car sign at all: bydmate_logs_20261103_154911 ends with `both=0 wazeOnly=1101` (car sign "-" for 42 km, route=true, waze=90).
 - `trip-20261103-152252` / `152906`: `drive summary samples=0` at 15:23 and 17:00 (nothing to compare).
 
@@ -232,17 +249,17 @@ Details:
 
 ### 3.5 Navigation voice
 
-- No line matching `NAVVOICE|NavVoice` exists in any indexed file (all 114). The feature either was not enabled/instrumented in these builds
+- No line matching `NAVVOICE|NavVoice` exists in any indexed file (all 118). The feature either was not enabled/instrumented in these builds
   or never ran; the voice-related data is only the audio test above (voice_ready=false).
 - `NLU|VoiceController` (counts only): no matches in the indexed logs either.
 
 ### 3.6 Bump detection / recording (4.2.0-dev.3+, from 2026-11-03 15:29)
 
 - Component `BumpRec` starts a fid recording per 20-minute part: `started bydmate_fidrec_<time>.txt: registered=2883` (registered signals; every part)
-  and, when the part is done, `part done` + `<file> to telegram: sent`. Present in all log parts from 15:29 to 21:31 (22 files).
+  and, when the part is done, `part done` + `<file> to telegram: sent`. Present in all log parts from 15:29 to 22:34 (24 files); 22:14:05 the 215701 recording was sent (`sent`), the 22:14 part ends with `stopped: manual events=808558` (22:34:04).
 - Fid dumps carry `#detail` notes (detail windows -8000..+3000 ms) written when a sensor crosses a threshold: top triggers Adas.ADAS_WY_PITCH_RATE (101),
   ADAS_TLA_STRAIGHT_LIGHT_STATUS (78), ADAS_X_AXIS_ACCELERATION (77), ADAS_Y_AXIS_ACCELERATION (53), ADAS_WX_ROLL_RATE (50), Speed.SPEED_BRAKE_S (7).
-  Note counts per 20-minute dump fall from 83 (15:29 part) to 2-30 later (see `fid_notes` in the timeline).
+  In dev.15 parts: 13 notes (21:57 part, 22:07-22:12, incl. 3 `bump? noted` pp 14.1-14.4) and 33 (22:14 part, mostly ADAS_TLA_STRAIGHT_LIGHT_STATUS 0/3 and pitch rate; no `bump? offered`). Note counts per 20-minute dump fall from 83 (15:29 part) to 2-30 later (see `fid_notes` in the timeline).
 - `BUMP bump? pp=.. v=.. answer=none`: the prompter asked three times (18:40:41 trip-20261103-175157, 19:54:36 and 21:23:03 trip-20261103-194542); each time
   `answer=none` (no reply from the driver). The 21:23 case also has fid notes `bump? noted` x2 and `bump? offered` x1 (bydmate_fidrec_20261103_210555).
   Peak-to-peak value pp ~22 in all three offers.
@@ -265,11 +282,13 @@ Details:
   - `FileNotFoundException` (the file to send was gone/unreadable): 11-01 14:37, 11-03 17:46 and 18:54, 21:41 (`recording to telegram: unreadable`).
   - `HTTP:400` once: 11-03 17:11:14 (bydmate_logs_20261103_170914), `log to telegram: failed HTTP:400`.
   - `failed for good` (AutoTripLog gave up): bydmate_logs_20261103_175203 (18:16:04), _183204 (18:56:06), _185206 (19:14:07); and the fid `_185211` (19:13:12).
+- 22:16:56 `recording to telegram: unreadable FileNotFoundException` and 22:17:56 `log to telegram: failed NO_NETWORK` + `AutoBackup telegram rc=io SocketTimeoutException` (bydmate_logs_20261103_221403); 16:56 refers to the recording that was being sent, check the archive for what got lost.
 - Consequence: the parts named "failed for good" were probably never delivered (check the archive for them before relying on them).
   Configuration backups are sent unpinned and are never picked up by `fetch.py`.
 
 ### 3.9 Errors and crashes
 
+- 21:56-22:34 files: no `E/`, no Exception/FATAL except the Telegram failures above; `FidPush: subscribed=143 ok=123 failed=20` at 22:14 again; no NAVVOICE/NavVoice/AudioChannelTest lines (0 hits in the new files).
 - No `FATAL`, `AndroidRuntime` or crash was found in any file (0 hits). `errors` counts are almost all Telegram failures (above).
 - Other errors: `E/ActivityManager: Failure starting process com.bydmate.app.waze ... SecurityException: Package com.bydmate.app.waze is currently frozen!`
   (bydmate_logs_20261031_103228, 10:32:18, right after the dev.17 -> dev.18 update); `FidRec dev=1031 ...BYDAutoPanoramaDevice: registered=0/62 err=RemoteException`
@@ -280,7 +299,7 @@ Details:
 
 1. Does the car's SLA/ADAS display follow the live Waze limit at all while driving? Cases of following exist (5, 20, 90 once); the dev.16 round 2 (RoadClass 1/2) is pending, but the car's own sign
    usually wins; no test compared the car with the app on a stable stretch with the app sending and the car's own sign deliberately absent.
-2. Is `acc=1` (or the ICA/ACC state) the condition under which the car takes the parked-test sign? Only runs 1, 2 and 5 had acc=1 afterwards.
+2. Is `acc=1` (or the ICA/ACC state) the condition under which the car takes the parked-test sign? Only runs 1, 2 and 5 had acc=1 afterwards. (22:14-22:34 drive: acc 2/3 and car sign stuck at 70 despite sends.)
    Run 5 only logged one `car:` line; 110 was sent with RoadClass 0 and never taken - does the car need RoadClass for 110?
 3. Why does the car stay at 50 so often against Waze 90/110 (and show 5/10)? Is that the car's own map limit, or a stale value left by the app's earlier frames?
 4. Audio test: which of the 8 variants was actually audible, and was Spotify ducked or paused? `played=true` does not say it. The owner's heard-result was not recorded.
