@@ -2600,4 +2600,7 @@
     <string name="settings_nav_voice_channel">Аудиоканал</string>
     <string name="settings_nav_voice_duck_title">Приглушать музыку</string>
     <string name="settings_nav_voice_duck_desc">Просить систему приглушить музыку на время подсказки. Какой канал и режим приглушают музыку на этой машине, показывает тест аудиоканалов в «Диагностике».</string>
+    <string name="settings_tts_voice_tetiana_uk">Тетяна (укр.)</string>
+    <string name="settings_tts_voice_mykyta_uk">Микита (укр.)</string>
+    <string name="settings_tts_voice_lada_uk">Лада (укр.)</string>
 </resources>

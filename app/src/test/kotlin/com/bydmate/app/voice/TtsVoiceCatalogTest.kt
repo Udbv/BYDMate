@@ -5,8 +5,8 @@ import org.junit.Test
 
 class TtsVoiceCatalogTest {
 
-    @Test fun `catalog lists six voices with dmitri first as default`() {
-        assertEquals(listOf("dmitri", "alena", "ruslan", "irina", "mark", "sofia"),
+    @Test fun `catalog lists six Russian and three Ukrainian voices with dmitri first as default`() {
+        assertEquals(listOf("dmitri", "alena", "ruslan", "irina", "mark", "sofia", "tetiana_uk", "mykyta_uk", "lada_uk"),
             TtsVoiceCatalog.ALL.map { it.id })
     }
 
@@ -42,5 +42,17 @@ class TtsVoiceCatalogTest {
         assertEquals("sofia", TtsVoiceCatalog.counterpart(TtsVoiceCatalog.byId("mark")).id)
         // alena is the only VITS_MULTI voice left: counterpart falls back to the default male
         assertEquals("dmitri", TtsVoiceCatalog.counterpart(TtsVoiceCatalog.byId("alena")).id)
+        // a Ukrainian voice swaps to a Ukrainian one
+        assertEquals("tetiana_uk", TtsVoiceCatalog.counterpart(TtsVoiceCatalog.byId("mykyta_uk")).id)
+        assertEquals("mykyta_uk", TtsVoiceCatalog.counterpart(TtsVoiceCatalog.byId("lada_uk")).id)
+    }
+
+    @Test fun `Ukrainian voices speak Ukrainian, the multispeaker pair shares one archive`() {
+        val t = TtsVoiceCatalog.byId("tetiana_uk")
+        val m = TtsVoiceCatalog.byId("mykyta_uk")
+        assertEquals(TtsLang.UK, t.lang)
+        assertEquals(t.modelDirId, m.modelDirId)
+        assertEquals(listOf(2, 1), listOf(t.speakerId, m.speakerId))
+        assertEquals(TtsLang.RU, TtsVoiceCatalog.byId("dmitri").lang)
     }
 }

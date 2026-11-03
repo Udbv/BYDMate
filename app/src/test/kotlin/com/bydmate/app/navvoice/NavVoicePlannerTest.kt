@@ -75,4 +75,15 @@ class NavVoicePlannerTest {
         assertEquals("250 метров", NavVoicePhrases.distance(240))
         assertEquals("50 метров", NavVoicePhrases.distance(10))
     }
+
+    @Test fun `a Ukrainian voice gets Ukrainian phrases`() {
+        val uk = com.bydmate.app.voice.TtsLang.UK
+        assertEquals(
+            "Через 400 метрів поверніть праворуч на вул. Шевченка",
+            NavVoicePhrases.ahead(NavManeuverCodes.GAODE_RIGHT, null, 410, "вул. Шевченка", uk),
+        )
+        assertEquals("Зараз ліворуч", NavVoicePhrases.now(NavManeuverCodes.GAODE_LEFT, null, uk))
+        assertEquals("Зараз третій з'їзд", NavVoicePhrases.now(NavManeuverCodes.GAODE_ROUNDABOUT_EXIT, 3, uk))
+        assertEquals("кілометр", NavVoicePhrases.distance(1000, uk))
+    }
 }

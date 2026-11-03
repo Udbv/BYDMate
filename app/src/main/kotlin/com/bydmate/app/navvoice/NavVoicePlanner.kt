@@ -21,6 +21,9 @@ data class NavVoiceInput(
  * later tick if it still applies. A stage said makes the earlier ones moot.
  */
 class NavVoicePlanner {
+    /** The language the phrases are said in: the selected voice's. */
+    var lang: com.bydmate.app.voice.TtsLang = com.bydmate.app.voice.TtsLang.RU
+
 
     private enum class Stage { FAR, NEAR, NOW }
 
@@ -40,8 +43,8 @@ class NavVoicePlanner {
         if (lastSpokeMs?.let { nowMs - it < MIN_GAP_MS } == true) return null
         val stage = due(input.distanceM) ?: return null
         val phrase = when (stage) {
-            Stage.NOW -> NavVoicePhrases.now(input.gaode, input.exitNumber)
-            else -> NavVoicePhrases.ahead(input.gaode, input.exitNumber, input.distanceM, input.road)
+            Stage.NOW -> NavVoicePhrases.now(input.gaode, input.exitNumber, lang)
+            else -> NavVoicePhrases.ahead(input.gaode, input.exitNumber, input.distanceM, input.road, lang)
         } ?: return null
         Stage.entries.filter { it.ordinal <= stage.ordinal }.forEach { said += it }
         lastSpokeMs = nowMs

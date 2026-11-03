@@ -55,6 +55,7 @@ class NavVoice @Inject constructor(
     private suspend fun loop() {
         planner.reset()
         while (scope.isActive && NavVoiceSettings.isEnabled(context)) {
+            planner.lang = selectedVoiceLang()
             val snap = NavGuidanceHub.snapshot()
             val input = NavVoiceInput(snap.active, snap.maneuverGaode, snap.distanceMeters, snap.road, snap.exitNumber)
             planner.next(input, System.currentTimeMillis())?.let { phrase ->
@@ -84,6 +85,13 @@ class NavVoice @Inject constructor(
             speaking.set(false)
         }
     }
+
+    /** The language of the voice chosen in the voice settings (prefs "voice"/"tts_voice"). */
+    private fun selectedVoiceLang(): com.bydmate.app.voice.TtsLang = com.bydmate.app.voice.TtsVoiceCatalog.byId(
+        context.getSharedPreferences("voice", Context.MODE_PRIVATE)
+            .getString("tts_voice", com.bydmate.app.voice.TtsModelManager.DEFAULT_VOICE_ID)
+            ?: com.bydmate.app.voice.TtsModelManager.DEFAULT_VOICE_ID,
+    ).lang
 
     private fun note(line: String) {
         Log.i(TAG, line)
