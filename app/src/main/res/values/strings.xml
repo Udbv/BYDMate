@@ -2548,4 +2548,6 @@
     <string name="map_point_details">направление %1$s · проездов %2$d · %3$s</string>
     <string name="settings_bump_recording_title">Фоновая запись для лежачих</string>
     <string name="settings_bump_recording_desc">В каждой поездке регистратор датчиков сам пишет подвеску, наклон кузова, скорость и колёса и каждые 20 минут отправляет часть записи в Telegram-бот (после отправки файл удаляется с машины). Из этих записей настраивается распознавание лежачих полицейских. Запись, включённую вручную, не трогает.</string>
+    <string name="map_adas_route_test">Маршрут в ADAS (тест на стоянке, 30 с)</string>
+    <string name="map_adas_route_running">Отправляю маршрут в ADAS · ещё %1$d с</string>
 </resources>

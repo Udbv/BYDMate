@@ -194,6 +194,7 @@ private fun TargetCard(
             route != null -> {
                 RouteSummary(route, state.scenarios)
                 SpeedPlanTable(state.speedPlans, state.currency)
+                AdasRouteTestButton(route)
             }
             state.routeFailed -> Text(stringResource(R.string.map_route_failed), color = AccentOrange, fontSize = 13.sp)
         }
