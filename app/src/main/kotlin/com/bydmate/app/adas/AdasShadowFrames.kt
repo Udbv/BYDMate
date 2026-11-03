@@ -107,6 +107,17 @@ internal class Proto {
         return this
     }
 
+    fun double(field: Int, value: Double): Proto {
+        if (value == 0.0) return this
+        tag(field, WIRE_FIXED64)
+        val bits = java.lang.Double.doubleToRawLongBits(value)
+        for (i in 0 until FIXED64_BYTES) out.write(((bits ushr (i * BITS_PER_BYTE)) and BYTE_MASK).toInt())
+        return this
+    }
+
+    fun string(field: Int, value: String): Proto =
+        if (value.isEmpty()) this else message(field, value.toByteArray(Charsets.UTF_8))
+
     fun bytes(): ByteArray = out.toByteArray()
 
     private fun tag(field: Int, wire: Int) = raw(((field shl 3) or wire).toLong())
@@ -123,6 +134,10 @@ internal class Proto {
     private companion object {
         const val WIRE_VARINT = 0
         const val WIRE_LEN = 2
+        const val WIRE_FIXED64 = 1
+        const val FIXED64_BYTES = 8
+        const val BITS_PER_BYTE = 8
+        const val BYTE_MASK = 0xFFL
         const val SEVEN_BITS = 0x7FL
         const val CONTINUE = 0x80L
     }

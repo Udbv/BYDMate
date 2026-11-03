@@ -54,6 +54,8 @@ class AdasParkedTest @Inject constructor(
         val car: AdasCarReading? = null,
         /** How the last test ended, in words; null before the first. */
         val result: String? = null,
+        /** The running test offers a route (#53) rather than a limit and camera. */
+        val route: Boolean = false,
     )
 
     private val _status = MutableStateFlow(Status())
@@ -69,15 +71,41 @@ class AdasParkedTest @Inject constructor(
     internal var nowMs: () -> Long = { System.currentTimeMillis() }
 
     /** Starts the test; the refusal in words when the car is not parked or a test runs already. */
-    fun start(scope: CoroutineScope, limitKph: Int, cameraM: Int): String? {
+    fun start(scope: CoroutineScope, limitKph: Int, cameraM: Int): String? =
+        launch(scope, sendingFrames(limitKph, cameraM), "limit=$limitKph camera=${cameraM}m") {
+            Status(running = true, secondsLeft = (DURATION_MS / SECOND_MS).toInt(), limitKph = limitKph, cameraM = cameraM)
+        }
+
+    /**
+     * The route test (#53, the owner's go-ahead of 2026-11-03): [points] offered as the route the
+     * car is on, the same 30 s, parked only, cleared after. Needs a position for the car's place on
+     * the route.
+     */
+    fun startRoute(scope: CoroutineScope, points: List<RoutePoint>): String? {
+        if (points.size < 2) return "немає маршруту"
+        val ahead = AdasRouteFrames.head(points)
+        val here = location()?.let { RoutePoint(it.latitude, it.longitude) } ?: points.first()
+        val pathId = PATH_ID_BASE + nowMs() / SECOND_MS % PATH_ID_BASE
+        val frames = listOf(AdasShadowFrames.naviStatus(AdasShadowFrames.NAVI_ACTIVE)) +
+            AdasRouteFrames.of(ahead, pathId, nowMs(), here)
+        return launch(scope, frames, "route pathID=$pathId points=${ahead.size}/${points.size}") {
+            Status(running = true, secondsLeft = (DURATION_MS / SECOND_MS).toInt(), route = true)
+        }
+    }
+
+    internal var location: () -> android.location.Location? = { TrackingService.lastLocation.value }
+
+    private fun launch(scope: CoroutineScope, frames: List<ShadowFrame>, what: String, initial: () -> Status): String? {
         refusal(data())?.let { return it }
         if (!running.compareAndSet(false, true)) return "тест уже йде"
-        _status.value = Status(running = true, secondsLeft = (DURATION_MS / SECOND_MS).toInt(), limitKph = limitKph, cameraM = cameraM)
-        scope.launch(Dispatchers.IO) { run(limitKph, cameraM) }
+        _status.value = initial()
+        scope.launch(Dispatchers.IO) { run(frames, what) }
         return null
     }
 
-    internal suspend fun run(limitKph: Int, cameraM: Int) {
+    internal suspend fun run(limitKph: Int, cameraM: Int) = run(sendingFrames(limitKph, cameraM), "limit=$limitKph camera=${cameraM}m")
+
+    internal suspend fun run(sending: List<ShadowFrame>, what: String) {
         val gateway = gatewayFactory(context)
         val fires = HashMap<Int, Int>()
         // Whatever ends the run before it says otherwise: leaving the settings screen cancels it
@@ -86,12 +114,12 @@ class AdasParkedTest @Inject constructor(
         var started = false
         try {
             val before = readCar()
-            note("parked test start limit=$limitKph camera=${cameraM}m car before: ${before?.describe() ?: "no answer"}")
+            note("parked test start $what car before: ${before?.describe() ?: "no answer"}")
+            sending.forEach { note("parked test frame ${it.name} {${it.fields}} ${it.bytes.size} B") }
             if (!gateway.bind()) {
                 outcome = "шлюз SOME/IP недоступний"
                 return
             }
-            val sending = sendingFrames(limitKph, cameraM)
             // The factory map offers these services itself; ours are started only when a frame
             // does not go out without them, and only those are stopped at the end.
             val probe = sending.map { gateway.fireEvent(it.topic, it.bytes) }
@@ -157,10 +185,14 @@ class AdasParkedTest @Inject constructor(
         private const val SECOND_MS = 1_000L
         private const val CLEAR_REPEATS = 5
         private const val GEAR_P = 1
+        /** Route ids of the test sit apart from the factory map's small counters. */
+        private const val PATH_ID_BASE = 1_000_000_000L
 
-        /** The gateway services of the three topics: 0x0007 and 0x8202. */
-        val SERVICES: List<Long> = listOf(AdasShadowFrames.TOPIC_NAVI_STATUS, AdasShadowFrames.TOPIC_ACTION_CAMERA)
-            .map(HudSomeIpBridge::serviceIdFor)
+        /** The gateway services of the frames the tests send. */
+        val SERVICES: List<Long> = listOf(
+            AdasShadowFrames.TOPIC_NAVI_STATUS, AdasShadowFrames.TOPIC_ACTION_CAMERA,
+            AdasRouteFrames.TOPIC_SD_ROUTE, AdasRouteFrames.TOPIC_PATH_SELECT,
+        ).map(HudSomeIpBridge::serviceIdFor).distinct()
 
         /** Why the car may not be sent to now, or null when it is parked: P, standing, answering. */
         fun refusal(d: DiParsData?): String? = when {
