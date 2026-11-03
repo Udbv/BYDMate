@@ -59,7 +59,7 @@ class AdasLimitSenderTest {
         assertEquals("cleared only once", afterClear, gateway.fired.size)
 
         session.close()
-        assertEquals(AdasParkedTest.SERVICES, gateway.stopped)
+        assertTrue("services are never stopped", gateway.stopped.isEmpty())
         assertTrue(gateway.unbound)
     }
 
@@ -70,20 +70,5 @@ class AdasLimitSenderTest {
         session.close()
         assertTrue(gateway.fired.isEmpty())
         assertTrue(!gateway.unbound)
-    }
-
-    @Test fun `a new limit restarts navigation and our services, a camera change does not`() = runTest {
-        val gateway = FakeGateway(rc = 11)
-        val lines = mutableListOf<String>()
-        val session = AdasLimitSender.Session(gateway) { lines += it }
-        session.send(AdasLimitSender.framesFor(snap(90)))
-        gateway.rc = 0
-        session.send(AdasLimitSender.framesFor(snap(90, camera = 300)))
-        assertTrue(lines.none { it.contains("restart") })
-        session.send(AdasLimitSender.framesFor(snap(50)))
-        assertEquals(1, lines.count { it.contains("restart for the new limit 90 -> 50") })
-        assertEquals(AdasParkedTest.SERVICES, gateway.stopped)
-        assertEquals(AdasParkedTest.SERVICES + AdasParkedTest.SERVICES, gateway.started)
-        assertEquals(AdasShadowFrames.TOPIC_ACTION_CAMERA, gateway.fired.last())
     }
 }

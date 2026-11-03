@@ -64,8 +64,7 @@ class AdasLimitSender @Inject constructor(
                 delay(PERIOD_MS)
             }
         } finally {
-            // Yielding to the parked test: its frames need the services, so they stay up.
-            withContext(NonCancellable) { session.close(stopServices = !parkedTest.status.value.running) }
+            withContext(NonCancellable) { session.close() }
         }
     }
 
@@ -82,9 +81,6 @@ class AdasLimitSender @Inject constructor(
                 return
             }
             if (!bind()) return
-            val limit = limitOf(frames)
-            val previous = sending?.let(::limitOf)
-            if (previous != null && previous != limit) restart(previous, limit)
             val rcs = frames.map { gateway.fireEvent(it.topic, it.bytes) }
             if (rcs.any { it != 0 } && !started) startServices(rcs)
             if (frames != sending) log("ADAS live send ${frames.drop(1).joinToString(" | ") { it.fields }} rc=$rcs")
@@ -92,30 +88,13 @@ class AdasLimitSender @Inject constructor(
         }
 
         /**
-         * The car takes only the first limit after navigation starts and ignores later changes
-         * (3.11 drive: 90 taken at the start, then 50, 50, 50 and 70 sent, the car stayed on 90).
-         * So a new limit goes out the way the first one did: "stopped", the services restarted
-         * (when they are ours), then "navigating" with the new limit.
+         * Ends sending with "stopped" and empty frames. The gateway services stay up: stopping
+         * and restarting them (dev.10-15: on every new limit and at the end) left the head unit's
+         * ADAS view frozen on 3.11 (the car parked, no lanes or traffic) until the multimedia was
+         * restarted. Once started they stay for the multimedia session, as the factory map's do.
          */
-        private suspend fun restart(from: Int, to: Int?) {
-            AdasParkedTest.clearingFrames().forEach { gateway.fireEvent(it.topic, it.bytes) }
-            delay(RESTART_GAP_MS)
-            if (started) {
-                AdasParkedTest.SERVICES.forEach { gateway.stopService(it) }
-                delay(RESTART_GAP_MS)
-                AdasParkedTest.SERVICES.forEach { gateway.startService(it) }
-                delay(RESTART_GAP_MS)
-            }
-            log("ADAS live restart for the new limit $from -> $to (services restarted=$started)")
-        }
-
-        private fun limitOf(frames: List<ShadowFrame>): Int? =
-            frames.firstOrNull { it.topic == AdasShadowFrames.TOPIC_TRAFFIC_INFO }?.fields
-                ?.substringAfter("SpdLmtSpeedValue=", "")?.substringBefore(' ')?.toIntOrNull()
-
-        suspend fun close(stopServices: Boolean = true) {
+        suspend fun close() {
             if (sending != null) clear("stopped")
-            if (started && stopServices) AdasParkedTest.SERVICES.forEach { gateway.stopService(it) }
             if (bound) gateway.unbind()
             started = false
             bound = false
@@ -153,7 +132,6 @@ class AdasLimitSender @Inject constructor(
         const val PERIOD_MS = 500L
         private const val CLEAR_REPEATS = 3
         private const val REBIND_MS = 30_000L
-        private const val RESTART_GAP_MS = 300L
 
         private const val PREFS = "adas_limit_sender"
         private const val KEY_ENABLED = "enabled"
