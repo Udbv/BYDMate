@@ -73,6 +73,15 @@ interface TtsEngine {
         suspend fun awaitPlayed() {}
     }
 
+    /** Mono float PCM of one synthesized phrase, for callers that play it on their own track. */
+    class Pcm(val samples: FloatArray, val sampleRate: Int)
+
+    /** Synthesizes [text] with the local voice WITHOUT playing it, blocking up to [timeoutMs].
+     *  The audio channel test plays the phrase on its own track under each AudioAttributes
+     *  usage it measures, which the engine's single shared track cannot do. Null when not
+     *  ready, timed out or unsupported; never supersedes current speech. */
+    fun synthesizePcm(text: String, timeoutMs: Long): Pcm? = null
+
     /** Starts a speech queue, superseding any current speech. Null when the engine is not
      *  ready (model missing) or the implementation does not support queued speech. */
     fun startQueue(): SpeechQueue? = null

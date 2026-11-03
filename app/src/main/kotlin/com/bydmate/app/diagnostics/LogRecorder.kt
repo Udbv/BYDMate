@@ -540,6 +540,8 @@ class LogRecorder internal constructor(
             // value it sets, the car's confirmation and AC device events. AbsBYDAutoDevice stays
             // out: it floods (~20 lines/s on Leopard 3).
             "BYDAutoSettingDevice:*", "AbsBYDAutoSettingListener:*", "BYDAutoAcDevice:*",
+            // Audio channel test (#6): per-variant focus answers, start/end and the focus stack.
+            "AudioChannelTest:*",
             // The event journal: one line per user action, decision and failure, by=#id links.
             "Trace:*"
         )

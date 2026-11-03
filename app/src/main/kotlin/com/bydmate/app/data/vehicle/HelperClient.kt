@@ -503,6 +503,11 @@ interface HelperClient {
      */
     suspend fun clusterWmDiag(projectedPkg: String): ClusterWmDiag?
 
+    /** `dumpsys audio` focus stack and duck lines (TX_AUDIO_FOCUS_DIAG), for the audio channel
+     *  test. Null when the daemon is unreachable or predates the verb. Default null keeps the
+     *  test doubles compiling; HelperClientImpl overrides. */
+    suspend fun audioFocusDiag(): List<String>? = null
+
     /**
      * Reads the windowing state (taskId, windowingMode, bounds) for [packageName]'s running task.
      * Returns null when the daemon is unreachable or the call fails (status ≠ 0).
@@ -1112,6 +1117,13 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
             )
         }
 
+    override suspend fun audioFocusDiag(): List<String>? =
+        transactParsed(HelperBinderProtocol.TX_AUDIO_FOCUS_DIAG, { }, timeoutMs = AUDIO_FOCUS_DIAG_TIMEOUT_MS) { reply ->
+            if (reply.dataAvail() < 4) return@transactParsed null
+            if (reply.readInt() != 0) return@transactParsed null
+            reply.readString().orEmpty().lines().filter { it.isNotBlank() }
+        }
+
     override suspend fun getTaskState(packageName: String): SplitTaskState? =
         transactParsed(HelperBinderProtocol.TX_GET_TASK_STATE, { it.writeString(packageName) }) { reply ->
             if (reply.dataAvail() < 4) return@transactParsed null
@@ -1716,6 +1728,9 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
         /** TX_CLUSTER_WM_DIAG budget: two `dumpsys` calls under the daemon's own 4 s bound each,
          *  plus marshalling. Dump-only, so a generous budget costs nothing at runtime. */
         private const val WM_DIAG_TIMEOUT_MS = 10_000L
+
+        /** TX_AUDIO_FOCUS_DIAG budget: one `dumpsys audio` under the daemon's own 4 s bound. */
+        private const val AUDIO_FOCUS_DIAG_TIMEOUT_MS = 6_000L
 
         /** Safety cap on the number of TX_DUMP_FIDS loop iterations (chunks). 64 × 64 KiB = 4 MiB,
          *  far above any realistic SDK catalog size; guards against a misbehaving daemon. */

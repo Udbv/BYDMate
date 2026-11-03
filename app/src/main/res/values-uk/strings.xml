@@ -2558,4 +2558,17 @@
     <string name="widget_arrival_short">Не вистачить ~%1$d км</string>
     <string name="settings_widget_arrival_chip_label">Запас на прибутті</string>
     <string name="settings_widget_arrival_chip_description">Поки Waze веде маршрутом, унизу віджета рядок: скільки км залишиться на фініші. Жовтим — запас малий, червоним — не вистачить.</string>
+    <string name="settings_audio_test_title">Тест аудіоканалів</string>
+    <string name="settings_audio_test_desc">Увімкніть музику і натисніть «Запустити». Фраза прозвучить 8 разів: медіа, навігація, асистент і сповіщення, кожен із приглушенням і без запиту фокуса. Запишіть, на яких варіантах музика стихала. Подробиці в журналі.</string>
+    <string name="settings_audio_test_start">Запустити</string>
+    <string name="settings_audio_test_stop">Зупинити</string>
+    <string name="settings_audio_test_running">Варіант %1$d з %2$d: %3$s</string>
+    <string name="settings_audio_test_done">Готово. Запишіть, на яких варіантах музика стихала.</string>
+    <string name="audio_test_usage_media">медіа</string>
+    <string name="audio_test_usage_navigation">навігація</string>
+    <string name="audio_test_usage_assistant">асистент</string>
+    <string name="audio_test_usage_notification">сповіщення</string>
+    <string name="audio_test_mode_duck">із приглушенням</string>
+    <string name="audio_test_mode_no_focus">без фокуса</string>
+    <string name="audio_test_phrase">Перевірка звуку. %1$s, %2$s. Раз, два, три.</string>
 </resources>

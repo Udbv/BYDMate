@@ -238,6 +238,36 @@ class SherpaTtsEngine(
         return true
     }
 
+    /** Synthesis only, on the tts worker like every other JNI call; the generation counter is
+     *  untouched because nothing is spoken here. The plain (non-streaming) generate is enough:
+     *  the caller wants the whole phrase before it starts its own track. */
+    override fun synthesizePcm(text: String, timeoutMs: Long): TtsEngine.Pcm? {
+        if (text.isBlank() || !isReady()) return null
+        val job = worker.submit<TtsEngine.Pcm?> {
+            runCatching {
+                val engine = tts ?: createTts()?.also { tts = it } ?: return@runCatching null
+                val voice = selectedVoice()
+                val audio = engine.generate(
+                    textForSynthesis(voice.engine, text, marker::mark), voice.speakerId, TtsTuning.speed(rate()),
+                )
+                TtsEngine.Pcm(audio.samples, audio.sampleRate)
+            }.onFailure { Log.w(TAG, "synthesizePcm failed", it) }.getOrNull()
+        }
+        return try {
+            job.get(timeoutMs, TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            Log.w(TAG, "synthesizePcm timed out after ${timeoutMs}ms")
+            job.cancel(false)
+            null
+        } catch (e: java.util.concurrent.ExecutionException) {
+            Log.w(TAG, "synthesizePcm failed", e)
+            null
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            null
+        }
+    }
+
     override fun stop() {
         generation.incrementAndGet()
         pendingTarget = null

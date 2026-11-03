@@ -3411,6 +3411,8 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
             text = state.fidDumpStatus!!,
         )
     }
+    SettingDivider()
+    AudioChannelTestRow()
 }
 
 /** «Проверка HUD»: about 90 s of test hints on the glass; the recorded log and a video of the

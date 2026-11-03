@@ -381,6 +381,18 @@ object HelperBinderProtocol {
      */
     val TX_SDK_NAVI: Int = IBinder.FIRST_CALL_TRANSACTION + 102             // 103 (fork range 101+)
 
+    /**
+     * Read-only audio focus readback for the audio channel test (issue #6): `dumpsys audio` under
+     * shell uid, cut down by [com.bydmate.app.diagnostics.audio.AudioFocusDump] to the focus stack
+     * and the duck lines. The app uid cannot read either, and this is the only place that says
+     * whether the firmware ducked the music player for a given request. Nothing is written.
+     *
+     * Request: (empty)
+     * Reply:   [int status (0 ok, -1 failed), String lines joined by a newline]
+     * An old daemon without this handler makes transact return false -> the client returns null.
+     */
+    val TX_AUDIO_FOCUS_DIAG: Int = IBinder.FIRST_CALL_TRANSACTION + 103     // 104 (fork range 101+)
+
     /** Device selectors of TX_SDK_SET. Not autoservice device numbers: they name SDK classes. */
     const val SDK_DEV_INSTRUMENT = 1   // android.hardware.bydauto.instrument.BYDAutoInstrumentDevice
     const val SDK_DEV_SETTING = 2      // android.hardware.bydauto.setting.BYDAutoSettingDevice
