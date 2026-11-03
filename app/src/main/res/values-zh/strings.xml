@@ -2481,4 +2481,20 @@
     <string name="map_adas_route_running">正在向 ADAS 发送路线 · 剩余 %1$d 秒</string>
     <string name="settings_adas_live_title">Waze 限速发送到 ADAS</string>
     <string name="settings_adas_live_desc">行驶中像原厂地图一样把 Waze 的限速和摄像头发送给驾驶辅助：车辆把它当作限速标志显示，限速辅助（以及随之的自适应巡航）会跟随，包括摄像头看不到的进出城镇。Waze 没有限速时车辆回到自己的摄像头识别。语音：«включи ограничения» / «выключи ограничения»。</string>
+    <string name="settings_ha_section_header">Home Assistant</string>
+    <string name="settings_ha_label">Home Assistant 设备</string>
+    <string name="settings_ha_description">车辆通电时每分钟一次，将电量、续航、里程、温度、车门和车锁作为独立设备发送到 Home Assistant</string>
+    <string name="settings_ha_url_label">Home Assistant 地址（https://…）</string>
+    <string name="settings_ha_token_label">长期访问令牌</string>
+    <string name="settings_ha_save_button">保存</string>
+    <string name="settings_ha_test_button">测试</string>
+    <string name="settings_ha_saved">Home Assistant 已保存</string>
+    <string name="settings_ha_invalid_url">需要 https:// 地址和令牌</string>
+    <string name="settings_ha_empty_token">请输入令牌</string>
+    <string name="settings_ha_test_running">正在测试…</string>
+    <string name="settings_ha_test_ok">已连接。设备 BYDMate 已注册，传感器：%1$d</string>
+    <string name="settings_ha_test_unauthorized">令牌被拒绝</string>
+    <string name="settings_ha_test_unreachable">服务器无法访问：%1$s</string>
+    <string name="settings_ha_test_http">HTTP 错误 %1$d</string>
+    <string name="settings_ha_test_bad_answer">响应不像 Home Assistant。是否已启用 Mobile App 集成？</string>
 </resources>

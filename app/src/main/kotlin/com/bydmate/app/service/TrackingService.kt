@@ -115,6 +115,7 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var adbVerdictMonitor: com.bydmate.app.data.autoservice.AdbVerdictMonitor
     @Inject lateinit var iternioTelemetryClient: IternioTelemetryClient
     @Inject lateinit var webhookTelemetryClient: WebhookTelemetryClient
+    @Inject lateinit var homeAssistantPublisher: com.bydmate.app.data.homeassistant.HomeAssistantPublisher
     @Inject lateinit var lastSessionRepository: com.bydmate.app.data.repository.LastSessionRepository
     @Inject lateinit var odometerMarks: com.bydmate.app.data.repository.OdometerMarks
     @Inject lateinit var sharedAdaptiveLoop: com.bydmate.app.data.loop.SharedAdaptiveLoop
@@ -1825,6 +1826,8 @@ class TrackingService : Service(), LocationListener {
                     updateNotification(data)
                     maybeLogSessionSummary(nowMs, data, sessionId)
                     maybeSendIternioTelemetry(data, nowMs)
+                    // Own IO scope and a once-a-minute gate inside: never waits on the network here.
+                    homeAssistantPublisher.onSample(data, _lastRangeKm.value, nowMs)
 
                     // Native trip recorder (writes only when energydata absent — i.e. Song/Atto/non-Leopard3)
                     runCatching { tripRecorder.consume(data) }

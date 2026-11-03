@@ -650,6 +650,8 @@ private fun IntegrationsSection(state: SettingsUiState, viewModel: SettingsViewM
         }
     }
 
+    HomeAssistantSettingsSection()
+
     SectionHeader(text = stringResource(R.string.settings_ai_connections_header))
 
     ConnectionCard(
@@ -5136,7 +5138,7 @@ private fun SearchStatusCard(state: SettingsUiState) {
 }
 
 @Composable
-private fun SectionHeader(text: String, onHelp: (() -> Unit)? = null) {
+internal fun SectionHeader(text: String, onHelp: (() -> Unit)? = null) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -5154,7 +5156,7 @@ private fun SectionHeader(text: String, onHelp: (() -> Unit)? = null) {
 }
 
 @Composable
-private fun SettingsTextField(
+internal fun SettingsTextField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,

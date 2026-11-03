@@ -2537,4 +2537,20 @@
     <string name="map_adas_route_running">Wysyłam trasę do ADAS · jeszcze %1$d s</string>
     <string name="settings_adas_live_title">Ograniczenia Waze do ADAS</string>
     <string name="settings_adas_live_desc">Podczas jazdy wysyła systemom wspomagania kierowcy ograniczenie prędkości i fotoradary z Waze, jak fabryczna mapa: auto pokazuje je jako znak, a asystent ograniczenia (i z nim aktywny tempomat) się do nich stosuje, także przy wjeździe do miejscowości i wyjeździe. Bez ograniczenia w Waze auto wraca do własnej kamery. Głosem: «включи ограничения» / «выключи ограничения».</string>
+    <string name="settings_ha_section_header">Home Assistant</string>
+    <string name="settings_ha_label">Urządzenie w Home Assistant</string>
+    <string name="settings_ha_description">Raz na minutę, gdy auto jest włączone, wysyła do Home Assistant naładowanie, zasięg, przebieg, temperatury, drzwi i zamek jako osobne urządzenie</string>
+    <string name="settings_ha_url_label">Adres Home Assistant (https://…)</string>
+    <string name="settings_ha_token_label">Token dostępu długoterminowego</string>
+    <string name="settings_ha_save_button">Zapisz</string>
+    <string name="settings_ha_test_button">Sprawdź</string>
+    <string name="settings_ha_saved">Home Assistant zapisany</string>
+    <string name="settings_ha_invalid_url">Wymagany adres https:// i token</string>
+    <string name="settings_ha_empty_token">Wpisz token</string>
+    <string name="settings_ha_test_running">Sprawdzam…</string>
+    <string name="settings_ha_test_ok">Połączono. Urządzenie BYDMate zarejestrowane, czujników: %1$d</string>
+    <string name="settings_ha_test_unauthorized">Token odrzucony</string>
+    <string name="settings_ha_test_unreachable">Serwer niedostępny: %1$s</string>
+    <string name="settings_ha_test_http">Błąd HTTP %1$d</string>
+    <string name="settings_ha_test_bad_answer">Odpowiedź nie wygląda na Home Assistant. Czy integracja Mobile App jest włączona?</string>
 </resources>

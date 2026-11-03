@@ -2532,4 +2532,20 @@
     <string name="map_adas_route_running">Надсилаю маршрут в ADAS · ще %1$d с</string>
     <string name="settings_adas_live_title">Обмеження Waze в ADAS</string>
     <string name="settings_adas_live_desc">Під час руху надсилає системам допомоги водієві обмеження швидкості й камери з Waze, як штатна карта: машина показує їх як знак, а асистент обмеження (і адаптивний круїз з ним) слідує їм, зокрема на в\'їзді в населений пункт і виїзді, яких камера не бачить. Без обмеження у Waze машина повертається до своєї камери. Голосом: «увімкни ліміти» / «вимкни ліміти».</string>
+    <string name="settings_ha_section_header">Home Assistant</string>
+    <string name="settings_ha_label">Пристрій у Home Assistant</string>
+    <string name="settings_ha_description">Раз на хвилину, поки авто увімкнене, надсилає в Home Assistant заряд, запас ходу, пробіг, температури, двері та замок як окремий пристрій</string>
+    <string name="settings_ha_url_label">Адреса Home Assistant (https://…)</string>
+    <string name="settings_ha_token_label">Довгостроковий токен доступу</string>
+    <string name="settings_ha_save_button">Зберегти</string>
+    <string name="settings_ha_test_button">Перевірити</string>
+    <string name="settings_ha_saved">Home Assistant збережено</string>
+    <string name="settings_ha_invalid_url">Потрібні адреса https:// і токен</string>
+    <string name="settings_ha_empty_token">Введіть токен</string>
+    <string name="settings_ha_test_running">Перевіряю…</string>
+    <string name="settings_ha_test_ok">Підключено. Пристрій BYDMate зареєстровано, датчиків: %1$d</string>
+    <string name="settings_ha_test_unauthorized">Токен не прийнято</string>
+    <string name="settings_ha_test_unreachable">Сервер недоступний: %1$s</string>
+    <string name="settings_ha_test_http">Помилка HTTP %1$d</string>
+    <string name="settings_ha_test_bad_answer">Відповідь не схожа на Home Assistant. Чи увімкнена інтеграція Mobile App?</string>
 </resources>

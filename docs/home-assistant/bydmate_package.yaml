@@ -1,0 +1,172 @@
+# BYDMate -> Home Assistant: прийом вебхук-телеметрії (пакет HA).
+#
+# Що робить: приймає JSON, який BYDMate надсилає в розділі
+# «Вебхук — телеметрія» (той самий JSON, що йде в ABRP), і розкладає його
+# на сенсори. Інструкція: docs/home-assistant/README.md.
+#
+# ПЕРЕД ВИКОРИСТАННЯМ замініть REPLACE-WITH-LONG-RANDOM-ID на свій довгий
+# випадковий рядок (наприклад, вивід `openssl rand -hex 24`). Цей рядок і є
+# паролем: хто його знає, той може писати у ці сенсори.
+#
+# Поля, яких у поточному JSON немає (наприклад, `speed` на стоянці чи
+# `kwh_charged` поза зарядкою), не обнуляють сенсор: він тримає останнє
+# значення (`this.state`).
+
+template:
+  - trigger:
+      - trigger: webhook
+        webhook_id: REPLACE-WITH-LONG-RANDOM-ID
+        allowed_methods:
+          - POST
+        # false: машина без SIM ходить в інтернет через хотспот телефона, тобто
+        # не з вашої локальної мережі. Якщо машина буває лише вдома і ходить на HA
+        # за локальною адресою, можна поставити true.
+        local_only: false
+    sensor:
+      - name: "BYDMate WH SoC"
+        unique_id: bydmate_wh_soc
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+        state: "{{ trigger.json.soc if 'soc' in trigger.json else this.state }}"
+
+      - name: "BYDMate WH Odometer"
+        unique_id: bydmate_wh_odometer
+        unit_of_measurement: "km"
+        device_class: distance
+        state_class: total_increasing
+        state: "{{ trigger.json.odometer | round(1) if 'odometer' in trigger.json else this.state }}"
+
+      - name: "BYDMate WH Speed"
+        unique_id: bydmate_wh_speed
+        unit_of_measurement: "km/h"
+        device_class: speed
+        state_class: measurement
+        # Швидкості немає в JSON на стоянці: тоді показуємо 0, а не останню швидкість руху.
+        state: "{{ trigger.json.speed if 'speed' in trigger.json else 0 }}"
+
+      - name: "BYDMate WH Power"
+        unique_id: bydmate_wh_power
+        unit_of_measurement: "kW"
+        device_class: power
+        state_class: measurement
+        # Плюс: витрата, мінус: зарядка (конвенція Iternio).
+        state: "{{ trigger.json.power if 'power' in trigger.json else this.state }}"
+
+      - name: "BYDMate WH HV voltage"
+        unique_id: bydmate_wh_hv_voltage
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+        state: "{{ trigger.json.voltage if 'voltage' in trigger.json else this.state }}"
+
+      - name: "BYDMate WH HV current"
+        unique_id: bydmate_wh_hv_current
+        unit_of_measurement: "A"
+        device_class: current
+        state_class: measurement
+        state: "{{ trigger.json.current if 'current' in trigger.json else this.state }}"
+
+      - name: "BYDMate WH Battery temp"
+        unique_id: bydmate_wh_batt_temp
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "{{ trigger.json.batt_temp if 'batt_temp' in trigger.json else this.state }}"
+
+      - name: "BYDMate WH Outside temp"
+        unique_id: bydmate_wh_ext_temp
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "{{ trigger.json.ext_temp if 'ext_temp' in trigger.json else this.state }}"
+
+      - name: "BYDMate WH Cabin temp"
+        unique_id: bydmate_wh_cabin_temp
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        state: "{{ trigger.json.cabin_temp if 'cabin_temp' in trigger.json else this.state }}"
+
+      - name: "BYDMate WH HVAC setpoint"
+        unique_id: bydmate_wh_hvac_setpoint
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state: "{{ trigger.json.hvac_setpoint if 'hvac_setpoint' in trigger.json else this.state }}"
+
+      # Тиск шин іде так, як його віддає машина. На DiLink це кПа (250 = 2,5 бар).
+      # Якщо у вас значення виглядають як 2.5, поміняйте одиницю на "bar".
+      - name: "BYDMate WH Tyre FL"
+        unique_id: bydmate_wh_tyre_fl
+        unit_of_measurement: "kPa"
+        device_class: pressure
+        state_class: measurement
+        state: "{{ trigger.json.tire_pressure_fl if 'tire_pressure_fl' in trigger.json else this.state }}"
+      - name: "BYDMate WH Tyre FR"
+        unique_id: bydmate_wh_tyre_fr
+        unit_of_measurement: "kPa"
+        device_class: pressure
+        state_class: measurement
+        state: "{{ trigger.json.tire_pressure_fr if 'tire_pressure_fr' in trigger.json else this.state }}"
+      - name: "BYDMate WH Tyre RL"
+        unique_id: bydmate_wh_tyre_rl
+        unit_of_measurement: "kPa"
+        device_class: pressure
+        state_class: measurement
+        state: "{{ trigger.json.tire_pressure_rl if 'tire_pressure_rl' in trigger.json else this.state }}"
+      - name: "BYDMate WH Tyre RR"
+        unique_id: bydmate_wh_tyre_rr
+        unit_of_measurement: "kPa"
+        device_class: pressure
+        state_class: measurement
+        state: "{{ trigger.json.tire_pressure_rr if 'tire_pressure_rr' in trigger.json else this.state }}"
+
+      - name: "BYDMate WH SoH"
+        unique_id: bydmate_wh_soh
+        unit_of_measurement: "%"
+        state_class: measurement
+        state: "{{ trigger.json.soh if 'soh' in trigger.json else this.state }}"
+
+      - name: "BYDMate WH kWh charged"
+        unique_id: bydmate_wh_kwh_charged
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state: "{{ trigger.json.kwh_charged if 'kwh_charged' in trigger.json else this.state }}"
+
+      - name: "BYDMate WH Last update"
+        unique_id: bydmate_wh_last_update
+        device_class: timestamp
+        # `utc`: момент вимірювання в машині (секунди), а не час доставки.
+        state: "{{ as_datetime(trigger.json.utc) if 'utc' in trigger.json else now() }}"
+
+    binary_sensor:
+      - name: "BYDMate WH Charging"
+        unique_id: bydmate_wh_charging
+        device_class: battery_charging
+        state: "{{ trigger.json.is_charging == 1 if 'is_charging' in trigger.json else this.state == 'on' }}"
+
+      - name: "BYDMate WH Parked"
+        unique_id: bydmate_wh_parked
+        state: "{{ trigger.json.is_parked == 1 if 'is_parked' in trigger.json else this.state == 'on' }}"
+
+      - name: "BYDMate WH DC fast charging"
+        unique_id: bydmate_wh_dcfc
+        state: "{{ trigger.json.is_dcfc == 1 if 'is_dcfc' in trigger.json else false }}"
+
+# Приклад автоматизації поверх сенсорів: сповіщення, коли зарядка закінчилась.
+# Сповіщення з'явиться в HA; замініть дію на notify.mobile_app_<ваш_телефон>,
+# якщо хочете пуш на телефон.
+automation:
+  - id: bydmate_charging_finished
+    alias: "BYDMate: зарядка завершена"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.bydmate_wh_charging
+        from: "on"
+        to: "off"
+    actions:
+      - action: persistent_notification.create
+        data:
+          title: "BYDMate"
+          message: >-
+            Зарядку завершено: {{ states('sensor.bydmate_wh_soc') }} %.

@@ -2375,4 +2375,20 @@
     <string name="map_adas_route_running">A enviar a rota ao ADAS · faltam %1$d s</string>
     <string name="settings_adas_live_title">Limites do Waze para o ADAS</string>
     <string name="settings_adas_live_desc">Durante a condução envia aos sistemas de assistência o limite de velocidade e os radares do Waze, como o mapa de fábrica: o carro mostra-os como o sinal e o assistente de limite (e com ele o cruise adaptativo) segue-os, incluindo entradas e saídas de localidades. Sem limite no Waze o carro volta à sua câmara. Por voz: «включи ограничения» / «выключи ограничения».</string>
+    <string name="settings_ha_section_header">Home Assistant</string>
+    <string name="settings_ha_label">Dispositivo no Home Assistant</string>
+    <string name="settings_ha_description">Uma vez por minuto, com o carro ligado, envia ao Home Assistant carga, autonomia, odômetro, temperaturas, portas e trava como um dispositivo próprio</string>
+    <string name="settings_ha_url_label">Endereço do Home Assistant (https://…)</string>
+    <string name="settings_ha_token_label">Token de acesso de longa duração</string>
+    <string name="settings_ha_save_button">Salvar</string>
+    <string name="settings_ha_test_button">Testar</string>
+    <string name="settings_ha_saved">Home Assistant salvo</string>
+    <string name="settings_ha_invalid_url">São necessários um endereço https:// e um token</string>
+    <string name="settings_ha_empty_token">Digite o token</string>
+    <string name="settings_ha_test_running">Testando…</string>
+    <string name="settings_ha_test_ok">Conectado. Dispositivo BYDMate registrado, sensores: %1$d</string>
+    <string name="settings_ha_test_unauthorized">Token recusado</string>
+    <string name="settings_ha_test_unreachable">Servidor inacessível: %1$s</string>
+    <string name="settings_ha_test_http">Erro HTTP %1$d</string>
+    <string name="settings_ha_test_bad_answer">A resposta não parece do Home Assistant. A integração Mobile App está ativada?</string>
 </resources>
