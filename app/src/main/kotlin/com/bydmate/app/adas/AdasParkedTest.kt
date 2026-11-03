@@ -38,8 +38,9 @@ interface AdasGateway {
  *
  * Only in P at standstill: checked before the start and on every frame; the first frame that
  * finds the car not parked (or not answering) ends the test. Every end, whatever caused it, sends
- * the "stopped" status and empty limit and camera frames, then stops the gateway services it had
- * to start: the driving computer is left with nothing of ours. Nothing of this runs on its own.
+ * the "stopped" status and empty limit and camera frames: the driving computer is left with
+ * nothing of ours. The gateway services it had to start stay up (stopping them froze the head
+ * unit's ADAS view on 3.11). Nothing of this runs on its own.
  */
 @Singleton
 class AdasParkedTest @Inject constructor(
@@ -206,7 +207,9 @@ class AdasParkedTest @Inject constructor(
             clearingFrames().forEach { f -> gateway.fireEvent(f.topic, f.bytes) }
             delay(PERIOD_MS)
         }
-        if (started) SERVICES.forEach { gateway.stopService(it) }
+        // The services stay up (see AdasLimitSender.Session.close): stopping them froze the
+        // head unit's ADAS view on 3.11.
+        if (started) note("parked test: services left running")
         gateway.unbind()
         val after = readCar()
         note("parked test end: $outcome fires=$fires car after: ${after?.describe() ?: "no answer"}")
