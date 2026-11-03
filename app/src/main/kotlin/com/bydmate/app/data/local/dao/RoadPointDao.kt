@@ -28,6 +28,9 @@ interface RoadPointDao {
     )
     suspend fun inBox(type: String, latMin: Double, latMax: Double, lonMin: Double, lonMax: Double): List<RoadPointEntity>
 
+    @Query("UPDATE road_points SET status = :status WHERE id = :id")
+    suspend fun setStatus(id: Long, status: String)
+
     @Query("DELETE FROM road_points WHERE id = :id")
     suspend fun delete(id: Long)
 }

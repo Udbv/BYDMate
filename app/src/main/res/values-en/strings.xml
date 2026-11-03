@@ -2389,4 +2389,10 @@
     <string name="settings_ha_test_unreachable">Server unreachable: %1$s</string>
     <string name="settings_ha_test_http">HTTP error %1$d</string>
     <string name="settings_ha_test_bad_answer">The answer does not look like Home Assistant. Is the Mobile App integration enabled?</string>
+    <string name="map_point_confirm">Confirm</string>
+    <string name="map_point_reject">Reject</string>
+    <string name="map_point_status_candidate">not reviewed</string>
+    <string name="map_point_status_confirmed">confirmed</string>
+    <string name="map_point_status_rejected">rejected</string>
+    <string name="map_point_status_in_waze">already in Waze</string>
 </resources>

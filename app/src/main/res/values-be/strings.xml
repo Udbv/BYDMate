@@ -2553,4 +2553,10 @@
     <string name="settings_ha_test_unreachable">Сервер недаступны: %1$s</string>
     <string name="settings_ha_test_http">Памылка HTTP %1$d</string>
     <string name="settings_ha_test_bad_answer">Адказ не падобны на Home Assistant. Ці ўключана інтэграцыя Mobile App?</string>
+    <string name="map_point_confirm">Пацвердзіць</string>
+    <string name="map_point_reject">Адхіліць</string>
+    <string name="map_point_status_candidate">не праверана</string>
+    <string name="map_point_status_confirmed">пацверджана</string>
+    <string name="map_point_status_rejected">адхілена</string>
+    <string name="map_point_status_in_waze">ужо ў Waze</string>
 </resources>

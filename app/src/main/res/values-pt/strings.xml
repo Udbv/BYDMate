@@ -2391,4 +2391,10 @@
     <string name="settings_ha_test_unreachable">Servidor inacessível: %1$s</string>
     <string name="settings_ha_test_http">Erro HTTP %1$d</string>
     <string name="settings_ha_test_bad_answer">A resposta não parece do Home Assistant. A integração Mobile App está ativada?</string>
+    <string name="map_point_confirm">Confirmar</string>
+    <string name="map_point_reject">Rejeitar</string>
+    <string name="map_point_status_candidate">não revisto</string>
+    <string name="map_point_status_confirmed">confirmado</string>
+    <string name="map_point_status_rejected">rejeitado</string>
+    <string name="map_point_status_in_waze">já no Waze</string>
 </resources>

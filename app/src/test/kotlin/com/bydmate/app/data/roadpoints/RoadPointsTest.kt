@@ -61,5 +61,24 @@ class RoadPointsTest {
     @Test fun `the voice says what became of the mark`() {
         assertEquals("Отметил: лежачий", RoadPointPhrases.answer(MarkResult.Added(RoadPointType.SPEED_BUMP)))
         assertEquals("Светофор, уже отмечен: проезд 2", RoadPointPhrases.answer(MarkResult.Passed(RoadPointType.TRAFFIC_LIGHT, 2)))
+        assertEquals(
+            "Это место отклонено раньше: лежачий не отмечаю",
+            RoadPointPhrases.answer(MarkResult.Rejected(RoadPointType.SPEED_BUMP, 3)),
+        )
+    }
+
+    @Test fun `the export text says how far each point got in the review`() {
+        val points = listOf(
+            point(50.1, 30.1, 90.0, id = 1, status = "CONFIRMED"),
+            point(50.2, 30.2, 90.0, id = 2),
+            point(50.3, 30.3, 90.0, id = 3, status = "IN_WAZE"),
+            point(50.4, 30.4, 90.0, id = 4, status = "REJECTED"),
+        )
+        val text = RoadPointExport.text(points)
+        assertTrue(text, text.contains("· підтверджено"))
+        assertTrue(text, text.contains("· не перевірено"))
+        assertTrue(text, text.contains("· вже у Waze"))
+        assertFalse(text, text.contains("відхилено"))
+        assertEquals("не перевірено", RoadPointExport.status("SOMETHING_NEW"))
     }
 }

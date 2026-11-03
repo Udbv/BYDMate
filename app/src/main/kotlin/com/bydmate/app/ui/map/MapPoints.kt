@@ -1,5 +1,6 @@
 package com.bydmate.app.ui.map
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import com.bydmate.app.R
 import com.bydmate.app.data.local.entity.RoadPointEntity
 import com.bydmate.app.data.roadpoints.RoadPointExport
 import com.bydmate.app.data.roadpoints.RoadPointRecorder
+import com.bydmate.app.data.roadpoints.RoadPointStatus
 import com.bydmate.app.data.roadpoints.RoadPointType
 import com.bydmate.app.data.roadpoints.RoadPoints
 import com.bydmate.app.ui.theme.AccentOrange
@@ -44,7 +46,7 @@ import javax.inject.Inject
 /** The panel's own state: the selected point and the last export's outcome. */
 data class MapPointsUi(val selectedId: Long? = null, val exporting: Boolean = false, val message: String? = null)
 
-/** «Мої точки» on the map page (#22): the marked places, one to look at or delete, the export. */
+/** «Мої точки» on the map page (#22): the marked places, one to review or delete, the export. */
 @HiltViewModel
 class MapPointsViewModel @Inject constructor(private val recorder: RoadPointRecorder) : ViewModel() {
     val points: StateFlow<List<RoadPointEntity>> =
@@ -58,6 +60,11 @@ class MapPointsViewModel @Inject constructor(private val recorder: RoadPointReco
     fun delete(id: Long) {
         viewModelScope.launch { recorder.delete(id) }
         _ui.update { it.copy(selectedId = null) }
+    }
+
+    /** Confirm or reject the point; the card stays open so the driver sees the new status. */
+    fun setStatus(id: Long, status: RoadPointStatus) {
+        viewModelScope.launch { recorder.setStatus(id, status) }
     }
 
     fun export() {
@@ -82,6 +89,7 @@ internal fun PointsPanel(
     ui: MapPointsUi,
     onExport: () -> Unit,
     onDelete: (Long) -> Unit,
+    onStatus: (Long, RoadPointStatus) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -92,7 +100,10 @@ internal fun PointsPanel(
     ) {
         val selected = points.firstOrNull { it.id == ui.selectedId }
         if (selected != null) {
-            Text(pointTitle(selected), color = TextPrimary, fontSize = 15.sp)
+            Text(
+                "${pointTitle(selected)} · ${stringResource(statusRes(selected.status))}",
+                color = TextPrimary, fontSize = 15.sp,
+            )
             Text(
                 stringResource(
                     R.string.map_point_details,
@@ -102,6 +113,7 @@ internal fun PointsPanel(
                 ),
                 color = TextMuted, fontSize = 12.sp,
             )
+            ReviewButtons(selected, onStatus)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { onDelete(selected.id) }) { Text(stringResource(R.string.map_point_delete)) }
                 OutlinedButton(onClick = onClose) { Text(stringResource(R.string.map_close)) }
@@ -113,6 +125,30 @@ internal fun PointsPanel(
         }
         ui.message?.let { Text(it, color = AccentOrange, fontSize = 12.sp) }
     }
+}
+
+/** Confirm / reject; the button of the status the point already has is off, the other one undoes it. */
+@Composable
+private fun ReviewButtons(point: RoadPointEntity, onStatus: (Long, RoadPointStatus) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(
+            onClick = { onStatus(point.id, RoadPointStatus.CONFIRMED) },
+            enabled = point.status != RoadPointStatus.CONFIRMED.name,
+        ) { Text(stringResource(R.string.map_point_confirm)) }
+        OutlinedButton(
+            onClick = { onStatus(point.id, RoadPointStatus.REJECTED) },
+            enabled = point.status != RoadPointStatus.REJECTED.name,
+        ) { Text(stringResource(R.string.map_point_reject)) }
+    }
+}
+
+/** The review status as a UI string; an unknown name reads as unreviewed. */
+@StringRes
+internal fun statusRes(status: String): Int = when (status) {
+    RoadPointStatus.CONFIRMED.name -> R.string.map_point_status_confirmed
+    RoadPointStatus.REJECTED.name -> R.string.map_point_status_rejected
+    RoadPointStatus.IN_WAZE.name -> R.string.map_point_status_in_waze
+    else -> R.string.map_point_status_candidate
 }
 
 internal fun pointTitle(p: RoadPointEntity): String = RoadPointExport.title(RoadPointType.of(p.type) ?: RoadPointType.OTHER)

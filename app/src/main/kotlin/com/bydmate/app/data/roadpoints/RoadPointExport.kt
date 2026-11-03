@@ -31,8 +31,8 @@ object RoadPointExport {
             appendLine("${title(type)} — ${group.size}")
             group.forEach { p ->
                 appendLine(
-                    "• %.6f, %.6f · напрямок %s · проїздів %d · %s".format(
-                        Locale.ROOT, p.lat, p.lon, RoadPoints.compass(p.heading), p.passes, day(p.lastTs),
+                    "• %.6f, %.6f · напрямок %s · проїздів %d · %s · %s".format(
+                        Locale.ROOT, p.lat, p.lon, RoadPoints.compass(p.heading), p.passes, day(p.lastTs), status(p.status),
                     ),
                 )
                 appendLine("  ${wmeLink(p.lat, p.lon)}")
@@ -71,6 +71,17 @@ object RoadPointExport {
         RoadPointType.TRAFFIC_LIGHT -> "Світлофори"
         RoadPointType.LANES -> "Смуги"
         RoadPointType.OTHER -> "Інше"
+    }
+
+    /**
+     * The review status in words, so the editors know which points the driver checked by eye and
+     * which are a single unreviewed mark.
+     */
+    fun status(status: String): String = when (RoadPointStatus.entries.firstOrNull { it.name == status }) {
+        RoadPointStatus.CONFIRMED -> "підтверджено"
+        RoadPointStatus.REJECTED -> "відхилено"
+        RoadPointStatus.IN_WAZE -> "вже у Waze"
+        RoadPointStatus.CANDIDATE, null -> "не перевірено"
     }
 
     private fun day(ts: Long): String = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date(ts))

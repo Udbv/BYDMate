@@ -10,8 +10,12 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.bydmate.app.R
+import com.bydmate.app.data.local.entity.RoadPointEntity
+import com.bydmate.app.data.roadpoints.RoadPointStatus
+import com.bydmate.app.ui.theme.AccentBlue
 import com.bydmate.app.ui.theme.AccentGreen
 import com.bydmate.app.ui.theme.AccentOrange
+import com.bydmate.app.ui.theme.TextMuted
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
@@ -29,7 +33,7 @@ internal fun ReachMap(
     state: MapUiState,
     onLongPress: (Double, Double) -> Unit,
     modifier: Modifier,
-    points: List<com.bydmate.app.data.local.entity.RoadPointEntity> = emptyList(),
+    points: List<RoadPointEntity> = emptyList(),
     onPointTap: (Long) -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -61,17 +65,7 @@ internal fun ReachMap(
         })
         drawRoute(map, state, view)
         // «Мої точки» (#22): one marker per marked place; a tap opens its card.
-        points.forEach { p ->
-            map.overlays += Marker(map).apply {
-                position = GeoPoint(p.lat, p.lon)
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                title = pointTitle(p)
-                setOnMarkerClickListener { _, _ ->
-                    onPointTap(p.id)
-                    true
-                }
-            }
-        }
+        points.forEach { p -> map.overlays += pointMarker(map, p, onPointTap) }
         val lat = state.lat
         val lon = state.lon
         if (lat != null && lon != null) {
@@ -99,6 +93,30 @@ internal fun ReachMap(
         }
         map.invalidate()
     })
+}
+
+/**
+ * A marked place, its pin tinted by the review status (orange unreviewed, green confirmed, blue in
+ * Waze, faded grey rejected) so the map shows what is left to review without opening every card.
+ */
+private fun pointMarker(map: MapView, p: RoadPointEntity, onPointTap: (Long) -> Unit) = Marker(map).apply {
+    position = GeoPoint(p.lat, p.lon)
+    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+    title = "${pointTitle(p)} · ${map.context.getString(statusRes(p.status))}"
+    // mutate(): the default pin drawable is shared by every marker, a tint on it would paint them all.
+    icon = icon?.mutate()?.apply { setTint(statusColor(p.status).toArgb()) }
+    if (p.status == RoadPointStatus.REJECTED.name) alpha = REJECTED_ALPHA
+    setOnMarkerClickListener { _, _ ->
+        onPointTap(p.id)
+        true
+    }
+}
+
+internal fun statusColor(status: String): Color = when (status) {
+    RoadPointStatus.CONFIRMED.name -> AccentGreen
+    RoadPointStatus.REJECTED.name -> TextMuted
+    RoadPointStatus.IN_WAZE.name -> AccentBlue
+    else -> AccentOrange
 }
 
 /** The route in its bands over a dark outline, with a dot where each scenario's charge runs out. */
@@ -163,3 +181,4 @@ private const val ROUTE_WIDTH = 10f
 private const val FIT_PADDING_PX = 80
 private const val DOT_DP = 16
 private const val DOT_STROKE_PX = 3
+private const val REJECTED_ALPHA = 0.45f

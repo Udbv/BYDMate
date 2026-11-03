@@ -20,7 +20,10 @@ enum class RoadPointType(val id: String) {
     }
 }
 
-/** Where a point is on its way to Waze; only marking exists so far, the rest is for the review. */
+/**
+ * Where a point is on its way to Waze: marked ([CANDIDATE]), confirmed or rejected by the driver in
+ * the map card, already in Waze. A [REJECTED] point is a blacklist entry: new marks merge into it.
+ */
 enum class RoadPointStatus { CANDIDATE, CONFIRMED, REJECTED, IN_WAZE }
 
 /**

@@ -2497,4 +2497,10 @@
     <string name="settings_ha_test_unreachable">服务器无法访问：%1$s</string>
     <string name="settings_ha_test_http">HTTP 错误 %1$d</string>
     <string name="settings_ha_test_bad_answer">响应不像 Home Assistant。是否已启用 Mobile App 集成？</string>
+    <string name="map_point_confirm">确认</string>
+    <string name="map_point_reject">拒绝</string>
+    <string name="map_point_status_candidate">未审核</string>
+    <string name="map_point_status_confirmed">已确认</string>
+    <string name="map_point_status_rejected">已拒绝</string>
+    <string name="map_point_status_in_waze">已在 Waze 中</string>
 </resources>
