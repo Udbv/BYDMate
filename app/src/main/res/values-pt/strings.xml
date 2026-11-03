@@ -2418,4 +2418,9 @@
     <string name="settings_cruise_advice_desc">Com o cruise adaptativo ligado e o limite do Waze 5 km/h ou mais abaixo da velocidade definida, diz em voz alta “Ограничение 50, круиз 70” (limite 50, cruise 70). Não envia nada ao carro. Requer o assistente de voz com a fala ligada.</string>
     <string name="settings_adas_change_test_start">Teste de mudança de limite (~2 min)</string>
     <string name="settings_adas_change_test_running">Variante %1$s, enviado %2$d · faltam %3$d s</string>
+    <string name="settings_nav_voice_title">Voz de navegação BYDMate</string>
+    <string name="settings_nav_voice_desc">O BYDMate anuncia as manobras do Waze com a sua própria voz no canal de áudio escolhido, para que as indicações baixem a música em vez de a interromper. Desligue a voz do Waze: Waze → Definições → Voz e som.</string>
+    <string name="settings_nav_voice_channel">Canal de áudio</string>
+    <string name="settings_nav_voice_duck_title">Baixar a música</string>
+    <string name="settings_nav_voice_duck_desc">Pedir ao sistema que baixe a música durante a indicação. Qual canal e modo baixam a música neste carro mostra o teste de canais de áudio em «Diagnóstico».</string>
 </resources>

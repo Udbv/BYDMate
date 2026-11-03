@@ -99,6 +99,7 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var tripMinuteRecorder: com.bydmate.app.domain.tracker.TripMinuteRecorder
     @Inject lateinit var adasShadow: com.bydmate.app.adas.AdasShadow
     @Inject lateinit var adasLimitSender: com.bydmate.app.adas.AdasLimitSender
+    @Inject lateinit var navVoice: com.bydmate.app.navvoice.NavVoice
     @Inject lateinit var cruiseAdvisor: com.bydmate.app.adas.CruiseAdvisor
     @Inject lateinit var networkAvailableMonitor: com.bydmate.app.data.automation.NetworkAvailableMonitor
     @Inject lateinit var alicePollingManager: AlicePollingManager
@@ -1824,6 +1825,8 @@ class TrackingService : Service(), LocationListener {
                         .onFailure { Log.w(TAG, "AdasShadow.onTick failed", it) }
                     runCatching { adasLimitSender.onTick(data.powerState?.let { it >= 1 } == true) }
                         .onFailure { Log.w(TAG, "AdasLimitSender.onTick failed", it) }
+                    runCatching { navVoice.onTick(data.powerState?.let { it >= 1 } == true) }
+                        .onFailure { Log.w(TAG, "NavVoice.onTick failed", it) }
                     runCatching { cruiseAdvisor.onTick(data.powerState?.let { it >= 1 } == true, data) }
                         .onFailure { Log.w(TAG, "CruiseAdvisor.onTick failed", it) }
                     updateNotification(data)

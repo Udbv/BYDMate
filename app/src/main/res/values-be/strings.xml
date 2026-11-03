@@ -2580,4 +2580,9 @@
     <string name="settings_cruise_advice_desc">Калі адаптыўны круіз уключаны, а абмежаванне з Waze ніжэй за зададзеную хуткасць на 5 км/г і больш, голасам кажа «Ограничение 50, круиз 70». У машыну нічога не адпраўляе. Патрэбны галасавы асістэнт з уключаным маўленнем.</string>
     <string name="settings_adas_change_test_start">Тэст змены абмежавання (~2 хв)</string>
     <string name="settings_adas_change_test_running">Варыянт %1$s, адпраўлена %2$d · яшчэ %3$d с</string>
+    <string name="settings_nav_voice_title">Голас навігацыі BYDMate</string>
+    <string name="settings_nav_voice_desc">BYDMate сам агучвае манеўры Waze сваім голасам у выбраным аўдыяканале, каб падказкі прыглушалі музыку, а не перапынялі яе. Выключыце ўласны голас Waze: Waze → Налады → Голас і гук.</string>
+    <string name="settings_nav_voice_channel">Аўдыяканал</string>
+    <string name="settings_nav_voice_duck_title">Прыглушаць музыку</string>
+    <string name="settings_nav_voice_duck_desc">Прасіць сістэму прыглушыць музыку на час падказкі. Які канал і рэжым прыглушаюць музыку на гэтай машыне, паказвае тэст аўдыяканалаў у «Дыягностыцы».</string>
 </resources>

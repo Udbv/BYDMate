@@ -2580,4 +2580,9 @@
     <string name="settings_cruise_advice_desc">Gdy aktywny tempomat jest włączony, a limit z Waze jest niższy od ustawionej prędkości o 5 km/h lub więcej, mówi na głos po rosyjsku „Ограничение 50, круиз 70” (ograniczenie 50, tempomat 70). Niczego nie wysyła do auta. Wymaga asystenta głosowego z włączoną mową.</string>
     <string name="settings_adas_change_test_start">Test zmiany ograniczenia (~2 min)</string>
     <string name="settings_adas_change_test_running">Wariant %1$s, wysłano %2$d · jeszcze %3$d s</string>
+    <string name="settings_nav_voice_title">Głos nawigacji BYDMate</string>
+    <string name="settings_nav_voice_desc">BYDMate sam odczytuje manewry Waze swoim głosem w wybranym kanale audio, aby podpowiedzi ściszały muzykę, a nie ją przerywały. Wyłącz własny głos Waze: Waze → Ustawienia → Głos i dźwięk.</string>
+    <string name="settings_nav_voice_channel">Kanał audio</string>
+    <string name="settings_nav_voice_duck_title">Ściszaj muzykę</string>
+    <string name="settings_nav_voice_duck_desc">Proś system o ściszenie muzyki na czas podpowiedzi. Który kanał i tryb ściszają muzykę w tym aucie, pokazuje test kanałów audio w «Diagnostyce».</string>
 </resources>
