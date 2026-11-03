@@ -691,6 +691,7 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
             is ParseResult.Volume -> Resolution.Vol(r.payload)
             ParseResult.Music -> Resolution.Music
             is ParseResult.Mark -> Resolution.Mark(r.type)
+            is ParseResult.AdasLimits -> Resolution.AdasLimits(r.on)
             // A value the car does not report goes to the agent, never a made-up answer; so does
             // every question while the snapshot is not live: it is never cleared on transport
             // loss, and the range, kept elsewhere, would be just as old.
@@ -711,6 +712,7 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
             is Resolution.Vol -> dispatchVolume(res.payload, transcript, decodeMs)
             Resolution.Music -> dispatchMusic(transcript, decodeMs)
             is Resolution.Mark -> markPoint(res.type, transcript, decodeMs)
+            is Resolution.AdasLimits -> switchAdasLimits(res.on, transcript, decodeMs)
             is Resolution.Answer -> answer(res, transcript, decodeMs)
             is Resolution.Auto -> fireAutomation(res.match, transcript, decodeMs)
             is Resolution.None -> agentFallback(transcript, decodeMs)
@@ -931,6 +933,17 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
         record(nluEntry(transcript, decodeMs, "mark:${type.id}", outcome).copy(answer = text),
             "NLU mark: type=${type.id} result=$result transcript=\"$transcript\"")
         announce("Голос", text, text, done = ok)
+    }
+
+    /** «Включи ограничения»: Waze's limits to ADAS on or off (#23), said back so it is never a guess. */
+    private suspend fun switchAdasLimits(on: Boolean, transcript: String, decodeMs: Long?) {
+        com.bydmate.app.adas.AdasLimitSender.setEnabled(context, on)
+        val text = if (on) "Ограничения Waze в ADAS включены" else "Ограничения Waze в ADAS выключены"
+        earcon.ok()
+        _state.value = VoiceUiState.Done(transcript)
+        record(nluEntry(transcript, decodeMs, "adas_limits:${if (on) "on" else "off"}", VoiceJournalEntry.Outcome.OK).copy(answer = text),
+            "NLU adas limits: on=$on transcript=\"$transcript\"")
+        announce("Голос", text, text, done = true)
     }
 
     /** A dictionary question answered from the car's readings: said and shown like any other
@@ -1163,6 +1176,7 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
         data class Vol(val payload: String) : Resolution
         data object Music : Resolution
         data class Mark(val type: com.bydmate.app.data.roadpoints.RoadPointType) : Resolution
+        data class AdasLimits(val on: Boolean) : Resolution
         /** A dictionary question with the value known: [text] is said, nothing is dispatched. */
         data class Answer(val question: VehicleQuestion, val text: String) : Resolution {
             val label: String get() = "ask:${question.id}"
@@ -1174,7 +1188,7 @@ class VoiceController @Inject @Suppress("LongParameterList") constructor( // Hil
         /** The route code of the trace. */
         val route: String get() = when (this) {
             is Cmd -> if (label.startsWith("phrase:")) "phrase" else "nlu"
-            is RelTemp, is Vol, Music, is Answer, is Mark -> "nlu"
+            is RelTemp, is Vol, Music, is Answer, is Mark, is AdasLimits -> "nlu"
             is Auto -> "automation"
             is None -> "agent"
         }

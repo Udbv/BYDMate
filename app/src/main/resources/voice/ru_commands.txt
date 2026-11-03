@@ -31,6 +31,7 @@
 #                       starts it with no query
 #   MARK TYPE           the car's position marked for Waze's map editors («Мої точки», #22):
 #                       speed_bump, traffic_light, lanes, other; nothing is dispatched
+#   LIMITS on|off       Waze's speed limits and cameras sent to ADAS while driving (#23)
 # Every template phrase has a row in app/src/test/resources/voice/ru_commands_golden.tsv.
 
 # ---- Verbs ---------------------------------------------------------------------------------
@@ -368,3 +369,11 @@ solo <here> <light> => MARK traffic_light
 solo <lanes> <here> => MARK lanes
 <mark> <lanes> => MARK lanes
 <mark> (точку|место|місце) => MARK other
+
+# ---- Waze limits to ADAS (#23) -------------------------------------------------------------
+
+rule lim_on: включи|включить|включай|увімкни|увімкнути|ввімкни|вмикай
+rule lim_off: выключи|выключить|отключи|отключить|вимкни|вимкнути|відключи|вимикай
+rule limits: ограничения|лимиты|ліміти|обмеження
+solo <lim_on> <limits> [(вейза|вейз|waze)] => LIMITS on
+solo <lim_off> <limits> [(вейза|вейз|waze)] => LIMITS off

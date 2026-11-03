@@ -684,3 +684,9 @@ utterance	expected	category	danger
 отметь полосы	MARK:lanes	points	
 отметь точку	MARK:other	points	
 запомни место	MARK:other	points	
+включи ограничения	LIMITS:on	adas	
+увімкни ліміти	LIMITS:on	adas	
+включи лимиты вейза	LIMITS:on	adas	
+выключи ограничения	LIMITS:off	adas	
+вимкни ліміти	LIMITS:off	adas	
+відключи обмеження waze	LIMITS:off	adas	

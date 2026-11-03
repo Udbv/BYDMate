@@ -216,7 +216,7 @@ class AdasParkedTest @Inject constructor(
     }
 }
 
-private class BridgeGateway(private val bridge: HudSomeIpBridge) : AdasGateway {
+internal class BridgeGateway(private val bridge: HudSomeIpBridge) : AdasGateway {
     override suspend fun bind(): Boolean = bridge.bind()
     override fun startService(serviceId: Long): Int = bridge.startService(serviceId)
     override fun stopService(serviceId: Long): Int = bridge.stopService(serviceId)

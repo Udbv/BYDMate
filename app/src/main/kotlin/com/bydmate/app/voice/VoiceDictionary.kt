@@ -121,6 +121,10 @@ internal sealed interface CommandExpr {
         override fun resolve(values: Map<String, String>) = ParseResult.Mark(type)
     }
 
+    class AdasLimits(private val on: Boolean) : CommandExpr {
+        override fun resolve(values: Map<String, String>) = ParseResult.AdasLimits(on)
+    }
+
     class Commands(private val terms: List<String>) : CommandExpr {
         override fun resolve(values: Map<String, String>) = ParseResult.Command(terms.flatMap { fill(it, values) })
     }
@@ -135,6 +139,8 @@ internal sealed interface CommandExpr {
             text.startsWith("MARK ") -> text.removePrefix("MARK ").trim().let { id ->
                 Mark(requireNotNull(com.bydmate.app.data.roadpoints.RoadPointType.of(id)) { "unknown point \"$id\" in \"$text\"" })
             }
+            text == "LIMITS on" -> AdasLimits(true)
+            text == "LIMITS off" -> AdasLimits(false)
             text.startsWith("VOL ") -> Vol(text.removePrefix("VOL ").trim())
             text.startsWith("ASK ") -> text.removePrefix("ASK ").trim().let { id ->
                 Ask(requireNotNull(VehicleQuestion.of(id)) { "unknown question \"$id\" in \"$text\"" })

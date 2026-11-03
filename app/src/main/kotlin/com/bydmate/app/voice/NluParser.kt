@@ -17,6 +17,8 @@ sealed interface ParseResult {
     data object Music : ParseResult
     /** «Лежачий тут»: the car's position marked as a [com.bydmate.app.data.roadpoints.RoadPointType] (#22). */
     data class Mark(val type: com.bydmate.app.data.roadpoints.RoadPointType) : ParseResult
+    /** «Увімкни ліміти»: Waze's limits sent to ADAS on or off (#23); nothing is dispatched. */
+    data class AdasLimits(val on: Boolean) : ParseResult
     data object Unrecognized : ParseResult
 }
 

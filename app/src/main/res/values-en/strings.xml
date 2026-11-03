@@ -2371,4 +2371,6 @@
     <string name="settings_bump_recording_desc">Every drive the sensor recorder records the suspension, body pitch, speed and wheels by itself and sends a part to the Telegram bot every 20 minutes (the file is deleted from the car once sent). The speed bump detection is tuned on these recordings. A recording started by hand is left alone.</string>
     <string name="map_adas_route_test">Route to ADAS (parked test, 30 s)</string>
     <string name="map_adas_route_running">Sending the route to ADAS · %1$d s left</string>
+    <string name="settings_adas_live_title">Waze limits to ADAS</string>
+    <string name="settings_adas_live_desc">While driving, sends Waze\'s speed limit and cameras to the driver assistance the way the factory map does: the car shows them as the sign, and the speed limit assist (and adaptive cruise with it) follows them, town entries and exits included, which the camera does not see. Without a Waze limit the car goes back to its own camera. By voice: «включи ограничения» / «выключи ограничения».</string>
 </resources>
