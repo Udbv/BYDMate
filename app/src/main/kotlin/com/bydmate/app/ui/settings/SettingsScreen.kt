@@ -3292,6 +3292,17 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
     )
     // #23 step 2: a real send of a limit and a camera, parked only, on a tap.
     AdasParkedTestRow()
+    // #23 safe class: a voice when Waze's limit drops below the set cruise; reads the car only.
+    var cruiseAdvice by remember { mutableStateOf(com.bydmate.app.adas.CruiseAdvisor.isEnabled(tripLogContext)) }
+    SettingToggleRow(
+        title = stringResource(R.string.settings_cruise_advice_title),
+        description = stringResource(R.string.settings_cruise_advice_desc),
+        checked = cruiseAdvice,
+        onCheckedChange = {
+            cruiseAdvice = it
+            com.bydmate.app.adas.CruiseAdvisor.setEnabled(tripLogContext, it)
+        },
+    )
     // Trip debug log: the car keeps its own record because Wi-Fi is gone the moment it
     // leaves the driveway, so logcat is unreachable for the drive that matters.
     var tripDebug by remember { mutableStateOf(com.bydmate.app.diagnostics.TripDebugLog.isEnabled(tripLogContext)) }

@@ -2414,4 +2414,6 @@
     <string name="audio_test_mode_duck">com atenuação</string>
     <string name="audio_test_mode_no_focus">sem foco</string>
     <string name="audio_test_phrase">Teste de som. %1$s, %2$s. Um, dois, três.</string>
+    <string name="settings_cruise_advice_title">Aviso do cruise</string>
+    <string name="settings_cruise_advice_desc">Com o cruise adaptativo ligado e o limite do Waze 5 km/h ou mais abaixo da velocidade definida, diz em voz alta “Ограничение 50, круиз 70” (limite 50, cruise 70). Não envia nada ao carro. Requer o assistente de voz com a fala ligada.</string>
 </resources>

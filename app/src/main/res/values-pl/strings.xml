@@ -2576,4 +2576,6 @@
     <string name="audio_test_mode_duck">z wyciszeniem</string>
     <string name="audio_test_mode_no_focus">bez fokusu</string>
     <string name="audio_test_phrase">Test dźwięku. %1$s, %2$s. Raz, dwa, trzy.</string>
+    <string name="settings_cruise_advice_title">Porada dotycząca tempomatu</string>
+    <string name="settings_cruise_advice_desc">Gdy aktywny tempomat jest włączony, a limit z Waze jest niższy od ustawionej prędkości o 5 km/h lub więcej, mówi na głos po rosyjsku „Ограничение 50, круиз 70” (ograniczenie 50, tempomat 70). Niczego nie wysyła do auta. Wymaga asystenta głosowego z włączoną mową.</string>
 </resources>

@@ -2571,4 +2571,6 @@
     <string name="audio_test_mode_duck">із приглушенням</string>
     <string name="audio_test_mode_no_focus">без фокуса</string>
     <string name="audio_test_phrase">Перевірка звуку. %1$s, %2$s. Раз, два, три.</string>
+    <string name="settings_cruise_advice_title">Порада щодо круїзу</string>
+    <string name="settings_cruise_advice_desc">Коли адаптивний круїз увімкнено, а обмеження з Waze нижче за задану швидкість на 5 км/год і більше, голосом каже «Ограничение 50, круиз 70». У машину нічого не надсилає. Потрібен голосовий асистент з увімкненим мовленням.</string>
 </resources>

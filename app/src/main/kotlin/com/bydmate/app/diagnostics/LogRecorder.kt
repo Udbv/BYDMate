@@ -519,7 +519,7 @@ class LogRecorder internal constructor(
             "MassageKeeper:*", "ClusterPowerCard:*", "HudLaneWriter:*", "WazeLaneReader:*", "AutoTripLog:*",
             "AmbientNight:*", "TripMinutes:*",
             // 4.1.0-dev.17: ADAS shadow mode (what Waze would pass to the driver assistance).
-            "AdasShadow:*",
+            "AdasShadow:*", "CruiseAdvisor:*",
             "BumpRec:*",
             "RoadPoints:*",
             // Power-off report in the helper daemon: arm, power off/on, send attempts, outcome.
