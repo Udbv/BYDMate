@@ -81,23 +81,49 @@ class HomeAssistantPublisher @Inject constructor(
     /**
      * Checks the address and token the user typed (not yet saved), then registers the device
      * and its sensors so the user sees them in HA right away. [snapshot] seeds the first states.
+     *
+     * Always ends with a webhook round trip: with a stored registration nothing else touches
+     * the webhook, and GET /api/ alone would say "Connected" after the user deleted the device
+     * in HA (410) or while the cloudhook is unreachable. A 410 re-registers once, here and now.
      */
     suspend fun testConnection(rawUrl: String, token: String, snapshot: HaSnapshot?): HaTestResult {
         val base = HaUrls.normalizeBase(rawUrl) ?: return HaTestResult.InvalidUrl
         if (token.isBlank()) return HaTestResult.EmptyToken
         client.checkApi(base, token).toFailure()?.let { return it }
+        registerAndProbe(base, token, snapshot)?.let { return it }
+        registrar.forgetRegistration()
+        registerAndProbe(base, token, snapshot)?.let { return it }
+        // A fresh webhook already 410: drop it too, so the next publish starts clean.
+        registrar.forgetRegistration()
+        return HaTestResult.HttpError(HTTP_GONE)
+    }
+
+    /** The test outcome, or null when the webhook answered 410 and the device must be re-registered. */
+    private suspend fun registerAndProbe(base: HttpUrl, token: String, snapshot: HaSnapshot?): HaTestResult? {
         val registration = when (val outcome = registrar.ensureRegistered(base, token)) {
             is HaRegistrationOutcome.Registered -> outcome.registration
             HaRegistrationOutcome.BadAnswer -> return HaTestResult.BadAnswer
             is HaRegistrationOutcome.Failed -> return outcome.response.toFailure() ?: HaTestResult.BadAnswer
         }
         val webhook = HaUrls.webhookUrl(base, registration) ?: return HaTestResult.InvalidUrl
-        registrar.ensureSensors(webhook, registration, snapshot)?.let { failure ->
-            if (failure is HaResponse.Gone) registrar.forgetRegistration()
-            return failure.toFailure() ?: HaTestResult.BadAnswer
+        val failure = registrar.ensureSensors(webhook, registration, snapshot) ?: probeWebhook(webhook, snapshot)
+        return when (failure) {
+            null -> HaTestResult.Connected(HaSensorCatalog.ALL.size)
+            HaResponse.Gone -> null
+            else -> failure.toFailure() ?: HaTestResult.BadAnswer
         }
-        snapshot?.let { s -> HaPayloads.updateStates(s)?.let { client.postWebhook(webhook, it) } }
-        return HaTestResult.Connected(HaSensorCatalog.ALL.size)
+    }
+
+    /**
+     * Sends the current states, or a harmless get_config when there are none, so the answer
+     * proves the webhook the data goes to. Null on success.
+     */
+    private suspend fun probeWebhook(webhook: HttpUrl, snapshot: HaSnapshot?): HaResponse? {
+        val update = snapshot?.let(HaPayloads::updateStates)
+        val response = client.postWebhook(webhook, update ?: HaPayloads.getConfig())
+        if (response !is HaResponse.Ok) return response
+        if (update != null && HaPayloads.notRegisteredIds(response.body).isNotEmpty()) registrar.forgetSensors()
+        return null
     }
 
     private suspend fun loadConfig(): Pair<HttpUrl, String>? {

@@ -142,12 +142,75 @@ class HomeAssistantPublisherTest {
         server.enqueue(MockResponse().setBody("""{"message":"API running."}"""))
         server.enqueue(MockResponse().setResponseCode(201).setBody("""{"webhook_id":"wh9"}"""))
         repeat(HaSensorCatalog.ALL.size) { server.enqueue(MockResponse().setResponseCode(201).setBody("{}")) }
+        server.enqueue(MockResponse().setBody("{}"))
 
         val result = publisher.testConnection(BASE, "secret-token", null)
 
         assertEquals(HaTestResult.Connected(HaSensorCatalog.ALL.size), result)
         assertEquals("/api/", server.takeRequest().path)
         assertTrue(store[SettingsRepository.KEY_HA_DEVICE_ID].orEmpty().isNotEmpty())
+        repeat(1 + HaSensorCatalog.ALL.size) { server.takeRequest() }
+        // No snapshot: the webhook is still probed, with a command that changes nothing.
+        val probe = server.takeRequest()
+        assertEquals("/api/webhook/wh9", probe.path)
+        assertEquals("get_config", JSONObject(probe.body.readUtf8()).getString("type"))
+    }
+
+    @Test fun `test connection with a stored registration probes the webhook`() = runBlocking {
+        seedRegistered()
+        server.enqueue(MockResponse().setBody("""{"message":"API running."}"""))
+        server.enqueue(MockResponse().setBody("{}"))
+
+        val result = publisher.testConnection(BASE, "secret-token", HaSnapshot(data(soc = 70, powerState = 1), null))
+
+        assertEquals(HaTestResult.Connected(HaSensorCatalog.ALL.size), result)
+        assertEquals(2, server.requestCount)
+        server.takeRequest()
+        val probe = server.takeRequest()
+        assertEquals("/api/webhook/wh1", probe.path)
+        assertEquals("update_sensor_states", JSONObject(probe.body.readUtf8()).getString("type"))
+    }
+
+    @Test fun `test connection after the device was deleted in HA registers it again`() = runBlocking {
+        seedRegistered()
+        server.enqueue(MockResponse().setBody("""{"message":"API running."}"""))
+        server.enqueue(MockResponse().setResponseCode(410))
+        server.enqueue(MockResponse().setResponseCode(201).setBody("""{"webhook_id":"wh2"}"""))
+        repeat(HaSensorCatalog.ALL.size) { server.enqueue(MockResponse().setResponseCode(201).setBody("{}")) }
+        server.enqueue(MockResponse().setBody("{}"))
+
+        val result = publisher.testConnection(BASE, "secret-token", null)
+
+        assertEquals(HaTestResult.Connected(HaSensorCatalog.ALL.size), result)
+        assertEquals("wh2", store[SettingsRepository.KEY_HA_WEBHOOK_ID])
+        assertEquals("wh2:${HaSensorCatalog.SCHEMA_VERSION}", store[SettingsRepository.KEY_HA_SENSORS_REGISTERED])
+    }
+
+    @Test fun `test connection does not report connected when the webhook is gone and re-register fails`() = runBlocking {
+        seedRegistered()
+        server.enqueue(MockResponse().setBody("""{"message":"API running."}"""))
+        server.enqueue(MockResponse().setResponseCode(410))
+        server.enqueue(MockResponse().setResponseCode(500))
+
+        val result = publisher.testConnection(BASE, "secret-token", null)
+
+        assertEquals(HaTestResult.HttpError(500), result)
+        assertEquals("", store[SettingsRepository.KEY_HA_WEBHOOK_ID])
+    }
+
+    @Test fun `test connection reports an unreachable webhook and keeps the registration`() = runBlocking {
+        seedRegistered()
+        // Close after /api/ so the probe opens a new connection; a pooled one would skip the
+        // connect-time policy and get an empty 200.
+        server.enqueue(
+            MockResponse().setBody("""{"message":"API running."}""").setSocketPolicy(SocketPolicy.DISCONNECT_AT_END)
+        )
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+
+        val result = publisher.testConnection(BASE, "secret-token", null)
+
+        assertTrue("got $result", result is HaTestResult.Unreachable)
+        assertEquals("wh1", store[SettingsRepository.KEY_HA_WEBHOOK_ID])
     }
 
     @Test fun `publish policy sends once a minute while on and once on power off`() {

@@ -72,6 +72,9 @@ object HaPayloads {
         return JSONObject().put("type", "update_sensor_states").put("data", states)
     }
 
+    /** A read-only webhook command: used to check that the webhook is alive without changing state. */
+    fun getConfig(): JSONObject = JSONObject().put("type", "get_config")
+
     /**
      * Unique ids HA answered with `not_registered` (e.g. the user deleted an entity, or HA lost
      * its store). Seeing any means the sensors must be registered again.
