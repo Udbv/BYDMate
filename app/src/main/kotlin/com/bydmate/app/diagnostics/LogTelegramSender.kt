@@ -61,6 +61,8 @@ class LogTelegramSender @Inject constructor(
             if (stopped.path == handledPath) return@collect
             handledPath = stopped.path
             if (!settings.isTgLogAutoSendEnabled()) return@collect
+            // The automatic trip log sends its parts itself, zipped; this would send them again raw.
+            if (AutoTripLog.owns(stopped.path)) return@collect
             if (!settings.getTgBackupConfig().configured) {
                 Log.i(TAG, "log to telegram: auto skipped, no bot")
                 return@collect
