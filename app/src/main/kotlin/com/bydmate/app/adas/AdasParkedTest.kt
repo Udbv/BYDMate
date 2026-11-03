@@ -52,6 +52,8 @@ class AdasParkedTest @Inject constructor(
         val limitKph: Int = 0,
         val cameraM: Int = 0,
         val car: AdasCarReading? = null,
+        /** The change test: which variant runs now (#23). */
+        val variant: String? = null,
         /** How the last test ended, in words; null before the first. */
         val result: String? = null,
         /** The running test offers a route (#53) rather than a limit and camera. */
@@ -72,7 +74,7 @@ class AdasParkedTest @Inject constructor(
 
     /** Starts the test; the refusal in words when the car is not parked or a test runs already. */
     fun start(scope: CoroutineScope, limitKph: Int, cameraM: Int): String? =
-        launch(scope, sendingFrames(limitKph, cameraM), "limit=$limitKph camera=${cameraM}m") {
+        launch(scope, { _ -> sendingFrames(limitKph, cameraM) }, DURATION_MS, "limit=$limitKph camera=${cameraM}m") {
             Status(running = true, secondsLeft = (DURATION_MS / SECOND_MS).toInt(), limitKph = limitKph, cameraM = cameraM)
         }
 
@@ -88,24 +90,46 @@ class AdasParkedTest @Inject constructor(
         val pathId = PATH_ID_BASE + nowMs() / SECOND_MS % PATH_ID_BASE
         val frames = listOf(AdasShadowFrames.naviStatus(AdasShadowFrames.NAVI_ACTIVE)) +
             AdasRouteFrames.of(ahead, pathId, nowMs(), here)
-        return launch(scope, frames, "route pathID=$pathId points=${ahead.size}/${points.size}") {
+        return launch(scope, { _ -> frames }, DURATION_MS, "route pathID=$pathId points=${ahead.size}/${points.size}") {
             Status(running = true, secondsLeft = (DURATION_MS / SECOND_MS).toInt(), route = true)
+        }
+    }
+
+    /**
+     * The limit change test (#23, the owner's go-ahead of 2026-11-03): the car took only the first
+     * limit of a drive. [AdasLimitChangePlan] changes the limit inside one session in four ways,
+     * ~1.5 min in all, so the car's answer each second tells which one the car follows.
+     */
+    fun startChange(scope: CoroutineScope): String? {
+        val here = location()?.let { RoutePoint(it.latitude, it.longitude) } ?: RoutePoint(0.0, 0.0)
+        val pathId = PATH_ID_BASE + nowMs() / SECOND_MS % PATH_ID_BASE
+        val plan = AdasLimitChangePlan(here, pathId, nowMs())
+        return launch(scope, plan::framesAt, plan.durationMs, "limit change pathID=$pathId") {
+            Status(running = true, secondsLeft = (plan.durationMs / SECOND_MS).toInt(), variant = plan.variantAt(0))
         }
     }
 
     internal var location: () -> android.location.Location? = { TrackingService.lastLocation.value }
 
-    private fun launch(scope: CoroutineScope, frames: List<ShadowFrame>, what: String, initial: () -> Status): String? {
+    private fun launch(
+        scope: CoroutineScope,
+        plan: (Long) -> List<ShadowFrame>,
+        durationMs: Long,
+        what: String,
+        initial: () -> Status,
+    ): String? {
         refusal(data())?.let { return it }
         if (!running.compareAndSet(false, true)) return "тест уже йде"
         _status.value = initial()
-        scope.launch(Dispatchers.IO) { run(frames, what) }
+        scope.launch(Dispatchers.IO) { run(plan, durationMs, what) }
         return null
     }
 
-    internal suspend fun run(limitKph: Int, cameraM: Int) = run(sendingFrames(limitKph, cameraM), "limit=$limitKph camera=${cameraM}m")
+    internal suspend fun run(limitKph: Int, cameraM: Int) =
+        run({ _ -> sendingFrames(limitKph, cameraM) }, DURATION_MS, "limit=$limitKph camera=${cameraM}m")
 
-    internal suspend fun run(sending: List<ShadowFrame>, what: String) {
+    internal suspend fun run(plan: (Long) -> List<ShadowFrame>, durationMs: Long, what: String) {
+        val sending = plan(0)
         val gateway = gatewayFactory(context)
         val fires = HashMap<Int, Int>()
         // Whatever ends the run before it says otherwise: leaving the settings screen cancels it
@@ -122,31 +146,37 @@ class AdasParkedTest @Inject constructor(
             }
             // The factory map offers these services itself; ours are started only when a frame
             // does not go out without them, and only those are stopped at the end.
-            val probe = sending.map { gateway.fireEvent(it.topic, it.bytes) }
+            val probe = sending.filter(::fired).map { gateway.fireEvent(it.topic, it.bytes) }
             note("parked test first frames rc=$probe")
             if (probe.any { it != 0 }) {
                 started = true
                 SERVICES.forEach { note("parked test startService(${HudSomeIpBridge.hex(it)}) rc=${gateway.startService(it)}") }
             }
-            outcome = sendLoop(gateway, sending, fires, before)?.let { "зупинено: $it" } ?: "завершено"
+            outcome = sendLoop(gateway, plan, durationMs, fires, before)?.let { "зупинено: $it" } ?: "завершено"
         } finally {
             withContext(NonCancellable) { finish(gateway, started, outcome, fires) }
         }
     }
 
-    /** The frames every [PERIOD_MS] until [DURATION_MS] is over; the refusal that cut it short, if any. */
+    /** The plan's frames every [PERIOD_MS] until [durationMs] is over; the refusal that cut it short, if any. */
     private suspend fun sendLoop(
         gateway: AdasGateway,
-        sending: List<ShadowFrame>,
+        plan: (Long) -> List<ShadowFrame>,
+        durationMs: Long,
         fires: MutableMap<Int, Int>,
         before: AdasCarReading?,
     ): String? {
-        val end = nowMs() + DURATION_MS
+        val start = nowMs()
+        val end = start + durationMs
         var nextRead = 0L
         var lastCar = before
+        var last: List<ShadowFrame>? = null
         while (nowMs() < end) {
             refusal(data())?.let { return it }
-            sending.forEach { f -> gateway.fireEvent(f.topic, f.bytes).let { rc -> fires[rc] = (fires[rc] ?: 0) + 1 } }
+            val sending = plan(nowMs() - start)
+            if (last != null && sending != last) noteChange(sending, last)
+            last = sending
+            sending.filter(::fired).forEach { f -> gateway.fireEvent(f.topic, f.bytes).let { rc -> fires[rc] = (fires[rc] ?: 0) + 1 } }
             if (nowMs() >= nextRead) {
                 nextRead = nowMs() + SECOND_MS
                 val car = readCar()
@@ -172,6 +202,17 @@ class AdasParkedTest @Inject constructor(
         note("parked test end: $outcome fires=$fires car after: ${after?.describe() ?: "no answer"}")
         _status.value = _status.value.copy(running = false, secondsLeft = 0, car = after, result = outcome)
         running.set(false)
+    }
+
+    /** A planned change: the frames whose bytes changed, so the car's next answers can be matched. */
+    private fun noteChange(now: List<ShadowFrame>, before: List<ShadowFrame>) {
+        val changed = now.filter { f -> before.none { it == f } }
+        note("parked test now: " + changed.joinToString(" | ") { "${it.name} {${it.fields}}" })
+        AdasLimitChangePlan.variantOf(changed)?.let { v -> _status.value = _status.value.copy(variant = v) }
+        changed.firstOrNull { it.topic == AdasShadowFrames.TOPIC_TRAFFIC_INFO }?.let { f ->
+            f.fields.substringAfter("SpdLmtSpeedValue=").substringBefore(' ').toIntOrNull()
+                ?.let { _status.value = _status.value.copy(limitKph = it) }
+        }
     }
 
     private fun note(line: String) {
@@ -215,6 +256,9 @@ class AdasParkedTest @Inject constructor(
         )
     }
 }
+
+/** Bookkeeping frames of a plan are never fired. */
+private fun fired(f: ShadowFrame) = f.topic != AdasLimitChangePlan.MARKER_TOPIC
 
 internal class BridgeGateway(private val bridge: HudSomeIpBridge) : AdasGateway {
     override suspend fun bind(): Boolean = bridge.bind()

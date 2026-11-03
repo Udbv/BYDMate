@@ -2522,4 +2522,6 @@
     <string name="audio_test_phrase">声音测试。%1$s，%2$s。一，二，三。</string>
     <string name="settings_cruise_advice_title">巡航提醒</string>
     <string name="settings_cruise_advice_desc">自适应巡航开启且 Waze 限速比设定速度低 5 km/h 及以上时，语音播报“Ограничение 50, круиз 70”（限速 50，巡航 70）。不向车辆发送任何内容。需要开启语音助手及其语音播报。</string>
+    <string name="settings_adas_change_test_start">限速变更测试（约 2 分钟）</string>
+    <string name="settings_adas_change_test_running">变体 %1$s，已发送 %2$d · 剩余 %3$d 秒</string>
 </resources>

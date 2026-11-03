@@ -55,15 +55,17 @@ object AdasShadowFrames {
         wrap(Proto().varint(4, status.toLong()).bytes()),
     )
 
-    fun trafficInfo(limitKph: Int, cameraDist: Int, totalDist: Int = 0, etaSeconds: Int = 0) = ShadowFrame(
+    fun trafficInfo(limitKph: Int, cameraDist: Int, totalDist: Int = 0, etaSeconds: Int = 0, roadClass: Int = 0) = ShadowFrame(
         TOPIC_TRAFFIC_INFO, "TrafficInfoNotify",
-        "SpdLmtSpeedValue=$limitKph SpdLmtEleEyeDist=$cameraDist DistToDsttn=$totalDist TimeToDsttn=$etaSeconds",
+        "SpdLmtSpeedValue=$limitKph SpdLmtEleEyeDist=$cameraDist DistToDsttn=$totalDist TimeToDsttn=$etaSeconds" +
+            if (roadClass != 0) " RoadClass=$roadClass" else "",
         wrap(
             Proto()
                 .varint(8, limitKph.toLong())
                 .varint(10, cameraDist.toLong())
                 .varint(17, totalDist.toLong())
                 .varint(18, etaSeconds.toLong())
+                .varint(19, roadClass.toLong())
                 .bytes(),
         ),
     )

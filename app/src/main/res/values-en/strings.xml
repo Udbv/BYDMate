@@ -2414,4 +2414,6 @@
     <string name="audio_test_phrase">Sound check. %1$s, %2$s. One, two, three.</string>
     <string name="settings_cruise_advice_title">Cruise advice</string>
     <string name="settings_cruise_advice_desc">When the adaptive cruise is on and the Waze limit is 5 km/h or more below the set speed, says aloud “Ограничение 50, круиз 70” (limit 50, cruise 70). Sends nothing to the car. Needs the voice assistant with speech on.</string>
+    <string name="settings_adas_change_test_start">Limit change test (~2 min)</string>
+    <string name="settings_adas_change_test_running">Variant %1$s, sent %2$d · %3$d s left</string>
 </resources>

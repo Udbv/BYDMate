@@ -51,11 +51,20 @@ fun AdasParkedTestRow(viewModel: AdasParkedTestViewModel = hiltViewModel()) {
                 enabled = !status.running,
             ) { Text(stringResource(R.string.settings_adas_test_start)) }
         }
+        // #23: the limit changed inside one session, four ways; leave this screen open meanwhile.
+        Button(onClick = { refusal = viewModel.startChange() }, enabled = !status.running) {
+            Text(stringResource(R.string.settings_adas_change_test_start))
+        }
         val car = status.car?.let {
             stringResource(R.string.settings_adas_test_car, it.signKph?.toString() ?: "-", it.slaKph?.toString() ?: "-")
         }
         when {
             refusal != null -> Text(refusal!!, color = AccentOrange, fontSize = 12.sp)
+            status.running && status.variant != null -> Text(
+                stringResource(R.string.settings_adas_change_test_running, status.variant!!, status.limitKph, status.secondsLeft) +
+                    (car?.let { " · $it" } ?: ""),
+                color = TextPrimary, fontSize = 12.sp,
+            )
             status.running -> Text(
                 stringResource(R.string.settings_adas_test_running, status.limitKph, status.cameraM, status.secondsLeft) +
                     (car?.let { " · $it" } ?: ""),
