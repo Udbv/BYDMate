@@ -42,6 +42,8 @@ data class FidRecStatus(
     val top: List<FidRecTopRow>,
     val filePath: String = "",
     val fileBytes: Long = 0L,
+    /** Speed bump candidates of the run, newest last (#22). */
+    val bumps: List<FidRecBump> = emptyList(),
 )
 
 /**
@@ -183,6 +185,13 @@ fun writeRecStatus(p: Parcel, status: FidRecStatus) {
         p.writeInt(row.lastIntValue)
         p.writeDouble(row.lastDoubleValue)
     }
+    // Appended last: an older reader stops before it, a newer one reads it when present.
+    p.writeInt(status.bumps.size)
+    status.bumps.forEach { b ->
+        p.writeLong(b.atMs)
+        p.writeDouble(b.peakToPeak)
+        p.writeDouble(b.speedKph)
+    }
 }
 
 fun readRecStatus(p: Parcel): FidRecStatus {
@@ -220,7 +229,16 @@ fun readRecStatus(p: Parcel): FidRecStatus {
             lastDoubleValue = p.readDouble(),
         )
     }
-    return FidRecStatus(running, devices, totalEvents, top, filePath, fileBytes)
+    return FidRecStatus(running, devices, totalEvents, top, filePath, fileBytes, readBumps(p))
+}
+
+private const val MAX_WIRE_BUMPS = 64
+
+private fun readBumps(p: Parcel): List<FidRecBump> {
+    if (p.dataAvail() < INT_BYTES) return emptyList()
+    val n = p.readInt()
+    if (n !in 0..MAX_WIRE_BUMPS) return emptyList()
+    return List(n) { FidRecBump(p.readLong(), p.readDouble(), p.readDouble()) }
 }
 
 private const val INT_BYTES = 4

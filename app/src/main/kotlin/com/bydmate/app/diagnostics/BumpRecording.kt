@@ -31,7 +31,11 @@ class BumpRecording @Inject constructor(
     @ApplicationContext private val context: Context,
     private val helper: HelperClient,
     private val sender: LogTelegramSender,
+    private val prompter: com.bydmate.app.data.roadpoints.BumpPrompter? = null,
 ) {
+    internal var location: () -> android.location.Location? = {
+        com.bydmate.app.service.TrackingService.lastLocation.value
+    }
     private val prefs get() = context.getSharedPreferences(TripDebugLog.PREFS_NAME, Context.MODE_PRIVATE)
     private val uploads = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -43,10 +47,13 @@ class BumpRecording @Inject constructor(
 
     /** Every poll tick; the daemon is asked at most every [CHECK_MS]. */
     suspend fun onTick(carOn: Boolean, now: Long = System.currentTimeMillis()) {
-        if (!isEnabled(context) || lastCheck?.let { now - it < CHECK_MS } == true) return
+        if (!isEnabled(context)) return
+        prompter?.noteLocation(location())
+        if (lastCheck?.let { now - it < CHECK_MS } == true) return
         lastCheck = now
         val own = prefs.getString(KEY_PATH, null)
         val status = helper.recStatus() ?: return
+        if (carOn) prompter?.onBumps(status.bumps)
         val ours = if (status.running && own != null && status.filePath == own) own else null
         if (carOn) {
             offSince = null
@@ -126,7 +133,8 @@ class BumpRecording @Inject constructor(
         val DEVICES = intArrayOf(1001, 1013, 1038, 1043, 1049)
 
         const val CHUNK_MS = 20 * 60 * 1000L
-        const val CHECK_MS = 10_000L
+        /** Also how late a bump is offered at most: the daemon is asked this often while driving. */
+        const val CHECK_MS = 3_000L
         const val OFF_MS = 60_000L
         const val RETRY_MS = 5 * 60 * 1000L
         private const val SEND_ATTEMPTS = 5
