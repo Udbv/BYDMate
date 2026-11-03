@@ -124,7 +124,12 @@
     <ID>CyclomaticComplexMethod:RuleDraftValidator.kt$RuleDraftValidator$fun validateActions(actions: List&lt;ActionDef&gt;): ActionValidationError?</ID>
     <ID>CyclomaticComplexMethod:SettingsViewModel.kt$SettingsViewModel$fun dumpFids()</ID>
     <ID>CyclomaticComplexMethod:SettingsViewModel.kt$SettingsViewModel$fun runDiagnostics()</ID>
-    <ID>CyclomaticComplexMethod:SettingsViewModel.kt$SettingsViewModel$private suspend fun writeDiagnosticHeader(file: File)</ID>
+    <ID>CyclomaticComplexMethod:SettingsViewModel.kt$SettingsViewModel$private fun StringBuilder.appendDumpHelperDaemon(helperDiag: HelperDiagnostics)</ID>
+    <ID>CyclomaticComplexMethod:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpCluster()</ID>
+    <ID>CyclomaticComplexMethod:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpDevices()</ID>
+    <ID>CyclomaticComplexMethod:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpLiveAndAutomation()</ID>
+    <ID>CyclomaticComplexMethod:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpTail()</ID>
+    <ID>CyclomaticComplexMethod:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpVehicleState()</ID>
     <ID>CyclomaticComplexMethod:SherpaTtsEngine.kt$SherpaTtsEngine$override fun speak(text: String): Boolean</ID>
     <ID>CyclomaticComplexMethod:Split37Engine.kt$Split37Engine$private suspend fun adoptForeignTop( session: Session, top: TopTaskInfo?, splitGone: Boolean, ): Session?</ID>
     <ID>CyclomaticComplexMethod:Split37Engine.kt$Split37Engine$suspend fun place(pair: SplitPair): PlaceOutcome</ID>
@@ -279,8 +284,14 @@
     <ID>LongMethod:OverlayNotificationManager.kt$OverlayNotificationManager$private fun renderOverlay(context: Context, title: String, text: String)</ID>
     <ID>LongMethod:RuleDraftValidator.kt$RuleDraftValidator$fun validateActions(actions: List&lt;ActionDef&gt;): ActionValidationError?</ID>
     <ID>LongMethod:SettingsViewModel.kt$SettingsViewModel$fun dumpFids()</ID>
+    <ID>LongMethod:SettingsViewModel.kt$SettingsViewModel$private fun StringBuilder.appendDumpHelperDaemon(helperDiag: HelperDiagnostics)</ID>
     <ID>LongMethod:SettingsViewModel.kt$SettingsViewModel$private fun loadSettings()</ID>
-    <ID>LongMethod:SettingsViewModel.kt$SettingsViewModel$private suspend fun writeDiagnosticHeader(file: File)</ID>
+    <ID>LongMethod:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpCluster()</ID>
+    <ID>LongMethod:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpDevices()</ID>
+    <ID>LongMethod:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpLiveAndAutomation()</ID>
+    <ID>LongMethod:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpSettings()</ID>
+    <ID>LongMethod:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpTail()</ID>
+    <ID>LongMethod:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpVehicleState()</ID>
     <ID>LongMethod:SettingsViewModelConnectionsTest.kt$SettingsViewModelConnectionsTest$private fun buildViewModel(): SettingsViewModel</ID>
     <ID>LongMethod:SettingsViewModelTest.kt$SettingsViewModelTest$private fun buildViewModel( updateChecker: UpdateChecker? = null, ttsModelManager: com.bydmate.app.voice.TtsModelManager? = null, ttsEngine: com.bydmate.app.voice.TtsEngine? = null, gigaAmModelManager: com.bydmate.app.voice.GigaAmModelManager? = null, llmConnectionResolver: LlmConnectionResolver? = null, voiceJournal: com.bydmate.app.voice.VoiceJournal = com.bydmate.app.voice.VoiceJournal(), ): SettingsViewModel</ID>
     <ID>LongMethod:SherpaTtsEngine.kt$SherpaTtsEngine$override fun speak(text: String): Boolean</ID>
@@ -436,6 +447,9 @@
     <ID>NestedBlockDepth:OpenRouterClient.kt$OpenRouterClient$private fun readSse(source: BufferedSource, onDelta: (String) -&gt; Unit): JSONObject</ID>
     <ID>NestedBlockDepth:ScheduleTrigger.kt$ScheduleSpec.Companion$fun fromJson(value: String): ScheduleSpec?</ID>
     <ID>NestedBlockDepth:SelfEchoFilter.kt$SelfEchoFilter$fun isEcho(transcript: String): Boolean</ID>
+    <ID>NestedBlockDepth:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpCluster()</ID>
+    <ID>NestedBlockDepth:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpDevices()</ID>
+    <ID>NestedBlockDepth:SettingsViewModel.kt$SettingsViewModel$private suspend fun StringBuilder.appendDumpLiveAndAutomation()</ID>
     <ID>NestedBlockDepth:Split37Engine.kt$Split37Engine$private suspend fun awaitTaskId(pane: String, pkg: String): PaneResult</ID>
     <ID>NestedBlockDepth:SplitOverlayController.kt$SplitOverlayController$internal fun buildExcludedPackages(mode: PickerMode?): Set&lt;String&gt;</ID>
     <ID>NestedBlockDepth:SplitOverlayController.kt$SplitOverlayController$internal fun handleAppPicked(pkg: String)</ID>
