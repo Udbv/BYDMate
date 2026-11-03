@@ -195,6 +195,11 @@ android {
     }
 
     packaging {
+        // #65: the APK is downloaded over mobile data in the car. Stored uncompressed (the
+        // default for minSdk 23+), the voice library alone was 22.4 MB of the 39 MB APK and the
+        // dex 11.2 MB; deflated they are ~8 and ~5 MB. The cost is an extraction at install.
+        jniLibs { useLegacyPackaging = true }
+        dex { useLegacyPackaging = true }
         resources {
             // The BouncyCastle jars (and their transitive jspecify) each ship their own copy
             // of these entries; the packager refuses to merge duplicates and none of them are
@@ -204,6 +209,9 @@ android {
                 "META-INF/LICENSE.md",
                 "META-INF/NOTICE.md",
                 "META-INF/versions/**",
+                // #65: BouncyCastle's post-quantum Picnic tables (1.2 MB); only the X.509
+                // certificate builder is used, Picnic never.
+                "org/bouncycastle/pqc/legacy/picnic/**",
             )
         }
     }
