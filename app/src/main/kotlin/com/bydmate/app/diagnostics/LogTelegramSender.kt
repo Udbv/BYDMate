@@ -167,16 +167,19 @@ class LogTelegramSender @Inject constructor(
      * upload runs. Throws IOException when [file] cannot be read.
      */
     suspend fun sendZipped(context: Context, file: File): Outcome? {
-        val zip = withContext(Dispatchers.IO) { zipForUpload(file, context.cacheDir) }
+        // The guard first: a second send zipping while another uploads would overwrite the zip
+        // in the cache and delete it under that upload (3.11: «FileNotFoundException», the log
+        // and the sensor record finishing their parts at the same minute).
+        if (!_sending.compareAndSet(expect = false, update = true)) return null
         try {
-            if (!_sending.compareAndSet(expect = false, update = true)) return null
-            return try {
-                uploadOutcome(zip)
+            val zip = withContext(Dispatchers.IO) { zipForUpload(file, context.cacheDir) }
+            try {
+                return uploadOutcome(zip)
             } finally {
-                _sending.value = false
+                withContext(Dispatchers.IO) { zip.delete() }
             }
         } finally {
-            withContext(Dispatchers.IO) { zip.delete() }
+            _sending.value = false
         }
     }
 
