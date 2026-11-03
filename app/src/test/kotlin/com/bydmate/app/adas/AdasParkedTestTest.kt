@@ -14,7 +14,7 @@ import org.junit.Test
 /** The parked ADAS test: parked only, stops the moment the car is not, always clears after. */
 class AdasParkedTestTest {
 
-    private class FakeGateway(private val rc: Int = 0) : AdasGateway {
+    private class FakeGateway(var rc: Int = 0) : AdasGateway {
         val fired = mutableListOf<Pair<Long, ByteArray>>()
         val started = mutableListOf<Long>()
         val stopped = mutableListOf<Long>()
@@ -96,5 +96,18 @@ class AdasParkedTestTest {
         testScheduler.advanceTimeBy(5_000)
         assertEquals("перервано", test.status.value.result)
         assertTrue(gateway.fired.last().second.contentEquals(AdasParkedTest.clearingFrames().last().bytes))
+    }
+
+    @Test fun `frames refused after a good start start the services and the run goes on`() = runTest {
+        val gateway = FakeGateway(rc = 0)
+        val test = subject(gateway, { car(1, 0) }, { testScheduler.currentTime })
+        val job = backgroundScope.launch { test.run(70, 300) }
+        testScheduler.advanceTimeBy(1_000)
+        assertTrue(gateway.started.isEmpty())
+        gateway.rc = 11 // someone else stopped the services
+        testScheduler.advanceTimeBy(1_000)
+        assertEquals(AdasParkedTest.SERVICES, gateway.started)
+        job.join()
+        assertEquals(AdasParkedTest.SERVICES, gateway.stopped)
     }
 }

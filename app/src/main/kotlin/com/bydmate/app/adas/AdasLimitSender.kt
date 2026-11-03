@@ -64,7 +64,8 @@ class AdasLimitSender @Inject constructor(
                 delay(PERIOD_MS)
             }
         } finally {
-            withContext(NonCancellable) { session.close() }
+            // Yielding to the parked test: its frames need the services, so they stay up.
+            withContext(NonCancellable) { session.close(stopServices = !parkedTest.status.value.running) }
         }
     }
 
@@ -112,9 +113,9 @@ class AdasLimitSender @Inject constructor(
             frames.firstOrNull { it.topic == AdasShadowFrames.TOPIC_TRAFFIC_INFO }?.fields
                 ?.substringAfter("SpdLmtSpeedValue=", "")?.substringBefore(' ')?.toIntOrNull()
 
-        suspend fun close() {
+        suspend fun close(stopServices: Boolean = true) {
             if (sending != null) clear("stopped")
-            if (started) AdasParkedTest.SERVICES.forEach { gateway.stopService(it) }
+            if (started && stopServices) AdasParkedTest.SERVICES.forEach { gateway.stopService(it) }
             if (bound) gateway.unbind()
             started = false
             bound = false

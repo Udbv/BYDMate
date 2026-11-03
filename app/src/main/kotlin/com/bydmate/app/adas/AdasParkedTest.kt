@@ -72,6 +72,9 @@ class AdasParkedTest @Inject constructor(
     }
     internal var nowMs: () -> Long = { System.currentTimeMillis() }
 
+    /** Whether this run started the gateway services, and so stops them at the end. */
+    @Volatile private var servicesStarted = false
+
     /** Starts the test; the refusal in words when the car is not parked or a test runs already. */
     fun start(scope: CoroutineScope, limitKph: Int, cameraM: Int): String? =
         launch(scope, { _ -> sendingFrames(limitKph, cameraM) }, DURATION_MS, "limit=$limitKph camera=${cameraM}m") {
@@ -135,7 +138,7 @@ class AdasParkedTest @Inject constructor(
         // Whatever ends the run before it says otherwise: leaving the settings screen cancels it
         // (2026-10-31 17:03 reported «gateway unavailable» for a run that sent all its frames).
         var outcome = "перервано"
-        var started = false
+        servicesStarted = false
         try {
             val before = readCar()
             note("parked test start $what car before: ${before?.describe() ?: "no answer"}")
@@ -149,12 +152,12 @@ class AdasParkedTest @Inject constructor(
             val probe = sending.filter(::fired).map { gateway.fireEvent(it.topic, it.bytes) }
             note("parked test first frames rc=$probe")
             if (probe.any { it != 0 }) {
-                started = true
-                SERVICES.forEach { note("parked test startService(${HudSomeIpBridge.hex(it)}) rc=${gateway.startService(it)}") }
+                servicesStarted = true
+                gateway.startAll(::note)
             }
             outcome = sendLoop(gateway, plan, durationMs, fires, before)?.let { "зупинено: $it" } ?: "завершено"
         } finally {
-            withContext(NonCancellable) { finish(gateway, started, outcome, fires) }
+            withContext(NonCancellable) { finish(gateway, servicesStarted, outcome, fires) }
         }
     }
 
@@ -176,7 +179,14 @@ class AdasParkedTest @Inject constructor(
             val sending = plan(nowMs() - start)
             if (last != null && sending != last) noteChange(sending, last)
             last = sending
-            sending.filter(::fired).forEach { f -> gateway.fireEvent(f.topic, f.bytes).let { rc -> fires[rc] = (fires[rc] ?: 0) + 1 } }
+            val rcs = sending.filter(::fired).map { f -> gateway.fireEvent(f.topic, f.bytes).also { rc -> fires[rc] = (fires[rc] ?: 0) + 1 } }
+            // A frame refused mid-run (3.11 20:27: the drive-time sender stopped the services as
+            // the test began, 1694 of 1696 frames came back rc=11): start them and go on.
+            if (rcs.any { it != 0 } && !servicesStarted) {
+                servicesStarted = true
+                note("parked test frames refused rc=$rcs: starting the services")
+                gateway.startAll(::note)
+            }
             if (nowMs() >= nextRead) {
                 nextRead = nowMs() + SECOND_MS
                 val car = readCar()
@@ -255,6 +265,11 @@ class AdasParkedTest @Inject constructor(
             AdasShadowFrames.naviStatus(AdasShadowFrames.NAVI_STOPPED),
         )
     }
+}
+
+/** Starts every service the tests send on, each start logged. */
+private fun AdasGateway.startAll(note: (String) -> Unit) {
+    AdasParkedTest.SERVICES.forEach { note("parked test startService(${HudSomeIpBridge.hex(it)}) rc=${startService(it)}") }
 }
 
 /** Bookkeeping frames of a plan are never fired. */
