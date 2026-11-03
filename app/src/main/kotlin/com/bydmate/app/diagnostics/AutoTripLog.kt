@@ -63,6 +63,7 @@ class AutoTripLog @Inject constructor(
     suspend fun onServiceStart(now: Long = System.currentTimeMillis()): Boolean {
         serviceStartedAt = now
         val own = prefs.getString(KEY_PATH, null) ?: return false
+        noteOwn(own)
         val tookPending = recorder.pendingPath() == own
         // No session runs this early, so this only drops the pending record.
         if (tookPending) recorder.stop()
@@ -139,6 +140,7 @@ class AutoTripLog @Inject constructor(
             )
         }
         if (result is LogRecorder.StartResult.Started) {
+            noteOwn(result.file.absolutePath)
             prefs.edit().putString(KEY_PATH, result.file.absolutePath).apply()
             watchedPath = result.file.absolutePath
             watchedSince = recorder.state.value.startedAtMs
@@ -151,6 +153,17 @@ class AutoTripLog @Inject constructor(
     /** One file to the bot, retried while the failure may heal; remembered once sent or hopeless. */
     private suspend fun send(file: File, waitForNetwork: Boolean) {
         if (!settings.getTgBackupConfig().configured || !file.isFile) return
+        // A part closed by rotate() is still on its way when start() looks for unsent files:
+        // one upload per file (3.11: every part reached the bot twice).
+        if (!inFlight.add(file.absolutePath)) return
+        try {
+            sendOnce(file, waitForNetwork)
+        } finally {
+            inFlight.remove(file.absolutePath)
+        }
+    }
+
+    private suspend fun sendOnce(file: File, waitForNetwork: Boolean) {
         repeat(ATTEMPTS) { attempt ->
             if (waitForNetwork || attempt > 0) delay(if (attempt == 0) SETTLE_MS else RETRY_MS)
             val outcome = try {
@@ -167,6 +180,8 @@ class AutoTripLog @Inject constructor(
         }
     }
 
+    private val inFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     companion object {
         private const val TAG = "AutoTripLog"
         const val KEY_ENABLED = "full_log_auto"
@@ -174,6 +189,18 @@ class AutoTripLog @Inject constructor(
         private const val KEY_SENT = "full_log_auto_sent"
 
         val DEFAULT_ENABLED: Boolean = BuildConfig.DEFAULT_UPDATE_CHANNEL == "dev"
+
+        /** The last files this class recorded: they go to the bot zipped from here, not raw. */
+        private val ownPaths = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
+        private const val OWN_PATHS_KEPT = 8
+
+        private fun noteOwn(path: String) = synchronized(ownPaths) {
+            ownPaths += path
+            while (ownPaths.size > OWN_PATHS_KEPT) ownPaths.remove(ownPaths.first())
+        }
+
+        /** True for a file of the automatic log: the recorder's own "send on stop" leaves it alone. */
+        fun owns(path: String): Boolean = path in ownPaths
 
         fun isEnabled(context: Context): Boolean =
             context.getSharedPreferences(TripDebugLog.PREFS_NAME, Context.MODE_PRIVATE)

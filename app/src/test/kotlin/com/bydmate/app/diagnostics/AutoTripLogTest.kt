@@ -129,4 +129,27 @@ class AutoTripLogTest {
         log.onTick(carOn = true, now = 1_000 + AutoTripLog.CHUNK_MS + 2_000)
         coVerify(exactly = 2) { recorder.start(any()) }
     }
+
+    @Test fun `a finished part goes to the bot once, not again from the next part's start`() = runBlocking {
+        coEvery { settings.getTgBackupConfig() } returns TgBackupConfig("t", 1L, "", "")
+        val part1 = File(context.cacheDir, "bydmate_logs_part1.txt").apply { writeText("1") }
+        val part2 = File(context.cacheDir, "bydmate_logs_part2.txt").apply { writeText("2") }
+        val files = ArrayDeque(listOf(part1, part2))
+        var clock = 1_000L
+        coEvery { recorder.start(any()) } answers {
+            val f = files.removeFirst()
+            state.value = LogRecorder.State(isRecording = true, filePath = f.absolutePath, startedAtMs = clock)
+            LogRecorder.StartResult.Started(f)
+        }
+        coEvery { sender.sendZipped(any(), any()) } coAnswers {
+            kotlinx.coroutines.delay(300)
+            LogTelegramSender.Outcome("ok", sent = true)
+        }
+        log.onTick(carOn = true, now = AutoTripLog.START_DELAY_MS)
+        clock = 1_000 + AutoTripLog.CHUNK_MS
+        log.onTick(carOn = true, now = clock)
+        kotlinx.coroutines.delay(1_000)
+        coVerify(exactly = 1) { sender.sendZipped(any(), part1) }
+        assertTrue(AutoTripLog.owns(part1.absolutePath))
+    }
 }
