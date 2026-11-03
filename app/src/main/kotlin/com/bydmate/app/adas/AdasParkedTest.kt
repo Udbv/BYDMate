@@ -88,14 +88,20 @@ class AdasParkedTest @Inject constructor(
      * the route.
      */
     fun startRoute(scope: CoroutineScope, points: List<RoutePoint>): String? {
-        if (points.size < 2) return "немає маршруту"
-        val ahead = AdasRouteFrames.head(points)
-        val here = location()?.let { RoutePoint(it.latitude, it.longitude) } ?: points.first()
-        val pathId = PATH_ID_BASE + nowMs() / SECOND_MS % PATH_ID_BASE
-        val frames = listOf(AdasShadowFrames.naviStatus(AdasShadowFrames.NAVI_ACTIVE)) +
-            AdasRouteFrames.of(ahead, pathId, nowMs(), here)
-        return launch(scope, { _ -> frames }, DURATION_MS, "route pathID=$pathId points=${ahead.size}/${points.size}") {
-            Status(running = true, secondsLeft = (DURATION_MS / SECOND_MS).toInt(), route = true)
+        note("parked test route pressed: points=${points.size}")
+        if (points.size < 2) return "немає маршруту".also { note("parked test refused (route): $it") }
+        return runCatching {
+            val ahead = AdasRouteFrames.head(points)
+            val here = location()?.let { RoutePoint(it.latitude, it.longitude) } ?: points.first()
+            val pathId = PATH_ID_BASE + nowMs() / SECOND_MS % PATH_ID_BASE
+            val frames = listOf(AdasShadowFrames.naviStatus(AdasShadowFrames.NAVI_ACTIVE)) +
+                AdasRouteFrames.of(ahead, pathId, nowMs(), here)
+            launch(scope, { _ -> frames }, DURATION_MS, "route pathID=$pathId points=${ahead.size}/${points.size}") {
+                Status(running = true, secondsLeft = (DURATION_MS / SECOND_MS).toInt(), route = true)
+            }
+        }.getOrElse { e ->
+            note("parked test route failed: ${e.javaClass.simpleName}: ${e.message}")
+            "помилка: ${e.javaClass.simpleName}"
         }
     }
 
@@ -122,8 +128,9 @@ class AdasParkedTest @Inject constructor(
         what: String,
         initial: () -> Status,
     ): String? {
-        refusal(data())?.let { return it }
-        if (!running.compareAndSet(false, true)) return "тест уже йде"
+        // Every refusal is logged: the screen line alone left three route tests without a trace (3.11).
+        refusal(data())?.let { reason -> return reason.also { note("parked test refused ($what): $it") } }
+        if (!running.compareAndSet(false, true)) return "тест уже йде".also { note("parked test refused ($what): $it") }
         _status.value = initial()
         scope.launch(Dispatchers.IO) { run(plan, durationMs, what) }
         return null
