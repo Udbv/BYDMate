@@ -4,12 +4,12 @@ package com.bydmate.app.adas
  * The parked limit change test (#23). On the 3.11 drive the car took the first limit it was sent
  * and ignored every later one. The factory map never sends a bare limit: on every position update
  * it sends the car's place on its route (`sdVehicleLocation`: path, step, link, offsets) together
- * with `TrafficInfo` (limit, road class, distance to the destination). Four variants, each
+ * with `TrafficInfo` (limit, road class, distance to the destination). The variants of [VARIANTS], each
  * [VARIANT_MS] long, change the limit 70 -> 110 -> 70 -> 110 every [STEP_MS] inside one session:
- * - `plain`: the limit alone, as the drive did (expected: only the first value is taken);
+ * - `plain`: the limit alone, as the drive did (round 1 only);
  * - `link`: plus a route and the car on it, the link index going up at each change, as a limit
  *   changes where a new road piece begins;
- * - `class`: plus the road class (AutoNavi: 0 motorway for 110, 2 provincial road for 70) and the
+ * - `class`: plus the road class (AutoNavi: 1 national road for 110, 2 provincial road for 70) and the
  *   distance and time to the destination, the fields the map fills;
  * - `link+class`: both.
  * Each variant opens with [GAP_MS] of "stopped" so it starts like a fresh navigation; what it
@@ -51,21 +51,27 @@ class AdasLimitChangePlan(private val here: RoutePoint, private val pathId: Long
     private fun marker(variant: String) = ShadowFrame(MARKER_TOPIC, "variant", variant, byteArrayOf())
 
     companion object {
-        val VARIANTS = listOf("plain", "link", "class", "link+class")
+        /**
+         * Round 2 (3.11 21:37, dev.15): in round 1 the car took nothing in `plain` and `link`,
+         * and took 70 once in `class`, 14 s after it was first sent; 110 went out with road class 0
+         * (motorway), which proto3 leaves out, and was never taken. So now the road class is never
+         * 0 and each value is held twice as long.
+         */
+        val VARIANTS = listOf("class", "link+class")
         val LIMITS = listOf(70, 110, 70, 110)
         const val GAP_MS = 2_000L
-        const val STEP_MS = 6_000L
+        const val STEP_MS = 12_000L
         const val VARIANT_MS = GAP_MS + 4 * STEP_MS
         private const val ROUTE_M = 2_000
         private const val LINK_M = 200
         private const val ETA_S = 120
-        private const val CLASS_MOTORWAY = 0
+        private const val CLASS_NATIONAL = 1
         private const val CLASS_PROVINCIAL = 2
         private const val FAST_KPH = 100
         /** A topic no service has: frames on it are bookkeeping, never fired. */
         const val MARKER_TOPIC = 0L
 
-        private fun classOf(limit: Int) = if (limit >= FAST_KPH) CLASS_MOTORWAY else CLASS_PROVINCIAL
+        private fun classOf(limit: Int) = if (limit >= FAST_KPH) CLASS_NATIONAL else CLASS_PROVINCIAL
 
         fun variantOf(frames: List<ShadowFrame>): String? = frames.firstOrNull { it.topic == MARKER_TOPIC }?.fields
     }
