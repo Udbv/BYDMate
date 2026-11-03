@@ -29,6 +29,8 @@ object AdasRouteFrames {
     /** Links of at most this length: the factory route's links are road pieces of this order. */
     private const val LINK_M = 200.0
     private const val HEAD_M = 20_000.0
+    private const val STEP_M = 100.0
+    private const val M_PER_DEG_LAT = 111_195.0
     private const val NO_LINK_ID = -1L
     private const val FORMWAY_MAIN = 1
     private const val LANES = 2
@@ -48,19 +50,29 @@ object AdasRouteFrames {
                 TOPIC_PATH_SELECT, "NaviPathUserSelectStsNotify", "pathID_Req=$pathId",
                 wrap(Proto().varint(3, pathId).bytes()),
             ),
-            ShadowFrame(
-                TOPIC_VEHICLE_LOCATION, "sdVehicleLocation", "pathID=$pathId step=0 link=0",
-                wrap(
-                    Proto()
-                        .double(1, here.lat).double(2, here.lon).double(3, here.lat).double(4, here.lon)
-                        .double(7, pathId.toDouble())
-                        .varint(11, (links.firstOrNull()?.lengthM ?: 0.0).toLong())
-                        .varint(12, total.toLong())
-                        .varint(13, OWNERSHIP.toLong())
-                        .bytes(),
-                ),
-            ),
+            location(here, pathId, link = 0, linkRemainM = (links.firstOrNull()?.lengthM ?: 0.0).toLong(), stepRemainM = total.toLong()),
         )
+    }
+
+    /** `sdVehicleLocation`: the car at [link] of step 0 of the route [pathId], as the map sends it per fix. */
+    fun location(here: RoutePoint, pathId: Long, link: Int, linkRemainM: Long, stepRemainM: Long) = ShadowFrame(
+        TOPIC_VEHICLE_LOCATION, "sdVehicleLocation", "pathID=$pathId step=0 link=$link linkOffset=$linkRemainM",
+        wrap(
+            Proto()
+                .double(1, here.lat).double(2, here.lon).double(3, here.lat).double(4, here.lon)
+                .double(7, pathId.toDouble())
+                .varint(9, 0).varint(10, link.toLong())
+                .varint(11, linkRemainM)
+                .varint(12, stepRemainM)
+                .varint(13, OWNERSHIP.toLong())
+                .bytes(),
+        ),
+    )
+
+    /** A straight route of [lengthM] north of [from], points every 100 m: links of 200 m. */
+    fun straight(from: RoutePoint, lengthM: Int): List<RoutePoint> {
+        val stepDeg = STEP_M / M_PER_DEG_LAT
+        return List(lengthM / STEP_M.toInt() + 1) { RoutePoint(from.lat + it * stepDeg, from.lon) }
     }
 
     /** The route's first [maxM] metres: the test needs the stretch ahead, not a whole long trip. */
