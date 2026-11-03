@@ -1140,6 +1140,7 @@ private fun DisplaySection() {
 
     SectionHeader(text = stringResource(R.string.settings_section_display_title))
     AdasLimitsRow()
+    NavVoiceRow()
     SettingCollapsibleCard(
         title = stringResource(R.string.settings_display_card_mirror_title),
         subtitle = if (enabled) {

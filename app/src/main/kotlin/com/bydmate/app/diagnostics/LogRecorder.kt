@@ -542,6 +542,8 @@ class LogRecorder internal constructor(
             "BYDAutoSettingDevice:*", "AbsBYDAutoSettingListener:*", "BYDAutoAcDevice:*",
             // Audio channel test (#6): per-variant focus answers, start/end and the focus stack.
             "AudioChannelTest:*",
+            // BYDMate's own voice for Waze guidance: every phrase, its channel and focus answer.
+            "NavVoice:*",
             // The event journal: one line per user action, decision and failure, by=#id links.
             "Trace:*"
         )

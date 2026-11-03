@@ -2524,4 +2524,9 @@
     <string name="settings_cruise_advice_desc">自适应巡航开启且 Waze 限速比设定速度低 5 km/h 及以上时，语音播报“Ограничение 50, круиз 70”（限速 50，巡航 70）。不向车辆发送任何内容。需要开启语音助手及其语音播报。</string>
     <string name="settings_adas_change_test_start">限速变更测试（约 2 分钟）</string>
     <string name="settings_adas_change_test_running">变体 %1$s，已发送 %2$d · 剩余 %3$d 秒</string>
+    <string name="settings_nav_voice_title">BYDMate 导航语音</string>
+    <string name="settings_nav_voice_desc">BYDMate 用自己的语音在所选音频通道播报 Waze 的转向提示，使提示压低音乐而不是打断音乐。请关闭 Waze 自带语音：Waze → 设置 → 语音与声音。</string>
+    <string name="settings_nav_voice_channel">音频通道</string>
+    <string name="settings_nav_voice_duck_title">压低音乐</string>
+    <string name="settings_nav_voice_duck_desc">提示期间请求系统压低音乐。哪个通道和模式能在这辆车上压低音乐，可在「诊断」的音频通道测试中查看。</string>
 </resources>

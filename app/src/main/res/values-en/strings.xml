@@ -2416,4 +2416,9 @@
     <string name="settings_cruise_advice_desc">When the adaptive cruise is on and the Waze limit is 5 km/h or more below the set speed, says aloud “Ограничение 50, круиз 70” (limit 50, cruise 70). Sends nothing to the car. Needs the voice assistant with speech on.</string>
     <string name="settings_adas_change_test_start">Limit change test (~2 min)</string>
     <string name="settings_adas_change_test_running">Variant %1$s, sent %2$d · %3$d s left</string>
+    <string name="settings_nav_voice_title">BYDMate navigation voice</string>
+    <string name="settings_nav_voice_desc">BYDMate speaks the Waze maneuvers itself on the chosen audio channel, so prompts duck the music instead of interrupting it. Turn off Waze\'s own voice: Waze → Settings → Voice &amp; sound.</string>
+    <string name="settings_nav_voice_channel">Audio channel</string>
+    <string name="settings_nav_voice_duck_title">Duck the music</string>
+    <string name="settings_nav_voice_duck_desc">Ask the system to lower the music during a prompt. Which channel and mode duck the music on this car is shown by the audio channel test in Diagnostics.</string>
 </resources>
