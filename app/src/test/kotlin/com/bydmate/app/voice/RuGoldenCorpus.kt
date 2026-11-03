@@ -35,6 +35,7 @@ object RuGoldenCorpus {
         is ParseResult.Ask -> "ASK:" + result.question.id
         ParseResult.Music -> "MUSIC"
         is ParseResult.Mark -> "MARK:" + result.type.id
+        is ParseResult.AdasLimits -> "LIMITS:" + if (result.on) "on" else "off"
         ParseResult.Unrecognized -> UNRECOGNIZED
     }
 

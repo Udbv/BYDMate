@@ -98,6 +98,7 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var bumpRecording: com.bydmate.app.diagnostics.BumpRecording
     @Inject lateinit var tripMinuteRecorder: com.bydmate.app.domain.tracker.TripMinuteRecorder
     @Inject lateinit var adasShadow: com.bydmate.app.adas.AdasShadow
+    @Inject lateinit var adasLimitSender: com.bydmate.app.adas.AdasLimitSender
     @Inject lateinit var networkAvailableMonitor: com.bydmate.app.data.automation.NetworkAvailableMonitor
     @Inject lateinit var alicePollingManager: AlicePollingManager
     @Inject lateinit var odometerBuffer: OdometerConsumptionBuffer
@@ -1819,6 +1820,8 @@ class TrackingService : Service(), LocationListener {
                     tripMinuteRecorder.onTick(data.powerState?.let { it >= 1 } == true, data)
                     runCatching { adasShadow.onTick(data.powerState?.let { it >= 1 } == true, data) }
                         .onFailure { Log.w(TAG, "AdasShadow.onTick failed", it) }
+                    runCatching { adasLimitSender.onTick(data.powerState?.let { it >= 1 } == true) }
+                        .onFailure { Log.w(TAG, "AdasLimitSender.onTick failed", it) }
                     updateNotification(data)
                     maybeLogSessionSummary(nowMs, data, sessionId)
                     maybeSendIternioTelemetry(data, nowMs)

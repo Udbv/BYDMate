@@ -3278,6 +3278,17 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
             com.bydmate.app.adas.AdasShadow.setEnabled(tripLogContext, it)
         },
     )
+    // #23: Waze's limits and cameras really sent to the car while driving; off by default.
+    var adasLive by remember { mutableStateOf(com.bydmate.app.adas.AdasLimitSender.isEnabled(tripLogContext)) }
+    SettingToggleRow(
+        title = stringResource(R.string.settings_adas_live_title),
+        description = stringResource(R.string.settings_adas_live_desc),
+        checked = adasLive,
+        onCheckedChange = {
+            adasLive = it
+            com.bydmate.app.adas.AdasLimitSender.setEnabled(tripLogContext, it)
+        },
+    )
     // #23 step 2: a real send of a limit and a camera, parked only, on a tap.
     AdasParkedTestRow()
     // Trip debug log: the car keeps its own record because Wi-Fi is gone the moment it
