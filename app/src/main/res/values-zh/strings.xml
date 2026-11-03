@@ -2529,4 +2529,7 @@
     <string name="settings_nav_voice_channel">音频通道</string>
     <string name="settings_nav_voice_duck_title">压低音乐</string>
     <string name="settings_nav_voice_duck_desc">提示期间请求系统压低音乐。哪个通道和模式能在这辆车上压低音乐，可在「诊断」的音频通道测试中查看。</string>
+    <string name="settings_tts_voice_tetiana_uk">Tetiana（乌克兰语）</string>
+    <string name="settings_tts_voice_mykyta_uk">Mykyta（乌克兰语）</string>
+    <string name="settings_tts_voice_lada_uk">Lada（乌克兰语）</string>
 </resources>

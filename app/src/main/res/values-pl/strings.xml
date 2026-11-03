@@ -2585,4 +2585,7 @@
     <string name="settings_nav_voice_channel">Kanał audio</string>
     <string name="settings_nav_voice_duck_title">Ściszaj muzykę</string>
     <string name="settings_nav_voice_duck_desc">Proś system o ściszenie muzyki na czas podpowiedzi. Który kanał i tryb ściszają muzykę w tym aucie, pokazuje test kanałów audio w «Diagnostyce».</string>
+    <string name="settings_tts_voice_tetiana_uk">Tetiana (ukr.)</string>
+    <string name="settings_tts_voice_mykyta_uk">Mykyta (ukr.)</string>
+    <string name="settings_tts_voice_lada_uk">Łada (ukr.)</string>
 </resources>

@@ -2421,4 +2421,7 @@
     <string name="settings_nav_voice_channel">Audio channel</string>
     <string name="settings_nav_voice_duck_title">Duck the music</string>
     <string name="settings_nav_voice_duck_desc">Ask the system to lower the music during a prompt. Which channel and mode duck the music on this car is shown by the audio channel test in Diagnostics.</string>
+    <string name="settings_tts_voice_tetiana_uk">Tetiana (Ukrainian)</string>
+    <string name="settings_tts_voice_mykyta_uk">Mykyta (Ukrainian)</string>
+    <string name="settings_tts_voice_lada_uk">Lada (Ukrainian)</string>
 </resources>
