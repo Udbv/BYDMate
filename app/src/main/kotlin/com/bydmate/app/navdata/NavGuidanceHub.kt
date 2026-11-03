@@ -500,20 +500,23 @@ object NavGuidanceHub {
                 maneuverPng = rich.maneuverPng ?: prev.maneuverPng,
             )
             a11yFresh -> prev
-            else -> held.copy(
-                maneuverGaode = if (rich.maneuverGaode > 0) rich.maneuverGaode else held.maneuverGaode,
-                maneuverGaodeMs = if (rich.maneuverGaode > 0) nowMs else held.maneuverGaodeMs,
-                maneuverSource = if (rich.maneuverGaode > 0) Source.NOTIFICATION.label() else held.maneuverSource,
-                maneuverRaw = if (rich.maneuverGaode > 0) rich.maneuverRaw else held.maneuverRaw,
-                distanceMeters = if (rich.distanceMeters > 0) rich.distanceMeters else held.distanceMeters,
-                road = rich.road.ifEmpty { held.road },
-                etaSeconds = if (rich.etaSeconds > 0) rich.etaSeconds else held.etaSeconds,
-                totalDistMeters = if (rich.totalDistMeters > 0) rich.totalDistMeters else held.totalDistMeters,
-                totalDistMs = if (rich.totalDistMeters > 0) nowMs else held.totalDistMs,
-                maneuverPng = rich.maneuverPng ?: held.maneuverPng,
-            )
+            else -> merged(held, rich, nowMs)
         }
     }
+
+    /** A notification's fields over the held snapshot: what it carries wins, the rest is kept. */
+    private fun merged(held: Snapshot, rich: RichUpdate, nowMs: Long): Snapshot = held.copy(
+        maneuverGaode = if (rich.maneuverGaode > 0) rich.maneuverGaode else held.maneuverGaode,
+        maneuverGaodeMs = if (rich.maneuverGaode > 0) nowMs else held.maneuverGaodeMs,
+        maneuverSource = if (rich.maneuverGaode > 0) Source.NOTIFICATION.label() else held.maneuverSource,
+        maneuverRaw = if (rich.maneuverGaode > 0) rich.maneuverRaw else held.maneuverRaw,
+        distanceMeters = if (rich.distanceMeters > 0) rich.distanceMeters else held.distanceMeters,
+        road = rich.road.ifEmpty { held.road },
+        etaSeconds = if (rich.etaSeconds > 0) rich.etaSeconds else held.etaSeconds,
+        totalDistMeters = if (rich.totalDistMeters > 0) rich.totalDistMeters else held.totalDistMeters,
+        totalDistMs = if (rich.totalDistMeters > 0) nowMs else held.totalDistMs,
+        maneuverPng = rich.maneuverPng ?: held.maneuverPng,
+    )
 
     /** #294: a held maneuver belongs to the next street it was read with. A read that names
      *  another street and carries no maneuver of its own means that turn is behind: the arrow
