@@ -21,7 +21,7 @@
  * WME APIs used, in order of preference:
  *  - WME SDK (window.SDK_INITIALIZED, window.getWmeSdk): Sidebar.registerScriptTab,
  *    Map.addLayer / addFeatureToLayer / removeAllFeaturesFromLayer / setMapCenter,
- *    LayerSwitcher.addLayerCheckbox, Events.once({eventName: 'wme-ready'}).
+ *    LayerSwitcher.addLayerCheckbox, State.isReady, Events.once({eventName: 'wme-ready'}).
  *  - Fallback without the SDK: W.userscripts.registerSidebarTab / waitForElementConnected,
  *    W.map (addLayer, getProjectionObject, setCenter) and OpenLayers 2 (Layer.Vector, Feature.Vector,
  *    Geometry.Point, StyleMap). Read-only calls only: W.model and W.selectionManager are not touched.
@@ -31,6 +31,8 @@
 
   const SCRIPT_ID = 'bydmate-points';
   const SCRIPT_NAME = 'BYDMate points';
+  // Long enough for a slow WME load, short enough that a missed event does not leave the tab absent.
+  const WME_READY_TIMEOUT_MS = 60000;
   const LAYER = 'BYDMate points';
   const GO_TO_ZOOM = 19;
 
@@ -247,7 +249,16 @@
 
   async function startWithSdk() {
     const sdk = window.getWmeSdk({ scriptId: SCRIPT_ID, scriptName: SCRIPT_NAME });
-    await sdk.Events.once({ eventName: 'wme-ready' });
+    // wme-ready fires once; when the script is injected after it (late Tampermonkey injection on a
+    // cached reload) waiting for it would hang forever, so only wait while WME is still loading,
+    // and give up after a while so the W.map fallback still gets its chance.
+    const ready = sdk.State && typeof sdk.State.isReady === 'function' && sdk.State.isReady();
+    if (!ready) {
+      await Promise.race([
+        sdk.Events.once({ eventName: 'wme-ready' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('wme-ready timeout')), WME_READY_TIMEOUT_MS)),
+      ]);
+    }
     const { tabLabel, tabPane } = await sdk.Sidebar.registerScriptTab();
     buildPanel(tabLabel, tabPane, sdkMap(sdk));
   }

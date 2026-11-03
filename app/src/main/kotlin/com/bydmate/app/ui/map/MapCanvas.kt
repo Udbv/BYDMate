@@ -1,6 +1,8 @@
 package com.bydmate.app.ui.map
 
 import android.content.Context
+import android.content.res.Resources
+import android.graphics.drawable.Drawable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -103,14 +105,21 @@ private fun pointMarker(map: MapView, p: RoadPointEntity, onPointTap: (Long) -> 
     position = GeoPoint(p.lat, p.lon)
     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
     title = "${pointTitle(p)} · ${map.context.getString(statusRes(p.status))}"
-    // mutate(): the default pin drawable is shared by every marker, a tint on it would paint them all.
-    icon = icon?.mutate()?.apply { setTint(statusColor(p.status).toArgb()) }
+    icon = ownTintedCopy(icon, map.context.resources, statusColor(p.status))
     if (p.status == RoadPointStatus.REJECTED.name) alpha = REJECTED_ALPHA
     setOnMarkerClickListener { _, _ ->
         onPointTap(p.id)
         true
     }
 }
+
+/**
+ * osmdroid hands every new Marker the one cached default pin from MapViewRepository, and mutate()
+ * returns that same instance, so tinting it in place would recolour every pin on the map to the
+ * last status drawn. A fresh drawable from the constant state gives each marker its own copy.
+ */
+internal fun ownTintedCopy(base: Drawable?, res: Resources, color: Color): Drawable? =
+    base?.constantState?.newDrawable(res)?.mutate()?.apply { setTint(color.toArgb()) }
 
 internal fun statusColor(status: String): Color = when (status) {
     RoadPointStatus.CONFIRMED.name -> AccentGreen
@@ -153,7 +162,7 @@ private fun line(points: List<GeoPoint>, color: Color, width: Float) = Polyline(
     infoWindow = null
 }
 
-private fun dot(context: Context, color: Color): android.graphics.drawable.Drawable =
+private fun dot(context: Context, color: Color): Drawable =
     android.graphics.drawable.GradientDrawable().apply {
         shape = android.graphics.drawable.GradientDrawable.OVAL
         setColor(color.toArgb())
