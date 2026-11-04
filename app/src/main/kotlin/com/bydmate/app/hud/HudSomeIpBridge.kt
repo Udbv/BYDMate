@@ -26,7 +26,14 @@ interface HudEventSink {
  *  Lifecycle: [activeConn] is the connection currently registered with the framework
  *  (must be balanced by unbindService), [serverBinder] is the LIVE connection - null
  *  between a gateway crash and the framework's automatic reconnect. On reconnect the
- *  callback is re-registered and every started service re-opened (Codex fix 3). */
+ *  callback is re-registered and every started service re-opened (Codex fix 3).
+ *
+ *  Unbinding: every bridge of ours binds the same intent (its type is our package), and when the
+ *  last such binding goes the gateway's onUnbind stops on the HAL every service our package
+ *  started (SomeIpServerService.onUnbind). The factory map offers the ADAS services past the
+ *  gateway, so that stop takes its offer off the bus as well (the frozen ADAS view of dev.10-15).
+ *  The ADAS senders therefore share one pinned binding (adas.AdasSharedGateway) that is never the
+ *  one to go while the process lives. */
 class HudSomeIpBridge(
     private val ctx: Context,
     private val onConnectionLost: () -> Unit = {},

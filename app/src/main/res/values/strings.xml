@@ -2593,7 +2593,8 @@
     <string name="audio_test_phrase">Проверка звука. %1$s, %2$s. Раз, два, три.</string>
     <string name="settings_cruise_advice_title">Совет по круизу</string>
     <string name="settings_cruise_advice_desc">Когда адаптивный круиз включён, а ограничение из Waze ниже заданной скорости на 5 км/ч и больше, голосом говорит «Ограничение 50, круиз 70». В машину ничего не отправляет. Нужен голосовой ассистент с включённой речью.</string>
-    <string name="settings_adas_change_test_start">Тест смены ограничения (~2 мин)</string>
+    <string name="settings_adas_change_test_start">Тест смены ограничения (~1 мин)</string>
+    <string name="settings_adas_change_route_test_start">С маршрутом (эксперимент: маршрут может остаться в ADAS)</string>
     <string name="settings_adas_change_test_running">Вариант %1$s, отправлено %2$d · ещё %3$d с</string>
     <string name="settings_nav_voice_title">Голос навигации BYDMate</string>
     <string name="settings_nav_voice_desc">BYDMate сам озвучивает манёвры Waze своим голосом в выбранном аудиоканале, чтобы подсказки приглушали музыку, а не прерывали её. Отключите собственный голос Waze: Waze → Настройки → Голос и звук.</string>
