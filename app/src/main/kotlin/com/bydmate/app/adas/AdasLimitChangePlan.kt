@@ -14,15 +14,30 @@ package com.bydmate.app.adas
  * - `link+class`: both.
  * Each variant opens with [GAP_MS] of "stopped" so it starts like a fresh navigation; what it
  * tells is whether the changes after its first value reach the car.
+ *
+ * Which variants run is [variants]: [VARIANTS] (no route) unless the route ones are asked for
+ * ([ROUTE_VARIANTS]), and those need [here], the car's real position: a route is never put at 0/0.
+ * The route and path select frames are the same through the run; the test sends them once
+ * ([AdasRouteFrames.ONCE_TOPICS]), only the car's place on the route goes with every frame.
  */
-class AdasLimitChangePlan(private val here: RoutePoint, private val pathId: Long, private val nowMs: Long) {
+class AdasLimitChangePlan(
+    private val here: RoutePoint?,
+    private val pathId: Long,
+    private val nowMs: Long,
+    private val variants: List<String> = VARIANTS,
+) {
+    init {
+        require(here != null || variants.none { it.contains("link") }) { "a route variant needs the car's position" }
+    }
 
-    private val route = AdasRouteFrames.straight(here, ROUTE_M)
-    private val routeFrames = AdasRouteFrames.of(route, pathId, nowMs, here).take(2)
+    private val routeFrames: List<ShadowFrame> by lazy {
+        val from = checkNotNull(here)
+        AdasRouteFrames.of(AdasRouteFrames.straight(from, ROUTE_M), pathId, nowMs, from).take(2)
+    }
 
-    val durationMs: Long = VARIANTS.size * VARIANT_MS
+    val durationMs: Long = variants.size * VARIANT_MS
 
-    fun variantAt(elapsedMs: Long): String = VARIANTS[(elapsedMs / VARIANT_MS).toInt().coerceIn(0, VARIANTS.lastIndex)]
+    fun variantAt(elapsedMs: Long): String = variants[(elapsedMs / VARIANT_MS).toInt().coerceIn(0, variants.lastIndex)]
 
     fun framesAt(elapsedMs: Long): List<ShadowFrame> {
         val variant = variantAt(elapsedMs)
@@ -41,7 +56,7 @@ class AdasLimitChangePlan(private val here: RoutePoint, private val pathId: Long
         if (withLink) {
             frames += routeFrames
             frames += AdasRouteFrames.location(
-                here, pathId, link = step, linkRemainM = LINK_M.toLong(), stepRemainM = (ROUTE_M - step * LINK_M).toLong(),
+                checkNotNull(here), pathId, link = step, linkRemainM = LINK_M.toLong(), stepRemainM = (ROUTE_M - step * LINK_M).toLong(),
             )
         }
         return frames
@@ -56,8 +71,12 @@ class AdasLimitChangePlan(private val here: RoutePoint, private val pathId: Long
          * and took 70 once in `class`, 14 s after it was first sent; 110 went out with road class 0
          * (motorway), which proto3 leaves out, and was never taken. So now the road class is never
          * 0 and each value is held twice as long.
+         *
+         * Round 3 (4.11, after the second freeze): the default run has no route at all, `class`
+         * alone; `link+class` is a separate run ([ROUTE_VARIANTS]) the owner starts on purpose.
          */
-        val VARIANTS = listOf("class", "link+class")
+        val VARIANTS = listOf("class")
+        val ROUTE_VARIANTS = listOf("link+class")
         val LIMITS = listOf(70, 110, 70, 110)
         const val GAP_MS = 2_000L
         const val STEP_MS = 12_000L

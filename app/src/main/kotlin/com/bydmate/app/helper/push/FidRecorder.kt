@@ -127,6 +127,7 @@ internal object FidRecorder {
                     "(-${FastTrack.PRE_MS}..+${FastTrack.POST_MS} ms around a '#detail' note), elsewhere " +
                     "compressed (join a fid's consecutive lines with straight lines); " +
                     "others at most one line per $MIN_LINE_INTERVAL_MS ms",
+                fidRecHmaHeader(),
             )
         )
         val round = Round(file)
@@ -353,6 +354,13 @@ internal object FidRecorder {
             bumpWatch.feed(e, out)
             when {
                 fast.isFast(fid) -> fast.sample(e, out)
+                // «Світло/HMA»: a flip of the HMA state or a flash of the beam is the event itself.
+                c.symbol in FID_REC_HMA_DISCRETE -> {
+                    c.lastWritten = now
+                    c.written = true
+                    c.pending = false
+                    out += e
+                }
                 !c.written || now - c.lastWritten >= MIN_LINE_INTERVAL_MS -> {
                     c.lastWritten = now
                     c.written = true
