@@ -26,6 +26,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -666,7 +668,18 @@ class BackupManager(
         //    A successful rename is the POINT OF NO RETURN: from here the app state is
         //    already changed, so no later step may throw past the caller's restart. File
         //    deletes below do not throw, and the prefs loop is best-effort (see below).
-        if (!dbFile.renameTo(targetDbFile)) {
+        //
+        //    Files.move(ATOMIC_MOVE), not File.renameTo: renameTo replaces an existing target on
+        //    Linux/Android (rename(2)) but refuses to on Windows, so the swap behaved differently
+        //    per host. ATOMIC_MOVE is rename(2) on Android and replaces atomically everywhere.
+        val swapped = try {
+            Files.move(dbFile.toPath(), targetDbFile.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            true
+        } catch (e: IOException) {
+            Log.w(TAG, "Database swap failed: ${e.javaClass.simpleName}")
+            false
+        }
+        if (!swapped) {
             dbFile.delete()
             throw IllegalStateException(strings.get(R.string.backup_error_swap_failed))
         }

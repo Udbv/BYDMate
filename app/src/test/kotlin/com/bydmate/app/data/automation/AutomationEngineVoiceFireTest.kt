@@ -18,6 +18,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -112,6 +113,7 @@ class AutomationEngineVoiceFireTest {
             coJustRun { updateLastTriggered(any(), any()) }
         }
         val bDispatched = AtomicInteger(0)
+        val bAnswered = java.util.concurrent.CountDownLatch(1)
         val dispatcher = mockk<ActionDispatcher> {
             coEvery { dispatch(match { it.kind == "delay" }, any()) } coAnswers {
                 delay(50) // simulates the pause the tester hit "Кондёр включится и идёт пауза"
@@ -119,6 +121,7 @@ class AutomationEngineVoiceFireTest {
             }
             coEvery { dispatch(match { it.kind == "app_launch" && it.displayName == "B" }, any()) } coAnswers {
                 bDispatched.incrementAndGet()
+                bAnswered.countDown()
                 DispatchResult(true, null)
             }
             coEvery { dispatch(match { it.displayName == "A" }, any()) } returns DispatchResult(true, null)
@@ -133,7 +136,10 @@ class AutomationEngineVoiceFireTest {
 
         // Action B is after the delay; it must still run in the engine's own scope even
         // though the caller that fired the rule is gone.
+        // MockK records the call before it runs the answer, on the engine's thread: a passing
+        // coVerify alone does not mean the answer has counted yet. Wait for the answer itself.
         coVerify(timeout = 2000) { dispatcher.dispatch(match { it.displayName == "B" }, any()) }
+        assertTrue(bAnswered.await(2, java.util.concurrent.TimeUnit.SECONDS))
         assertEquals(1, bDispatched.get())
     }
 
