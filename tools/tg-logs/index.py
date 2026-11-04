@@ -16,13 +16,17 @@ CATS = [  # (name, regex on " " + text after the timestamp, keep samples)
     ("audio_test", r"AudioChannelTest", True),
     ("nav_voice", r"NAVVOICE|NavVoice", True),
     ("bump", r"BUMP|BumpRec|BumpPrompter", True),
+    ("hma", r"HmaWatch", True),  # auto high beam journal and warnings
     ("lanes_visual", r"LANES|VISUAL|PANEL lanes", True),
     ("tg_fail", r"(TgReport|AutoBackup|AutoTripLog).*(failed|rc=io|HTTP:)", True),
     ("errors", r" E/|FATAL|AndroidRuntime|Exception", True),
     ("voice", r"NLU|VoiceController", False),  # counts only
 ]
 CATRE = [(n, re.compile(r), s) for n, r, s in CATS]
-NOTE = re.compile(r"#|bump", re.I)  # the only fidrec lines we look at
+NOTE = re.compile(r"#|bump", re.I)  # fidrec note lines
+# fidrec value lines of the «Світло/HMA» category: HMA state, gray, fault, the high beam, sensor errors
+HMA_FID = re.compile(r"ADAS_HMA_|ADAS_HAS2_HMA|B_M_HMA_SYSTEM|HIGH_BEAM_LIGHT|HIGH_BEAM_INDICATOR|"
+                     r"HEADLIGHT_CONTROL_FEEDBACK|_SENSING_ERROR_SET")
 LOGLINE = re.compile(r"^(\d\d-\d\d) (\d\d:\d\d:\d\d(?:\.\d+)?) (.*)$")
 TRIPLINE = re.compile(r"^(\d\d:\d\d:\d\d(?:\.\d+)?) (.*)$")
 GEO = [re.compile(r"-?\d{1,3}\.\d{4,}\s*[,;/ ]\s*-?\d{1,3}\.\d{4,}"),
@@ -117,9 +121,11 @@ def index_file(name, text, size):
             stamp, t, msg = "%s %s" % (dated, m.group(1)), m.group(1), m.group(2)
         rec["first"] = rec["first"] or stamp
         rec["last"] = stamp
-        if kind == "fidrec" and not NOTE.search(msg): continue
-        text_ = " " + msg
-        cats = [("fid_notes", True)] if kind == "fidrec" else [(n, s) for n, rx, s in CATRE if rx.search(text_)]
+        if kind == "fidrec":
+            cats = ([("fid_notes", True)] if NOTE.search(msg) else []) + ([("fid_hma", True)] if HMA_FID.search(msg) else [])
+            if not cats: continue
+        else:
+            cats = [(n, s) for n, rx, s in CATRE if rx.search(" " + msg)]
         for n, keep in cats:
             c = rec["categories"].setdefault(n, {"count": 0, "first": t, "last": t, "samples": []})
             c["count"] += 1
@@ -166,7 +172,7 @@ def render_md(recs):
         cats = ", ".join("%s %d" % (k, v["count"]) for k, v in sorted(r["categories"].items())) or "-"
         o.append("| %s | %s | %s | %s .. %s | %d | %s |" % (r["name"], r["kind"], ver, r["first"] or "-", r["last"] or "-", r["lines"], cats))
     o += ["", "## By category", ""]
-    for n, _, _ in CATS + [("fid_notes", "", 0)]:
+    for n, _, _ in CATS + [("fid_notes", "", 0), ("fid_hma", "", 0)]:
         hit = [(r, r["categories"][n]) for r in recs if n in r["categories"]]
         if not hit: continue
         o += ["### %s (%d files)" % (n, len(hit)), ""]
@@ -203,16 +209,28 @@ def selftest():
         "11-03 18:00:05.000 E/Foo(1): boom lat=50.123456 lon=30.654321 speed=150",
         "11-03 18:00:06.000 I/NLU(1): x", "11-03 18:00:07.000 I/NLU(1): y",
         "11-03 18:00:08.000 I/AdasShadow(1): parked test start route pathID=77 car before: sign=70 sla=70", ""])
-    trip = "BYDMate trip debug log\nopened: 2026-11-03 17:00:00  reason: x\napp: 1.2.3 (12)  flavor: waze\n17:53:46.197 ADAS limit episode start\n17:53:47.000 BUMP detected\n"
+    trip = "BYDMate trip debug log\nopened: 2026-11-03 17:00:00  reason: x\napp: 1.2.3 (12)  flavor: waze\n17:53:46.197 ADAS limit episode start\n17:53:47.000 BUMP detected\n" \
+        "17:53:48.000 HmaWatch HMA state PASSIVE->CAMERA_BLOCKED | hma=CAMERA_BLOCKED beam=0 light=1 v=72\n"
+    fidrec = "\n".join([
+        "bydmate fid recorder versionCode=999 started=2026-11-03 22:00:00", "devices=1004,1038,1043",
+        "22:00:01.000 dev=1038 fid=828375048 Adas.ADAS_HMA_STATE int=5 dbl=0.0",
+        "22:00:02.000 dev=1004 fid=950009868 Light.LIGHT_HIGH_BEAM_LIGHT int=1 dbl=0.0",
+        "22:00:03.000 dev=1043 fid=1003487560 Sensor.SENSOR_LIGHT_INTENSITY_VALUE int=120 dbl=0.0",
+        "22:00:04.000 # detail Audio.AUDIO_VOLUME=3", ""])
     with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as o:
         open(os.path.join(d, "bydmate_logs_20261103_180000.txt"), "w").write(logs)
         with zipfile.ZipFile(os.path.join(d, "bydmate_logs_20261103_180000.zip"), "w") as z:
             z.writestr("bydmate_logs_20261103_180000.txt", logs)  # same content: must be skipped
         open(os.path.join(d, "trip-20261103-170000.log"), "w").write(trip)
+        open(os.path.join(d, "bydmate_fidrec_20261103_220000.txt"), "w").write(fidrec)
         run(d, o)
         recs = json.load(open(os.path.join(o, "index.json")))
-        assert [r["name"] for r in recs] == ["trip-20261103-170000.log", "bydmate_logs_20261103_180000.txt"], recs
-        t, l = recs
+        assert [r["name"] for r in recs] == ["trip-20261103-170000.log", "bydmate_logs_20261103_180000.txt",
+                                             "bydmate_fidrec_20261103_220000.txt"], recs
+        t, l, f = recs
+        assert t["categories"]["hma"]["count"] == 1 and "CAMERA_BLOCKED" in t["categories"]["hma"]["samples"][0]
+        assert f["categories"]["fid_hma"]["count"] == 2 and f["categories"]["fid_notes"]["count"] == 1, f["categories"]
+        assert "### fid_hma (1 files)" in open(os.path.join(o, "INDEX.md")).read()
         assert (t["versionName"], t["versionCode"]) == ("1.2.3", "12")
         assert t["categories"]["adas_shadow"]["count"] == 1 and t["categories"]["bump"]["count"] == 1
         assert (l["versionName"], l["versionCode"]) == ("9.9.9", "999")

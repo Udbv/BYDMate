@@ -48,6 +48,9 @@ class HistoryImporterFutureRowRereadTest {
 
     @Test
     fun `a row skipped as future is imported once after the clock catches up`() = runTest {
+        // Warm up first: a cold first sync (class loading, mock setup) run alone in a fresh JVM
+        // outlasted the 2 s margin below and already saw the row as past. Relaxed mocks: no rows.
+        importer().syncFromEnergyData()
         val nowSec = System.currentTimeMillis() / 1000L
         // Just beyond the skew now; the real clock passes it during the sleep below.
         val row = BydTripRecord(

@@ -130,6 +130,18 @@ class FidCatalogManagerTest {
         assertEquals(1125122091, catalog.fidOf("Setting.SET_REAR_LEFT_SEAT_HEATING_STATE_SET"))
     }
 
+    /** The push channel subscribes the HMA watch signals by symbol, so the cached catalog must keep them. */
+    @Test fun `the cached catalog keeps the HMA watch symbols`() = runTest {
+        val hma = com.bydmate.app.hma.HmaSignals.ALL.joinToString("\n") { "${it.symbol}=${it.fid}" }
+        manager(FakeHelper(listOf(DumpFidsResult.Success("$dump\n$hma")))).ensureResolved()
+
+        val fromFile = manager(FakeHelper(listOf(DumpFidsResult.BinderAbsent)))
+        fromFile.ensureResolved()
+
+        val catalog = fromFile.catalog!!
+        com.bydmate.app.hma.HmaSignals.ALL.forEach { assertEquals(it.symbol, it.fid, catalog.fidOf(it.symbol)) }
+    }
+
     /**
      * A silent autoservice under a healthy daemon leaves the resolution PENDING, which is the
      * signal the service's poll tick retries on — the watchdog respawn would never fire here.
