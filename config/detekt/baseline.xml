@@ -312,6 +312,9 @@
     <ID>LongMethod:WidgetController.kt$WidgetController$@Synchronized fun attach(context: Context, reason: String = "unspecified")</ID>
     <ID>LongMethod:WidgetController.kt$WidgetController$private fun startDataSubscription(appCtx: Context)</ID>
     <ID>LongMethod:WidgetController.kt$WidgetController.WidgetTouchListener$override fun onTouch(v: android.view.View, event: MotionEvent): Boolean</ID>
+    <ID>LongParameterList:AdasParkedTest.kt$AdasParkedTest$( gateway: AdasGateway, bound: Boolean, started: Boolean, outcome: String, fires: Map&lt;Int, Int&gt;, routeOffered: Boolean, here: RoutePoint?, )</ID>
+    <ID>LongParameterList:AdasParkedTest.kt$AdasParkedTest$( gateway: AdasGateway, plan: (Long) -&gt; List&lt;ShadowFrame&gt;, durationMs: Long, fires: MutableMap&lt;Int, Int&gt;, once: RouteOnce, before: AdasCarReading?, )</ID>
+    <ID>LongParameterList:AdasParkedTest.kt$AdasParkedTest$( scope: CoroutineScope, plan: (Long) -&gt; List&lt;ShadowFrame&gt;, durationMs: Long, what: String, here: RoutePoint? = null, initial: () -&gt; Status, )</ID>
     <ID>LongParameterList:AgentOrchestrator.kt$AgentOrchestrator$( private val backend: AgentBackend, private val tools: AgentTools, private val settingsRepository: SettingsRepository, private val isMoving: () -&gt; Boolean = { false }, private val identity: () -&gt; AgentIdentity = { AgentIdentity("", AgentPersona.NAVIGATOR) }, private val memoryBlock: () -&gt; String = { "" }, private val dayMemory: DayMemory = DayMemory(prefs = null), )</ID>
     <ID>LongParameterList:AgentTools.kt$AgentTools$( private val gate: VoiceGate, private val batteryStateRepository: BatteryStateRepository, private val rangeCalculator: RangeCalculator, private val tripDao: TripDao, private val chargeDao: ChargeDao, private val actionDispatcher: ActionDispatcher, private val ruleDao: RuleDao, private val automationEngine: AutomationEngine, private val placeRepository: PlaceRepository, private val weatherClient: WeatherClient, private val exaSearchClient: ExaSearchClient, private val openRouterClient: OpenRouterClient, private val settingsRepository: SettingsRepository, private val contactLookup: ContactLookup, @ApplicationContext private val context: Context, private val clusterVoiceControl: ClusterVoiceControl, private val chargerSearchClient: ChargerSearchClient, private val insightsManager: InsightsManager, private val zaiSearchClient: ZaiSearchClient, private val llmConnections: LlmConnectionResolver, )</ID>
     <ID>LongParameterList:AgentToolsReadTest.kt$AgentToolsReadTest.Companion$( soc: Int? = null, speed: Int? = null, gear: Int? = null, seatHeatDriver: Int? = null, totalElec: Double? = null, doorFL: Int? = null, doorFR: Int? = null, tirePressFL: Int? = null, tirePressFR: Int? = null, tirePressRL: Int? = null, tirePressRR: Int? = null, chargeGunState: Int? = null, minCellVoltage: Double? = null, maxCellVoltage: Double? = null, powerState: Int? = null, drl: Int? = null, maxBatTemp: Int? = null, minBatTemp: Int? = null, workMode: Int? = null, )</ID>
@@ -595,6 +598,8 @@
     <ID>TooGenericExceptionThrown:VoiceControllerSessionTest.kt$VoiceControllerSessionTest.FailingContinuousAsr$throw RuntimeException("gigaam decode failed")</ID>
     <ID>TooManyFunctions:ActionDispatcher.kt$ActionDispatcher</ID>
     <ID>TooManyFunctions:ActionDispatcher.kt$ActionDispatcher$Companion</ID>
+    <ID>TooManyFunctions:AdasParkedTest.kt$AdasParkedTest</ID>
+    <ID>TooManyFunctions:AdasRouteFrames.kt$AdasRouteFrames</ID>
     <ID>TooManyFunctions:AdbOnDeviceClient.kt$AdbOnDeviceClient</ID>
     <ID>TooManyFunctions:AdbOnDeviceClient.kt$AdbOnDeviceClientImpl : AdbOnDeviceClient</ID>
     <ID>TooManyFunctions:AdbProtocolClient.kt$AdbProtocolClient : AdbProtocol</ID>
