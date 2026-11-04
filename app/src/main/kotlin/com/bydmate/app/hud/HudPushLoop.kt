@@ -3,6 +3,7 @@ package com.bydmate.app.hud
 import android.util.Log
 import com.bydmate.app.diagnostics.Trace
 import com.bydmate.app.diagnostics.TraceArea
+import com.bydmate.app.gnss.GnssGuard
 import com.bydmate.app.navdata.NavGuidanceHub
 import java.util.Calendar
 import java.util.Locale
@@ -98,7 +99,10 @@ class HudPushLoop(
 
     /** One tick; returns whether guidance was active (input for the next tick). */
     internal fun tick(wasActive: Boolean): Boolean {
-        val s = NavGuidanceHub.snapshot(nowMsProvider())
+        // While the position is implausible (GPS jamming or spoofing) the limit and the camera are
+        // Waze's for a wrong place: withheld from the glass and the instrument panel alike. The
+        // maneuver stays, as on Waze's own screen beside it; it goes to no driving system.
+        val s = GnssGuard.withheld(NavGuidanceHub.snapshot(nowMsProvider()))
         val d = dialect()
         if (s.active) idleTicks = 0L
         if (!s.active) {
