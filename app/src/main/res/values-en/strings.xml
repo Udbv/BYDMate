@@ -2419,6 +2419,13 @@
     <string name="audio_test_phrase">Sound check. %1$s, %2$s. One, two, three.</string>
     <string name="settings_cruise_advice_title">Cruise advice</string>
     <string name="settings_cruise_advice_desc">When the adaptive cruise is on and the Waze limit is 5 km/h or more below the set speed, says aloud “Ограничение 50, круиз 70” (limit 50, cruise 70). Sends nothing to the car. Needs the voice assistant with speech on.</string>
+    <string name="hma_warning_title">Auto high beam unreliable — clean the windscreen in front of the camera</string>
+    <string name="hma_reason_camera_blocked">Camera blocked (dirt, fog, ice)</string>
+    <string name="hma_reason_fault">The car reports an auto high beam fault</string>
+    <string name="hma_reason_suppressed">Auto high beam unavailable at night while driving</string>
+    <string name="hma_reason_sensor_error">Light or rain sensor error on the windscreen</string>
+    <string name="settings_hma_warning_title">Auto high beam warning</string>
+    <string name="settings_hma_warning_desc">When the car reports the auto high beam camera blocked or the function faulty, the function unavailable at night while driving, or a light/rain sensor behind the windscreen in error, shows one quiet on-screen notice «Clean the windscreen». At most once per trip for each reason. Every change of the auto high beam state and of the high beam is written to the log (tag HmaWatch). Read only, sends nothing to the car.</string>
     <string name="settings_adas_change_test_start">Limit change test (~1 min)</string>
     <string name="settings_adas_change_route_test_start">With a route (experimental: the route may stay in ADAS)</string>
     <string name="settings_adas_change_test_running">Variant %1$s, sent %2$d · %3$d s left</string>

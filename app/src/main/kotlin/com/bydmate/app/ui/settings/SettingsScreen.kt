@@ -3352,6 +3352,17 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
             com.bydmate.app.adas.CruiseAdvisor.setEnabled(tripLogContext, it)
         },
     )
+    // Automatic high beam watch: one quiet overlay per reason and trip; reads the car only.
+    var hmaWarning by remember { mutableStateOf(com.bydmate.app.hma.HmaWatch.isEnabled(tripLogContext)) }
+    SettingToggleRow(
+        title = stringResource(R.string.settings_hma_warning_title),
+        description = stringResource(R.string.settings_hma_warning_desc),
+        checked = hmaWarning,
+        onCheckedChange = {
+            hmaWarning = it
+            com.bydmate.app.hma.HmaWatch.setEnabled(tripLogContext, it)
+        },
+    )
     // Trip debug log: the car keeps its own record because Wi-Fi is gone the moment it
     // leaves the driveway, so logcat is unreachable for the drive that matters.
     var tripDebug by remember { mutableStateOf(com.bydmate.app.diagnostics.TripDebugLog.isEnabled(tripLogContext)) }

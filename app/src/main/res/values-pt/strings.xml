@@ -2421,6 +2421,13 @@
     <string name="audio_test_phrase">Teste de som. %1$s, %2$s. Um, dois, três.</string>
     <string name="settings_cruise_advice_title">Aviso do cruise</string>
     <string name="settings_cruise_advice_desc">Com o cruise adaptativo ligado e o limite do Waze 5 km/h ou mais abaixo da velocidade definida, diz em voz alta “Ограничение 50, круиз 70” (limite 50, cruise 70). Não envia nada ao carro. Requer o assistente de voz com a fala ligada.</string>
+    <string name="hma_warning_title">Farol alto automático pouco fiável — limpe o para-brisas em frente à câmara</string>
+    <string name="hma_reason_camera_blocked">Câmara tapada (sujidade, nevoeiro, gelo)</string>
+    <string name="hma_reason_fault">O carro indica uma avaria do farol alto automático</string>
+    <string name="hma_reason_suppressed">Farol alto automático indisponível à noite em andamento</string>
+    <string name="hma_reason_sensor_error">Erro do sensor de luz ou de chuva no para-brisas</string>
+    <string name="settings_hma_warning_title">Aviso do farol alto automático</string>
+    <string name="settings_hma_warning_desc">Quando o carro indica a câmara do farol alto automático tapada ou a função avariada, a função indisponível à noite em andamento, ou um erro do sensor de luz/chuva atrás do para-brisas, mostra um aviso discreto no ecrã «Limpe o para-brisas». No máximo uma vez por viagem para cada motivo. Cada mudança do estado do farol alto automático e do farol alto é escrita no registo (tag HmaWatch). Só leitura, não envia nada ao carro.</string>
     <string name="settings_adas_change_test_start">Teste de mudança de limite (~1 min)</string>
     <string name="settings_adas_change_route_test_start">Com rota (experimental: a rota pode ficar no ADAS)</string>
     <string name="settings_adas_change_test_running">Variante %1$s, enviado %2$d · faltam %3$d s</string>

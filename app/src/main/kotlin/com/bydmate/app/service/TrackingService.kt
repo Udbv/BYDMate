@@ -101,6 +101,7 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var adasLimitSender: com.bydmate.app.adas.AdasLimitSender
     @Inject lateinit var navVoice: com.bydmate.app.navvoice.NavVoice
     @Inject lateinit var cruiseAdvisor: com.bydmate.app.adas.CruiseAdvisor
+    @Inject lateinit var hmaWatch: com.bydmate.app.hma.HmaWatch
     @Inject lateinit var networkAvailableMonitor: com.bydmate.app.data.automation.NetworkAvailableMonitor
     @Inject lateinit var alicePollingManager: AlicePollingManager
     @Inject lateinit var odometerBuffer: OdometerConsumptionBuffer
@@ -917,6 +918,9 @@ class TrackingService : Service(), LocationListener {
         // Blind-spot pipeline: idle until the poll below reports the car near the speed
         // threshold, and only when the feature is switched on (default off).
         blindSpotController.start(serviceScope)
+        // Automatic high beam watch: journal of its states, one quiet warning per reason and trip.
+        // Reads the car only.
+        hmaWatch.start(serviceScope)
         // Cluster music card: mirrors Yandex music the stock controller leaves blank.
         clusterMusicBridge.start(serviceScope) { reason -> notificationListenerGrant.ensure(reason) }
         instance = this
@@ -1839,6 +1843,8 @@ class TrackingService : Service(), LocationListener {
                         .onFailure { Log.w(TAG, "NavVoice.onTick failed", it) }
                     runCatching { cruiseAdvisor.onTick(data.powerState?.let { it >= 1 } == true, data) }
                         .onFailure { Log.w(TAG, "CruiseAdvisor.onTick failed", it) }
+                    runCatching { hmaWatch.onTick(data.powerState?.let { it >= 1 } == true, data, sessionId) }
+                        .onFailure { Log.w(TAG, "HmaWatch.onTick failed", it) }
                     updateNotification(data)
                     maybeLogSessionSummary(nowMs, data, sessionId)
                     maybeSendIternioTelemetry(data, nowMs)

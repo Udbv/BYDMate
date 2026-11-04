@@ -118,6 +118,35 @@ class FidRecorderTest {
         assertEquals(4, FidRecorder.status().totalEvents)
     }
 
+    @Test fun `an HMA category signal skips the throttle, so every flip of the beam lands`() {
+        FidRecorder.catalogSource = {
+            """
+            BYDAutoConstants.BYDAUTO_DEVICE_LIGHT=1004
+            Light.LIGHT_POSITION=4000001
+            Light.LIGHT_HIGH_BEAM_LIGHT=4000002
+            """.trimIndent()
+        }
+        val known = setOf(4000001, 4000002)
+        val device = FakeDevice(known)
+        FidRecorder.deviceFactory = { device }
+        FidRecorder.featureIdsSource = { known }
+        FidRecorder.start(intArrayOf(1004))
+        val listener = device.listener!!
+
+        for ((i, v) in listOf(1, 0, 1, 0).withIndex()) {
+            clock = i * 100L
+            listener.onDataEventChanged(4000002, value(v))   // beam: every flip is written
+            listener.onDataEventChanged(4000001, value(i))   // other light fid: throttled
+        }
+        FidRecorder.stop()
+
+        val lines = recordedFile().readLines()
+        assertTrue(lines.any { it.startsWith("hma=") && it.contains("(Світло/HMA)") })
+        val beam = lines.filter { it.contains("fid=4000002") && it.contains("int=") }
+        assertEquals(listOf(1, 0, 1, 0), beam.map { it.substringAfter("int=").substringBefore(" dbl").toInt() })
+        assertEquals(1, lines.count { it.contains("fid=4000001") && it.contains("int=") })
+    }
+
     @Test fun `a fast signal skips the throttle and keeps only the points that bend its line`() {
         val device = start(setOf(2000004))
         val listener = device.listener!!

@@ -2583,6 +2583,13 @@
     <string name="audio_test_phrase">Праверка гуку. %1$s, %2$s. Раз, два, тры.</string>
     <string name="settings_cruise_advice_title">Парада па круізе</string>
     <string name="settings_cruise_advice_desc">Калі адаптыўны круіз уключаны, а абмежаванне з Waze ніжэй за зададзеную хуткасць на 5 км/г і больш, голасам кажа «Ограничение 50, круиз 70». У машыну нічога не адпраўляе. Патрэбны галасавы асістэнт з уключаным маўленнем.</string>
+    <string name="hma_warning_title">Аўтадальняе святло ненадзейнае — працерці лабавое шкло перад камерай</string>
+    <string name="hma_reason_camera_blocked">Камера закрытая (бруд, туман, лёд)</string>
+    <string name="hma_reason_fault">Машына паведамляе пра няспраўнасць аўтадальняга</string>
+    <string name="hma_reason_suppressed">Аўтадальняе недаступнае ўначы ў руху</string>
+    <string name="hma_reason_sensor_error">Памылка датчыка святла або дажджу на лабавым шкле</string>
+    <string name="settings_hma_warning_title">Папярэджанне пра аўтадальняе</string>
+    <string name="settings_hma_warning_desc">Калі машына паведамляе, што камера аўтадальняга закрытая або функцыя няспраўная, што аўтадальняе недаступнае ўначы ў руху, або што датчык святла/дажджу за шклом выдае памылку, — адно ціхае паведамленне на экране «Працерці лабавое шкло». Не часцей за адзін раз за паездку на кожную прычыну. Кожная змена стану аўтадальняга і дальняга святла пішацца ў журнал (тэг HmaWatch). Толькі чытанне, у машыну нічога не адпраўляе.</string>
     <string name="settings_adas_change_test_start">Тэст змены абмежавання (~1 хв)</string>
     <string name="settings_adas_change_route_test_start">З маршрутам (эксперымент: маршрут можа застацца ў ADAS)</string>
     <string name="settings_adas_change_test_running">Варыянт %1$s, адпраўлена %2$d · яшчэ %3$d с</string>

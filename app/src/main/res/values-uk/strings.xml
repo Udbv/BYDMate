@@ -2578,6 +2578,13 @@
     <string name="audio_test_phrase">Перевірка звуку. %1$s, %2$s. Раз, два, три.</string>
     <string name="settings_cruise_advice_title">Порада щодо круїзу</string>
     <string name="settings_cruise_advice_desc">Коли адаптивний круїз увімкнено, а обмеження з Waze нижче за задану швидкість на 5 км/год і більше, голосом каже «Ограничение 50, круиз 70». У машину нічого не надсилає. Потрібен голосовий асистент з увімкненим мовленням.</string>
+    <string name="hma_warning_title">Автодальнє ненадійне — протріть лобове скло перед камерою</string>
+    <string name="hma_reason_camera_blocked">Камера закрита (бруд, туман, лід)</string>
+    <string name="hma_reason_fault">Машина повідомляє про несправність автодальнього</string>
+    <string name="hma_reason_suppressed">Автодальнє недоступне вночі в русі</string>
+    <string name="hma_reason_sensor_error">Помилка датчика світла або дощу на лобовому склі</string>
+    <string name="settings_hma_warning_title">Попередження про автодальнє</string>
+    <string name="settings_hma_warning_desc">Коли машина повідомляє, що камера автодальнього закрита або функція несправна, що автодальнє недоступне вночі в русі, або що датчик світла/дощу за склом видає помилку, — одне тихе сповіщення на екрані «Протріть лобове скло». Не частіше одного разу за поїздку на кожну причину. Кожна зміна стану автодальнього й дальнього світла пишеться в журнал (тег HmaWatch). Лише читання, у машину нічого не надсилає.</string>
     <string name="settings_adas_change_test_start">Тест зміни обмеження (~1 хв)</string>
     <string name="settings_adas_change_route_test_start">З маршрутом (експеримент: маршрут може лишитися в ADAS)</string>
     <string name="settings_adas_change_test_running">Варіант %1$s, надіслано %2$d · ще %3$d с</string>
