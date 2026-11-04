@@ -313,15 +313,18 @@ class RuleShareTest {
         assertEquals(listOf(file.name), dir.list()!!.toList())
         assertTrue(RuleShare.parse(file.readText(), "Звонок") is RuleParseResult.Ok)
 
-        val readOnly = tmp.newFolder("ReadOnly")
-        assertTrue(readOnly.setWritable(false))
+        // A failed write, staged the same way on every host: a folder sits on the temp name, so the
+        // text cannot be written. (A read-only folder does not work for this: Windows ignores the
+        // read-only flag on folders and setWritable(false) fails there, and root ignores it on Linux.)
+        val failing = tmp.newFolder("Failing")
+        val tmpName = ".${RuleShareFiles.freeFile(failing, rule.name).name}.tmp"
+        assertTrue(java.io.File(failing, tmpName).mkdir())
         try {
-            RuleShareFiles.writeTo(readOnly, rule, "x")
-            org.junit.Assert.fail("write into a read-only folder must fail")
+            RuleShareFiles.writeTo(failing, rule, "x")
+            org.junit.Assert.fail("a write that cannot create its temp file must fail")
         } catch (expected: java.io.IOException) {
-            assertTrue(readOnly.list()!!.isEmpty())
-        } finally {
-            readOnly.setWritable(true)
+            assertTrue(RuleShareFiles.listRuleFiles(failing).isEmpty())
+            assertTrue(failing.list()!!.none { it.endsWith(".json") })
         }
     }
 

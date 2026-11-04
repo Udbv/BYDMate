@@ -28,6 +28,10 @@ class PendingReportsTest {
         assertEquals("<b>a1</b>\nЗаряд 64%", back.text)
         val file = dir.listFiles()!!.single()
         assertTrue(file.name.endsWith(".rep"))
+        // Owner-only is a POSIX mode: the daemon runs on Android (ext4/f2fs, always POSIX). A host
+        // file system without POSIX modes (NTFS) cannot show it, so only the mode check is skipped
+        // there; the round trip and the temp-file cleanup above still run everywhere.
+        if (!Files.getFileStore(file.toPath()).supportsFileAttributeView("posix")) return
         assertEquals("rw-------", PosixFilePermissions.toString(Files.getPosixFilePermissions(file.toPath())))
         assertEquals("rwx------", PosixFilePermissions.toString(Files.getPosixFilePermissions(dir.toPath())))
     }
