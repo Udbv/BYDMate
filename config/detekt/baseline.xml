@@ -644,6 +644,7 @@
     <ID>TooManyFunctions:HudSomeIpBridge.kt$HudSomeIpBridge : HudEventSink</ID>
     <ID>TooManyFunctions:IdleDrainDao.kt$IdleDrainDao</ID>
     <ID>TooManyFunctions:InsightsManager.kt$InsightsManager</ID>
+    <ID>TooManyFunctions:KeptDisabledApps.kt$KeptDisabledApps</ID>
     <ID>TooManyFunctions:LastSessionRepository.kt$LastSessionRepository</ID>
     <ID>TooManyFunctions:ListeningOverlay.kt$ListeningOverlay</ID>
     <ID>TooManyFunctions:LogRecorder.kt$LogRecorder</ID>
