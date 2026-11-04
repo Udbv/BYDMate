@@ -75,6 +75,11 @@
     <!-- Volume knob on the steering wheel: play/pause instead of audio-source switch -->
     <string name="settings_knob_play_pause_title">Коліщатко гучності на кермі</string>
     <string name="settings_knob_play_pause_desc">Натискання ставить на паузу і продовжує відтворення, а не перемикає джерело звуку. Потрібно після оновлення прошивки, де натискання почало змінювати джерело.</string>
+    <string name="settings_kept_disabled_apps_title">Вимкнені застосунки мультимедіа</string>
+    <string name="settings_kept_disabled_apps_desc">Непотрібні штатні застосунки, які BYDMate тримає вимкненими (pm disable-user): якщо оновлення прошивки ввімкне їх знову, вони вимкнуться під час наступного запуску. Зняти галочку — застосунок увімкнеться назад. За замовчуванням нічого не вибрано.</string>
+    <string name="settings_kept_disabled_state_enabled">увімкнено</string>
+    <string name="settings_kept_disabled_state_disabled">вимкнено</string>
+    <string name="settings_kept_disabled_state_missing">немає на цій машині</string>
     <!-- Car system section: BYD head unit settings, not app settings -->
     <string name="settings_car_system_header">Система машини</string>
     <string name="settings_car_language_title">Мова інтерфейсу машини</string>
