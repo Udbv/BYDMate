@@ -1,0 +1,26 @@
+# Claude Code Remote Control server on the Raspberry Pi, for work on Home Assistant.
+# Comes up on boot and again whenever the process exits (crash, network loss, an update),
+# so the session is reachable from the Claude app and claude.ai/code without logging in.
+# Install: see README.md in this folder.
+[Unit]
+Description=Claude Code Remote Control (Home Assistant)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=udbv
+# The folder the sessions work in: the Home Assistant config. User= needs write access to it.
+# Not the user's home directory itself: trust is never saved there, so every start would hang on
+# the trust question.
+WorkingDirectory=/opt/homeassistant/config
+Environment=HOME=/home/udbv
+Environment=PATH=/home/udbv/.local/bin:/usr/local/bin:/usr/bin:/bin
+# remote-control is a terminal program; `script` gives it a pseudo-terminal under systemd.
+# Without arguments it brings back the sessions it served before the restart (for ~4 hours).
+ExecStart=/usr/bin/script -qfec "claude remote-control --name 'Pi Home Assistant'" /dev/null
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,20 @@
+[Unit]
+Description=GitHub Actions runner for Udbv/BYDMate (docker compose)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Folder with docker-compose.yml and .env; adjust if you copied them elsewhere.
+WorkingDirectory=/opt/bydmate-runner
+# A failed pull (no network yet) must not block the start: the cached image is used.
+ExecStartPre=-/usr/bin/docker compose pull --quiet
+ExecStart=/usr/bin/docker compose up --remove-orphans
+ExecStop=/usr/bin/docker compose down
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
