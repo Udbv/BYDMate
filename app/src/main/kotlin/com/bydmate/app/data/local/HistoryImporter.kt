@@ -112,6 +112,9 @@ class HistoryImporter @Inject @Suppress("LongParameterList") constructor( // Hil
     /** Set by doSync when it skipped a row from the future; guarded by [syncMutex]. */
     private var skippedFutureRow = false
 
+    /** Wall clock, ms. A seam for tests that move the head unit clock without sleeping. */
+    internal var clockMs: () -> Long = System::currentTimeMillis
+
     data class ImportResult(
         val trips: Int,
         val idleDrains: Int = 0,
@@ -137,7 +140,7 @@ class HistoryImporter @Inject @Suppress("LongParameterList") constructor( // Hil
             // unchanged-file shortcut: the file may stay untouched until the next drive ends.
             // The full re-read is safe: imported rows stop at bydId, deleted ones at the tombstone.
             val watermark = settingsRepository.getLastEnergyImportTs()
-            val healed = isFromFuture(watermark, System.currentTimeMillis() / 1000L)
+            val healed = isFromFuture(watermark, clockMs() / 1000L)
             if (healed) {
                 Log.w(TAG, "syncFromEnergyData: watermark $watermark is in the future, resetting")
                 clearImportWatermark()
@@ -175,14 +178,14 @@ class HistoryImporter @Inject @Suppress("LongParameterList") constructor( // Hil
         // promoted, write socStart/socEnd=null, and the watermark below would lock that loss
         // in forever. Reconcile here so every import path promotes the stale pending first.
         lastSessionRepository.reconcileStaleOpenSession(
-            System.currentTimeMillis(), PENDING_SESSION_IDLE_CLOSE_MS)
+            clockMs(), PENDING_SESSION_IDLE_CLOSE_MS)
 
         val lastImportTs = settingsRepository.getLastEnergyImportTs()
         // Until recycling is known the whole source is read: the records it hid already sit below
         // the watermark, and the next ids may never collide again (#348). The batch is cut from it.
         val remembered = settingsRepository.isEnergyIdsRecycled()
         val fullSource = if (remembered) null else energyDataReader.readTripsSince(0L)
-        val nowSec = System.currentTimeMillis() / 1000L
+        val nowSec = clockMs() / 1000L
         val firstDetected = fullSource != null && sourceRecycled(
             fullSource.filterNot { isFromFuture(it.startTimestamp, nowSec) }, lastImportTs,
         ) { clearImportWatermark() }
@@ -215,7 +218,7 @@ class HistoryImporter @Inject @Suppress("LongParameterList") constructor( // Hil
         val capacity = settingsRepository.getBatteryCapacity()
         // One read of the live snapshot for the whole batch: the drive that just ended is the
         // only one close enough in time for this temperature to belong to it.
-        val nowMs = System.currentTimeMillis()
+        val nowMs = clockMs()
         val liveExteriorTemp = TrackingService.lastData.value?.exteriorTemp
         val marks = odometerMarks.snapshot()
 
@@ -607,7 +610,7 @@ class HistoryImporter @Inject @Suppress("LongParameterList") constructor( // Hil
         if (vehicleKind.kind.value != VehicleKind.HYBRID) return
         try {
             var attached = 0
-            val since = System.currentTimeMillis() - COUNTER_ATTACH_LOOKBACK_MS
+            val since = clockMs() - COUNTER_ATTACH_LOOKBACK_MS
             for (trip in tripDao.getEnergyDataTripsWithoutCounters(since)) {
                 val endTs = trip.endTs ?: continue
                 val start = counterSnapshotDao.nearest(trip.startTs, COUNTER_EDGE_WINDOW_MS) ?: continue
@@ -638,7 +641,7 @@ class HistoryImporter @Inject @Suppress("LongParameterList") constructor( // Hil
     suspend fun deduplicateWithExisting() {
         try {
             // Future rows neither import nor set the watermark below (#348)
-            val nowSec = System.currentTimeMillis() / 1000L
+            val nowSec = clockMs() / 1000L
             val bydRecords = energyDataReader.readTrips().filterNot { isFromFuture(it.startTimestamp, nowSec) }
             val liveTrips = tripDao.getLiveTrips()
             val capacity = settingsRepository.getBatteryCapacity()
@@ -847,7 +850,7 @@ class HistoryImporter @Inject @Suppress("LongParameterList") constructor( // Hil
         importStateLine(
             settingsRepository.getLastEnergyImportTs(),
             energyDataReader.readTrips(),
-            System.currentTimeMillis() / 1000L,
+            clockMs() / 1000L,
         )
     }
 

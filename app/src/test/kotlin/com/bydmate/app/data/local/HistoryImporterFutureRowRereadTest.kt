@@ -28,6 +28,10 @@ class HistoryImporterFutureRowRereadTest {
     private val tripDao = mockk<TripDao>(relaxed = true)
     private val settingsRepository = mockk<SettingsRepository>(relaxed = true)
 
+    // The importer's clock: the test moves it instead of sleeping, so a slow first sync on a busy
+    // machine cannot carry the real clock past the row before the first check.
+    private var nowMs = System.currentTimeMillis()
+
     private fun importer() = HistoryImporter(
         context = mockk<Context>(relaxed = true),
         energyDataReader = energyDataReader,
@@ -44,12 +48,12 @@ class HistoryImporterFutureRowRereadTest {
         counterSnapshotDao = mockk(relaxed = true),
         counterSnapshotWriter = mockk(relaxed = true),
         lastStateDao = mockk(relaxed = true),
-    )
+    ).also { it.clockMs = { nowMs } }
 
     @Test
     fun `a row skipped as future is imported once after the clock catches up`() = runTest {
-        val nowSec = System.currentTimeMillis() / 1000L
-        // Just beyond the skew now; the real clock passes it during the sleep below.
+        val nowSec = nowMs / 1000L
+        // Just beyond the skew now; the clock passes it when it is moved on below.
         val row = BydTripRecord(
             id = 601L, startTimestamp = nowSec + HistoryImporter.FUTURE_SKEW_SEC + 2,
             endTimestamp = nowSec + HistoryImporter.FUTURE_SKEW_SEC + 2 + 1800L,
@@ -72,7 +76,7 @@ class HistoryImporterFutureRowRereadTest {
         importer().syncFromEnergyData()
         coVerify(exactly = 0) { tripRepository.insertTrip(any()) }
 
-        Thread.sleep(3_000) // the head unit clock is corrected: the row is no longer in the future
+        nowMs += 3_000 // the head unit clock is corrected: the row is no longer in the future
 
         importer().syncFromEnergyData()
         coVerify(exactly = 1) { tripRepository.insertTrip(any()) }
