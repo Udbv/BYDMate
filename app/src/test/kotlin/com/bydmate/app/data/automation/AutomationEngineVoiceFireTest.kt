@@ -14,9 +14,10 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import java.util.concurrent.atomic.AtomicInteger
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -111,30 +112,44 @@ class AutomationEngineVoiceFireTest {
             coEvery { getById(7) } returns r
             coJustRun { updateLastTriggered(any(), any()) }
         }
+        // Ordered by explicit hand-offs, not by wall-clock time: the run is held inside action A
+        // until the caller has been cancelled, so B can only follow if the run outlives its caller.
+        // (The sleep-and-poll version failed on loaded CI runners and on Windows: MockK records a
+        // call before it runs the answer, so a passing coVerify did not mean B had counted yet.)
+        val aEntered = CompletableDeferred<Unit>()
+        val releaseA = CompletableDeferred<Unit>()
+        val bAnswered = CompletableDeferred<Unit>()
         val bDispatched = AtomicInteger(0)
         val dispatcher = mockk<ActionDispatcher> {
-            coEvery { dispatch(match { it.kind == "delay" }, any()) } coAnswers {
-                delay(50) // simulates the pause the tester hit "Кондёр включится и идёт пауза"
-                DispatchResult(true, null)
-            }
+            coEvery { dispatch(match { it.kind == "delay" }, any()) } returns DispatchResult(true, null)
             coEvery { dispatch(match { it.kind == "app_launch" && it.displayName == "B" }, any()) } coAnswers {
                 bDispatched.incrementAndGet()
+                bAnswered.complete(Unit)
                 DispatchResult(true, null)
             }
-            coEvery { dispatch(match { it.displayName == "A" }, any()) } returns DispatchResult(true, null)
+            coEvery { dispatch(match { it.displayName == "A" }, any()) } coAnswers {
+                aEntered.complete(Unit)
+                releaseA.await()
+                DispatchResult(true, null)
+            }
         }
         val eng = engine(ruleDao, dispatcher)
 
         // Caller coroutine mirrors VoiceController's routingJob: fires the rule, then gets
-        // cancelled right after fireVoiceRule returns (assistant window disappears/times out).
+        // cancelled mid-sequence (assistant window disappears/times out).
         val callerJob = launch { eng.fireVoiceRule(7, diParsData()) }
-        callerJob.join()
+        // The timeouts below only bound a failure; a passing run never waits on them.
+        withTimeout(10_000) { aEntered.await() }
         callerJob.cancel()
+        callerJob.join()
+        releaseA.complete(Unit)
 
-        // Action B is after the delay; it must still run in the engine's own scope even
-        // though the caller that fired the rule is gone.
-        coVerify(timeout = 2000) { dispatcher.dispatch(match { it.displayName == "B" }, any()) }
+        // Action B comes after A and the pause; it must still run in the engine's own scope
+        // even though the caller that fired the rule is gone. Had the run stayed on the caller's
+        // coroutine, the cancel above would have stopped it inside A and B would never come.
+        withTimeout(10_000) { bAnswered.await() }
         assertEquals(1, bDispatched.get())
+        coVerify(exactly = 1) { dispatcher.dispatch(match { it.displayName == "B" }, any()) }
     }
 
     @Test fun `requirePark and not parked returns ParkRequired`() = runBlocking {
