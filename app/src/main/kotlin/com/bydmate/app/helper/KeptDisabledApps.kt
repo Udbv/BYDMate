@@ -188,6 +188,25 @@ object KeptDisabledApps {
     /** `pm` confirms a change with "new state: ..."; an exit code alone is not trusted. */
     fun pmSucceeded(code: Int, out: String): Boolean = code == 0 && "new state:" in out
 
+    /** The already-in-place shortcut from the `pm list -d` snapshot, or null when it cannot tell. */
+    private fun shortcut(pkg: String, want: Want, disabled: Set<String>?): Outcome? = when {
+        disabled == null -> null
+        want == Want.KEEP_DISABLED && pkg in disabled -> Outcome.UNCHANGED
+        want == Want.RESTORE && pkg !in disabled -> Outcome.UNCHANGED
+        else -> null
+    }
+
+    private fun reconcileOne(app: App, want: Want, disabled: Set<String>?, shell: Shell): Outcome {
+        val pkg = argFor(app)
+        shortcut(pkg, want, disabled)?.let { return it }
+        val (dumpCode, dumpOut) = shell.exec(DUMP, pkg)
+        val state = if (dumpCode == 0) parseDump(pkg, dumpOut) else PkgState(-1, false, -1)
+        val decision = decide(want, state)
+        val script = decision.script ?: return decision.outcomeIfOk
+        val (code, out) = shell.exec(script, pkg)
+        return if (pmSucceeded(code, out)) decision.outcomeIfOk else Outcome.FAILED
+    }
+
     /**
      * One pass over the managed apps. Steady state costs one `pm list packages -d`: an app the
      * driver keeps disabled that is already in that list needs nothing more, and an app to restore
@@ -206,20 +225,9 @@ object KeptDisabledApps {
         ALLOWLIST.forEachIndexed { i, app ->
             val want = wantAt(i, keepMask, restoreMask)
             if (want == Want.UNMANAGED) return@forEachIndexed
-            val pkg = argFor(app)
-            if (disabled != null) {
-                if (want == Want.KEEP_DISABLED && pkg in disabled) { result[i] = Outcome.UNCHANGED; return@forEachIndexed }
-                if (want == Want.RESTORE && pkg !in disabled) { result[i] = Outcome.UNCHANGED; return@forEachIndexed }
-            }
-            val (dumpCode, dumpOut) = shell.exec(DUMP, pkg)
-            val state = if (dumpCode == 0) parseDump(pkg, dumpOut) else PkgState(-1, false, -1)
-            val decision = decide(want, state)
-            val outcome = if (decision.script == null) decision.outcomeIfOk else {
-                val (code, out) = shell.exec(decision.script, pkg)
-                if (pmSucceeded(code, out)) decision.outcomeIfOk else Outcome.FAILED
-            }
+            val outcome = reconcileOne(app, want, disabled, shell)
             result[i] = outcome
-            if (outcome != Outcome.UNCHANGED) log("${app.id} $pkg: $outcome")
+            if (outcome != Outcome.UNCHANGED) log("${app.id} ${argFor(app)}: $outcome")
         }
         log("pass keep=$keepMask restore=$restoreMask: " +
             result.entries.joinToString(" ") { (i, o) -> "${ALLOWLIST[i].id}=$o" })

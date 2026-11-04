@@ -3280,7 +3280,9 @@ private val keepAppsRunner: KeepAppsDisabledRunner by lazy {
         Thread(r, "keep-apps-disabled").apply { isDaemon = true }
     }
     KeepAppsDisabledRunner(
-        shell = { script, args -> shExec(script, *args).let { it.code to it.stdout } },
+        shell = { script, args ->
+            (if (args.isEmpty()) shExec(script) else shExec(script, args[0])).let { it.code to it.stdout }
+        },
         executor = worker,
         nowMs = { android.os.SystemClock.elapsedRealtime() },
         log = { android.util.Log.i(KeptDisabledApps.TAG, it) },
