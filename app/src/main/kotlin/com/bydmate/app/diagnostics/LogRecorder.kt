@@ -476,6 +476,8 @@ class LogRecorder internal constructor(
             "FidRec:*",
             // Manual fault-code scan: the daemon's requests, frames and outcomes (app and daemon share the tag).
             "DtcScan:*",
+            // Stock multimedia apps kept disabled: every pass, action and refusal (app and daemon share the tag).
+            "KeepDisabled:*",
             // Split-screen wave: session/watchdog decisions, pill+picker overlay, widget tap.
             "SplitSessionMgr:*", "SplitOverlayCtrl:*", "SplitPillView:*",
             "WidgetController:*",

@@ -443,6 +443,12 @@ interface HelperClient {
      *  com.byd.vrassistant. Reversible. */
     suspend fun setAppHidden(packageName: String, hidden: Boolean): Boolean
 
+    /** Hands the driver's choice for the stock multimedia apps to the daemon (TX_KEEP_APPS_DISABLED):
+     *  bit i of each mask is KeptDisabledApps.ALLOWLIST[i]. Returns the daemon status
+     *  (KeptDisabledApps.STATUS_*), STATUS_NOT_HANDLED for a daemon too old to know the
+     *  transaction, null when it is unreachable. */
+    suspend fun keepAppsDisabled(keepMask: Int, restoreMask: Int): Int? = null
+
     /**
      * Enables our MediaSessionListenerService stub via the daemon (force re-bind of our entry in
      * Settings.Secure enabled_notification_listeners, never clobbering other apps' listeners).
@@ -1468,6 +1474,20 @@ open class HelperClientImpl @Inject constructor() : HelperClient {
                     transactBodyUnlocked(
                         HelperBinderProtocol.TX_DTC_SCAN_START, { it.writeInt(gearDev); it.writeInt(gearFid) },
                         notHandled = DTC_SCAN_NOT_HANDLED,
+                    ) { if (it.dataAvail() < 4) null else it.readInt() }
+                }
+            }
+        }
+
+    override suspend fun keepAppsDisabled(keepMask: Int, restoreMask: Int): Int? =
+        withContext(Dispatchers.IO) {
+            withTimeoutOrNull(REQ_TIMEOUT_MS) {
+                onBeforeLock?.invoke()
+                mutex.withLock {
+                    transactBodyUnlocked(
+                        HelperBinderProtocol.TX_KEEP_APPS_DISABLED,
+                        { it.writeInt(keepMask); it.writeInt(restoreMask) },
+                        notHandled = com.bydmate.app.helper.KeptDisabledApps.STATUS_NOT_HANDLED,
                     ) { if (it.dataAvail() < 4) null else it.readInt() }
                 }
             }
