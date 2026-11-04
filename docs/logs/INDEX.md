@@ -1,8 +1,8 @@
 # Car logs: what they contain (durable memory)
 
 Purpose: a future assistant session has no access to the raw car logs (they live only in the Telegram
-chat and in one old session's scratchpad). This file says what the logs contained as of 2026-11-03
-(~22:34 car time) so questions can be answered from it, and tells how to get the raw files again.
+chat and in one old session's scratchpad). This file says what the logs contained as of 2026-11-04
+(~09:13 car time) so questions can be answered from it, and tells how to get the raw files again.
 Privacy: no coordinates, no top speeds, no bot token or chat id are written here. Limits such as
 50/70/90/110 are road limits sent by the app, not vehicle speeds.
 
@@ -16,8 +16,7 @@ Privacy: no coordinates, no top speeds, no bot token or chat id are written here
 - Index: `python3 -I -B tools/tg-logs/index.py <ARCHIVE_DIR> <OUT_DIR>` writes `INDEX.md` + `index.json`
   (file, kind, version, time span, per-category counts, parked-test table, sample lines). Read the index
   first, then grep only the right file for the category regex.
-- `docs/logs/FILES.md` is the machine-made file table from the last index run (118 files indexed out of 164
-  fetched; 46 zips skipped because a same-named .txt exists). This file (`INDEX.md`) is the human reading of it.
+- `docs/logs/FILES.md` is the machine-made file table from the last index run (139 files indexed; zips skipped when a same-named .txt exists). This file (`INDEX.md`) is the human reading of it.
 - Where the raw files were: `/tmp/claude-0/-home-user-BYDMate/13bace2c-94d2-5318-a86b-71357b91e275/scratchpad/log-archive`
   (session scratchpad, will vanish).
 - File kinds: `bydmate_logs_*` = 20-minute parts of the automatic logcat trip log (car local time, UTC+2;
@@ -32,7 +31,7 @@ Privacy: no coordinates, no top speeds, no bot token or chat id are written here
 ## 2. Timeline by date and app version
 
 Versions seen: 4.0.1-dev.2 (510) .. dev.9 (517), dev.10 (518) on 2026-10-24..29; 4.1.0-dev.15 (523) .. dev.23 (531)
-on 2026-10-30/31; 4.2.0-dev.1 (533) .. dev.15 (547) on 2026-10-31..11-03. Many dev builds were installed during the
+on 2026-10-30/31; 4.2.0-dev.1 (533) .. dev.15 (547) on 2026-10-31..11-03, dev.18 (550) from 11-03 23:40 (new logs to 11-04 09:13). Many dev builds were installed during the
 2026-11-03 session (dev.2, .3, .6, .11, .15 within one afternoon). Lines in `categories` are counts of matching lines
 (each parked/live/shadow line appears in both the trip log and the log part of the same time, so do not add them).
 Kinds: trip = trip-*.log, log = bydmate_logs_*, fid = bydmate_fidrec_*.
@@ -157,6 +156,18 @@ Kinds: trip = trip-*.log, log = bydmate_logs_*, fid = bydmate_fidrec_*.
 | 2026-11-03 | fid | `fidrec_20261103_215701` (zip) | vc 547 | 21:57-22:13 | fid_notes 13 |
 | 2026-11-03 | log | `logs_20261103_221403` (zip) | 4.2.0-dev.15 (547) | 22:14-22:34 | adas_live 16, adas_shadow 63, bump 2, errors 2, tg_fail 2 |
 | 2026-11-03 | fid | `fidrec_20261103_221403` (zip) | vc 547 | 22:14-22:34 | fid_notes 33 |
+| 2026-11-03 | trip | `trip-20261103-221354` | 4.2.0-dev.15 (547) | 22:14-23:40 | adas_live 287, lanes_visual 1742 |
+| 2026-11-03 | log | `logs_20261103_223404` | 4.2.0-dev.15 (547) | 22:34-22:54 | adas_live 113, adas_shadow 70, bump 3 |
+| 2026-11-03 | log | `logs_20261103_225404` | 4.2.0-dev.15 (547) | 22:54-23:14 | adas_live 66, adas_shadow 54, tg_fail 14 |
+| 2026-11-03 | log | `logs_20261103_231404` | 4.2.0-dev.15 (547) | 23:14-23:34 | adas_live 96, adas_shadow 74, tg_fail 14 |
+| 2026-11-03 | log | `logs_20261103_233405` | 4.2.0-dev.15 (547) | 23:34-23:40 | adas_live 1, adas_shadow 12, tg_fail 8 |
+| 2026-11-03 | fid | `fidrec_20261103_223404`, `_225405`, `_231408`, `_233409` | vc 547 | 22:34-23:40 | fid_notes 21/5/33/1 |
+| 2026-11-03 | trip | `trip-20261103-234038` | 4.2.0-dev.18 (550) | 23:40-00:48 | adas_live 300 (270 with camera), lanes_visual 759 |
+| 2026-11-03/04 | log | `logs_20261103_234043`, `_20261104_000043`, `_002044`, `_004045` | 4.2.0-dev.18 (550) | 23:40-00:48 | adas_live 264/14/22/0, adas_shadow 51/78/90/55 |
+| 2026-11-04 | fid | `fidrec_20261103_234043`, `_20261104_000045`, `_002046`, `_004049` | vc 550 | 23:40-00:48 (+ tail to 03:40?) | fid_notes 3/2/55/39 |
+| 2026-11-04 | trip | `trip-20261104-085953` | 4.2.0-dev.18 (550) | 09:00-09:13 | bump 5 |
+| 2026-11-04 | log | `logs_20261104_090001` | 4.2.0-dev.18 (550) | 09:00-09:13 | adas_shadow 92, errors 1 |
+| 2026-11-04 | fid | `fidrec_20261104_090001` | vc 550 | 09:00-09:52 (metadata span) | fid_notes 41 |
 
 ## 3. Findings by topic
 
@@ -188,7 +199,7 @@ Details:
   during the `class` variant (2 s into the second 70 step, RoadClass=2) and stayed at 70 to the end. 110 was always sent with RoadClass 0
   (omitted by proto3) and was never taken. Only one `car:` line exists (21:38:48).
 - The files fetched at ~22:34 (dev.15, trip-20261103-213653 now complete to 22:12:48, logs 215701 and 221403) hold no new parked test: the only `parked test` lines are still run 5.
-- Round 2 (dev.16: class and link+class variants, RoadClass 1 and 2, 12 s per value) is pending; no log yet.
+- Round 2 (dev.16: class and link+class variants, RoadClass 1 and 2, 12 s per value) is pending; still no log as of the 11-04 09:13 files (3.10).
 - There is no route test: the start line `parked test start route pathID=` does not occur in any log. Three attempts by the owner from the map left no
   trace because refusals were not logged (fixed in 4.2.0-dev.18).
 
@@ -294,6 +305,35 @@ Details:
   (bydmate_logs_20261031_103228, 10:32:18, right after the dev.17 -> dev.18 update); `FidRec dev=1031 ...BYDAutoPanoramaDevice: registered=0/62 err=RemoteException`
   (2026-10-25 11:51 and 10-29 08:27, three times); `E/AbsBYDAutoSettingListener: onDataEventChanged` (10-31 09:35, a system listener, not the app);
   `FidPush: subscribed=143 ok=123 failed=20` at each app start from 17:43 on 11-03 (20 FIDs always fail to subscribe).
+
+### 3.10 New files fetched 2026-11-04 (09:13 car time): dev.15 tail and dev.18
+
+Files: trip-20261103-221354 (dev.15, now ends 23:40), logs 223404/225404/231404/233405 (dev.15), then dev.18 (550, installed 23:40:38 as `app update`, new process): trip-20261103-234038, logs 234043/000043/002044/004045, and after a gap (car off 00:48 - 08:59) trip-20261104-085953 + logs_20261104_090001 (new process 09:00). Matching fidrec zips for each. Car time 22:34-00:48 and 09:00-09:13.
+
+**Parked tests: none.** No `parked test` line of any kind (start, now, car, refused, route, pressed, failed, end, frames refused, services left) and no `AdasLimitChangePlan` in any new file, in trip logs, log parts or fid notes. So the route test and limit change round 2 (class / link+class, RoadClass 1 for 110 and 2 for 70, 12 s per value) have **still not been run** (dev.18 was installed and driven, but nobody pressed the test). Verdict: no data on whether the car follows 70<->110, nor on whether the route send changes anything. Run 5 (3.1) stays the latest parked run.
+
+**ADAS live, dev.15 22:34-23:40** (restart-per-limit still active, 42 `restart for the new limit` lines in trip-20261103-221354; all sends rc=[0,0,0]): the car's sign was 70 (sla=70, acc=2) at 22:36 and unchanged through every send of 90/50/110 until 23:19 (sends at 22:35:26 90, 22:38:05 50, 22:39:46 90, 22:39:56 110, ... 23:07:09 110). Then the car changed on its own: 23:19:47 sign=60, 23:20:21 50, 23:20:23 30 (acc 3 then 2), stuck at 30 through the sends 23:24-23:31 (90, 50, 90, 110, 10, 110). Only possible exception 23:20:21 car=50 with waze=50 (the send of 50 came at 23:20:22, one second AFTER the car). The odd value 10 was sent at 23:30:40 (car stayed 30). So over 22:35-23:40: ~35 limit changes sent, zero followed. This was the 'sign stuck at 70, then 30' period; again the car sign is the car's own, and ~40 restarts did not make it take app values.
+
+**ADAS live, dev.18 23:40-00:32** (no restarts: 0 `restart for the new limit` lines; services started once at 23:40:43; 368 sends, all rc 0 except the first frames after start `first frames rc=[11,11,11]` and the first send, same as before). The new thing in dev.18: **camera frames**: sends with `cameraType=1 cameraDistance=N SpdLmtEleEyeDist=N` (270 sends 23:44:59-23:55:xx and 00:09-00:11, almost all limit 110, counts: 110 x254, 50 x8, 30 x3, 70 x2, 90 x2, 80 x1), distance counting down 2500 -> 20 (then jumping to 28400, 72400, 91400 etc: the value is not reset sensibly) about 1 frame/s near the camera, ~3 s far away. Car reaction: none visible: sign stayed 70 through the whole camera period (the shadow log has no camera field; the head unit sign was 70, acc=2).
+  Limit sends vs car sign (all rc 0):
+  | time | sent | car sign (own readings, `sla` same) |
+  |---|---|---|
+  | 23:41:00 / 23:41:03 | 90 / 70 | 30 until 23:41:10; 70 at 23:41:12 (9 s after the 70 send; the only candidate for 'car took a send') |
+  | 23:41:27 | 110 | 70 (no change) |
+  | 23:49:27 | 90 | 90 at 23:49:27.9, 0.4 s after the send (coincidence or taken), then 70 at :34.0 |
+  | 23:49:34.5 / :38.5 | 70 / 50 | car showed 70 at :34.0 and 50 at :38.0, i.e. BEFORE each send (the app follows the car: waze=70/50 appears with the car) |
+  | 23:49:48 | 110 | 70 at :46 before it; 70 through 23:56 (and 110 kept being sent) |
+  | 23:56:33 | clear (no Waze limit) | car 70, then 70 with waze=- until 00:10 |
+  | 00:10:34 | 110 | 70 (no change); 00:25-00:26 waze 50/30 vs car 70/50 |
+  From 00:12 `waze=-`, from 00:26 car sign 70 -> 10 (00:27-00:30 own), then no sign '-' (acc=2). No sends 00:32-00:48 (the car stopped getting a limit). Conclusion: dev.18 without restarts and with camera frames delivered everything (rc 0) but the car never took 110, and the car sign again behaved as its own value (70 constant for ~30 min where Waze said 50/90/110).
+  Exceptions where the car moved right after a send: the 23:41:12 case and 23:49:27. Both are weak (car-first cases in the same minute show the car leads Waze/app).
+- 09:00-09:13 (dev.18, `route=false waze=-`): no Waze limit, no sends; car sign 30/40/5 (own), acc=2 (`carOnly=275 of 292`). Nothing sent.
+
+**Head unit ADAS view:** no line about freezing; no restarts of gateway services in dev.18 (stop/start does not occur; only the one `services started rc=[0,0,0,0]` per app process). Process ids: 4608 (22:14-23:40 dev.15), 26216 (dev.18 23:40-00:48 at least), 4321 (09:00).
+
+**Navigation voice / audio / TTS:** 0 hits for NAVVOICE|NavVoice|AudioChannelTest|TextToSpeech|Голос in all 12 new files (no voice id visible, no `said/focus/played/no voice` lines). Nothing new about voice.
+
+**Errors:** no E/, no Exception/FATAL/AndroidRuntime other than Telegram: `AutoBackup telegram rc=io UnknownHostException` x19, `SocketTimeoutException` x3, `TgReport log to telegram: failed NO_NETWORK` (22:54-22:57, 23:14-23:17, 23:34-23:39, 00:02-00:05 - the parts resent later: `sent` 22:58:05, 23:17:10, 23:39:11, 00:06:21), `recording to telegram: unreadable FileNotFoundException` at 23:41:38 and 09:02:53. The 09:00 process also sent the last 00:40 recordings. All files were fetched, none lost. `FidPush` 143/123/20 as before.
 
 ## 4. Open questions the logs have not answered
 
