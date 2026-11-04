@@ -63,9 +63,9 @@ one-line code change before every run, other agents' builds running beside it:
 | warm, light load | 12m 11s, unit tests on Windows | 4m 28s – 5m 05s (3 runs), detekt and lint included |
 | first run in a fresh worktree, heavy load | 23m 29s | — |
 
-Before, the unit tests on Windows alone took 10 min; they also fail there in six suites that
-depend on POSIX file semantics (`getPosixFilePermissions`, replacing an open file, a read-only
-directory) and pass on Linux, which is what CI and the head unit run.
+Before, the unit tests on Windows alone took 10 min, and Linux is what CI and the head unit run.
+(At the time of those measurements 15 tests also failed only on Windows; #76 fixed them, so
+`PREFLIGHT_TESTS=windows` gives the same verdict, only slower.)
 
 What is left on the critical path (`--profile` of the Windows gradle run): `lintAnalyzeWazeDebug`
 ~235 s, R8 ~134 s beside it, detekt ~34 s; the WSL tests finish at about the same moment.
