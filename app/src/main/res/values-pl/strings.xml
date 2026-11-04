@@ -82,6 +82,11 @@
     <!-- Volume knob on the steering wheel: play/pause instead of audio-source switch -->
     <string name="settings_knob_play_pause_title">Pokrętło głośności na kierownicy</string>
     <string name="settings_knob_play_pause_desc">Naciśnięcie wstrzymuje i wznawia odtwarzanie zamiast przełączać źródło dźwięku. Potrzebne po aktualizacji oprogramowania, w której naciśnięcie zaczęło zmieniać źródło.</string>
+    <string name="settings_kept_disabled_apps_title">Wyłączone aplikacje multimedialne</string>
+    <string name="settings_kept_disabled_apps_desc">Niepotrzebne fabryczne aplikacje, które BYDMate utrzymuje wyłączone (pm disable-user): jeśli aktualizacja oprogramowania znów je włączy, zostaną wyłączone przy następnym uruchomieniu. Odznacz, aby włączyć aplikację z powrotem. Domyślnie nic nie jest zaznaczone.</string>
+    <string name="settings_kept_disabled_state_enabled">włączona</string>
+    <string name="settings_kept_disabled_state_disabled">wyłączona</string>
+    <string name="settings_kept_disabled_state_missing">brak w tym aucie</string>
     <string name="settings_cluster_music_card_title">Utwór na zegarach</string>
     <string name="settings_cluster_music_card_desc">Pokazuje tytuł i wykonawcę na karcie muzyki na zegarach dla odtwarzaczy, które fabryczne oprogramowanie pomija: Yandex Navigator (Alice), Yandex Music, Spotify, radio internetowe i inne. Własne odtwarzacze i Bluetooth oprogramowanie wypełnia samo.</string>
 
