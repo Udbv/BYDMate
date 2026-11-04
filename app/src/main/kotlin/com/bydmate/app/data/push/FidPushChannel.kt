@@ -32,7 +32,7 @@ import javax.inject.Singleton
  * consumers that must react faster than the poll (the blind-spot loop). A few ADAS states ride
  * along for the trace alone ([PushStateTrace]); they are not FidMap fields and reach no consumer.
  * The automatic high beam signals ([HmaSignals]) ride along the same way for the HMA watch: read
- * only, never laid into the snapshot, reached through [hmaSignalFor].
+ * only, never laid into the snapshot, reached through [hmaByFid].
  *
  * The poll is untouched and stays the source of truth — a push only moves a value forward between
  * two ticks, and a snapshot that does not exist yet is never invented.
@@ -86,11 +86,9 @@ class FidPushChannel @Inject constructor(
     /** FidMap field the fid belongs to in the subscription in force, or null when it is not ours. */
     fun fieldFor(fid: Int): String? = fieldByFid[fid]
 
-    /** fid → HMA signal, for the subscription in force. */
-    @Volatile private var hmaByFid: Map<Int, HmaSignal> = emptyMap()
-
-    /** The HMA signal the fid carries in the subscription in force, or null. */
-    fun hmaSignalFor(fid: Int): HmaSignal? = hmaByFid[fid]
+    /** fid → the HMA signal it carries in the subscription in force; empty = none subscribed. */
+    @Volatile var hmaByFid: Map<Int, HmaSignal> = emptyMap()
+        private set
 
     /**
      * (Re)installs the subscription with the fid addresses in force right now. Called whenever the
@@ -115,9 +113,17 @@ class FidPushChannel @Inject constructor(
     /** What rides after the FidMap wave: the confirmed ADAS states, then the HMA signals. */
     private data class Extras(val adas: List<PushStateTrace.AdasState>, val hma: List<HmaSubscription>)
 
+    /**
+     * The HMA signals go at this car's catalog numbers, never on a fid the wave or the ADAS states
+     * already hold, and only as many as still fit the daemon's per-call cap — the wave and the
+     * ADAS states come first. None without a catalog.
+     */
     private fun extrasFor(catalog: FidCatalog?, subs: List<FidPushSub>): Extras {
         val adas = confirmedAdas(catalog, subs)
-        return Extras(adas, confirmedHma(catalog, subs, adas))
+        if (catalog == null) return Extras(adas, emptyList())
+        val taken = subs.map { it.fid }.toSet() + adas.map { it.fid }
+        val room = MAX_PUSH_FIDS - subs.size - adas.size
+        return Extras(adas, HmaSignals.confirmed(catalog::fidOf, taken, room))
     }
 
     /** One install; returns the extras it installed, or null when the daemon returned no table. */
@@ -151,22 +157,6 @@ class FidPushChannel @Inject constructor(
         val ok = table.count { it.outcome == FID_PUSH_OK }
         Log.i(TAG, "resubscribe ($reason): ok=$ok failed=${table.size - ok} hma=${extras.hma.size}/${HmaSignals.ALL.size}")
         return extras
-    }
-
-    /**
-     * The HMA signals at this car's catalog numbers, never on a fid the wave or the ADAS states
-     * already hold, and only as many as still fit the daemon's per-call cap — the wave and the
-     * ADAS states come first. None without a catalog.
-     */
-    private fun confirmedHma(
-        catalog: FidCatalog?,
-        subs: List<FidPushSub>,
-        adas: List<PushStateTrace.AdasState>,
-    ): List<HmaSubscription> {
-        if (catalog == null) return emptyList()
-        val taken = subs.map { it.fid }.toSet() + adas.map { it.fid }
-        val room = (MAX_PUSH_FIDS - subs.size - adas.size).coerceAtLeast(0)
-        return HmaSignals.confirmed(catalog::fidOf, taken, room)
     }
 
     /** The FidMap wave at the addresses in force right now. */

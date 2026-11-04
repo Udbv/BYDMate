@@ -852,6 +852,11 @@
     <!-- Volume knob on the steering wheel: play/pause instead of audio-source switch -->
     <string name="settings_knob_play_pause_title">方向盘音量旋钮</string>
     <string name="settings_knob_play_pause_desc">按下旋钮暂停和继续播放，而不是切换音源。固件更新后按下变为切换音源时需要开启。</string>
+    <string name="settings_kept_disabled_apps_title">已停用的多媒体应用</string>
+    <string name="settings_kept_disabled_apps_desc">BYDMate 保持停用的原车多余应用（pm disable-user）：若固件更新将其重新启用，下次启动时会再次停用。取消勾选即可重新启用该应用。默认不选任何项。</string>
+    <string name="settings_kept_disabled_state_enabled">已启用</string>
+    <string name="settings_kept_disabled_state_disabled">已停用</string>
+    <string name="settings_kept_disabled_state_missing">本车未安装</string>
     <string name="settings_cluster_music_card_title">仪表显示曲目</string>
     <string name="settings_cluster_music_card_desc">为原厂固件不支持的播放器在仪表盘音乐卡片上显示歌名与歌手：Yandex 导航（Alice）、Yandex 音乐、Spotify、网络电台等。原厂播放器和蓝牙由固件自行填写。</string>
 
@@ -2529,7 +2534,8 @@
     <string name="hma_reason_sensor_error">前挡风玻璃光线或雨量传感器故障</string>
     <string name="settings_hma_warning_title">自动远光提醒</string>
     <string name="settings_hma_warning_desc">当车辆报告自动远光摄像头被遮挡或功能故障、夜间行驶中该功能不可用，或挡风玻璃后的光线/雨量传感器报错时，在屏幕上显示一条安静的提示“请擦拭前挡风玻璃”。每次行程每个原因最多一次。自动远光状态和远光灯的每次变化都会写入日志（标签 HmaWatch）。只读，不向车辆发送任何内容。</string>
-    <string name="settings_adas_change_test_start">限速变更测试（约 2 分钟）</string>
+    <string name="settings_adas_change_test_start">限速变更测试（约 1 分钟）</string>
+    <string name="settings_adas_change_route_test_start">带路线（实验：路线可能残留在 ADAS 中）</string>
     <string name="settings_adas_change_test_running">变体 %1$s，已发送 %2$d · 剩余 %3$d 秒</string>
     <string name="settings_nav_voice_title">BYDMate 导航语音</string>
     <string name="settings_nav_voice_desc">BYDMate 用自己的语音在所选音频通道播报 Waze 的转向提示，使提示压低音乐而不是打断音乐。请关闭 Waze 自带语音：Waze → 设置 → 语音与声音。</string>

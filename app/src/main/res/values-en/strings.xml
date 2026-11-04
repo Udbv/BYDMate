@@ -78,6 +78,11 @@
     <!-- Volume knob on the steering wheel: play/pause instead of audio-source switch -->
     <string name="settings_knob_play_pause_title">Steering wheel volume knob</string>
     <string name="settings_knob_play_pause_desc">Pressing the knob pauses and resumes playback instead of switching the audio source. Needed after the firmware update that made the press change the source.</string>
+    <string name="settings_kept_disabled_apps_title">Disabled multimedia apps</string>
+    <string name="settings_kept_disabled_apps_desc">Unneeded stock apps that BYDMate keeps disabled (pm disable-user): if a firmware update turns them back on, they are disabled again at the next start. Untick to enable the app again. Nothing is selected by default.</string>
+    <string name="settings_kept_disabled_state_enabled">enabled</string>
+    <string name="settings_kept_disabled_state_disabled">disabled</string>
+    <string name="settings_kept_disabled_state_missing">not on this car</string>
     <string name="settings_cluster_music_card_title">Track on the cluster</string>
     <string name="settings_cluster_music_card_desc">Shows the title and artist on the instrument cluster music card for players the stock firmware leaves out: Yandex Navigator (Alice), Yandex Music, Spotify, internet radio and others. The firmware fills it itself for its own players and Bluetooth.</string>
 
@@ -2421,7 +2426,8 @@
     <string name="hma_reason_sensor_error">Light or rain sensor error on the windscreen</string>
     <string name="settings_hma_warning_title">Auto high beam warning</string>
     <string name="settings_hma_warning_desc">When the car reports the auto high beam camera blocked or the function faulty, the function unavailable at night while driving, or a light/rain sensor behind the windscreen in error, shows one quiet on-screen notice «Clean the windscreen». At most once per trip for each reason. Every change of the auto high beam state and of the high beam is written to the log (tag HmaWatch). Read only, sends nothing to the car.</string>
-    <string name="settings_adas_change_test_start">Limit change test (~2 min)</string>
+    <string name="settings_adas_change_test_start">Limit change test (~1 min)</string>
+    <string name="settings_adas_change_route_test_start">With a route (experimental: the route may stay in ADAS)</string>
     <string name="settings_adas_change_test_running">Variant %1$s, sent %2$d · %3$d s left</string>
     <string name="settings_nav_voice_title">BYDMate navigation voice</string>
     <string name="settings_nav_voice_desc">BYDMate speaks the Waze maneuvers itself on the chosen audio channel, so prompts duck the music instead of interrupting it. Turn off Waze\'s own voice: Waze → Settings → Voice &amp; sound.</string>

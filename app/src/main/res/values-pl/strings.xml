@@ -82,6 +82,11 @@
     <!-- Volume knob on the steering wheel: play/pause instead of audio-source switch -->
     <string name="settings_knob_play_pause_title">Pokrętło głośności na kierownicy</string>
     <string name="settings_knob_play_pause_desc">Naciśnięcie wstrzymuje i wznawia odtwarzanie zamiast przełączać źródło dźwięku. Potrzebne po aktualizacji oprogramowania, w której naciśnięcie zaczęło zmieniać źródło.</string>
+    <string name="settings_kept_disabled_apps_title">Wyłączone aplikacje multimedialne</string>
+    <string name="settings_kept_disabled_apps_desc">Niepotrzebne fabryczne aplikacje, które BYDMate utrzymuje wyłączone (pm disable-user): jeśli aktualizacja oprogramowania znów je włączy, zostaną wyłączone przy następnym uruchomieniu. Odznacz, aby włączyć aplikację z powrotem. Domyślnie nic nie jest zaznaczone.</string>
+    <string name="settings_kept_disabled_state_enabled">włączona</string>
+    <string name="settings_kept_disabled_state_disabled">wyłączona</string>
+    <string name="settings_kept_disabled_state_missing">brak w tym aucie</string>
     <string name="settings_cluster_music_card_title">Utwór na zegarach</string>
     <string name="settings_cluster_music_card_desc">Pokazuje tytuł i wykonawcę na karcie muzyki na zegarach dla odtwarzaczy, które fabryczne oprogramowanie pomija: Yandex Navigator (Alice), Yandex Music, Spotify, radio internetowe i inne. Własne odtwarzacze i Bluetooth oprogramowanie wypełnia samo.</string>
 
@@ -2585,7 +2590,8 @@
     <string name="hma_reason_sensor_error">Błąd czujnika światła lub deszczu na przedniej szybie</string>
     <string name="settings_hma_warning_title">Ostrzeżenie o automatycznych światłach drogowych</string>
     <string name="settings_hma_warning_desc">Gdy auto zgłasza, że kamera automatycznych świateł drogowych jest zasłonięta lub funkcja jest niesprawna, że funkcja jest niedostępna nocą w czasie jazdy albo że czujnik światła/deszczu za szybą zgłasza błąd, pokazuje jedno ciche powiadomienie na ekranie „Przetrzyj przednią szybę”. Najwyżej raz na podróż dla każdej przyczyny. Każda zmiana stanu automatycznych świateł i świateł drogowych trafia do dziennika (tag HmaWatch). Tylko odczyt, niczego nie wysyła do auta.</string>
-    <string name="settings_adas_change_test_start">Test zmiany ograniczenia (~2 min)</string>
+    <string name="settings_adas_change_test_start">Test zmiany ograniczenia (~1 min)</string>
+    <string name="settings_adas_change_route_test_start">Z trasą (eksperyment: trasa może zostać w ADAS)</string>
     <string name="settings_adas_change_test_running">Wariant %1$s, wysłano %2$d · jeszcze %3$d s</string>
     <string name="settings_nav_voice_title">Głos nawigacji BYDMate</string>
     <string name="settings_nav_voice_desc">BYDMate sam odczytuje manewry Waze swoim głosem w wybranym kanale audio, aby podpowiedzi ściszały muzykę, a nie ją przerywały. Wyłącz własny głos Waze: Waze → Ustawienia → Głos i dźwięk.</string>

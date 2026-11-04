@@ -59,27 +59,9 @@ data class HmaReading(
 
     /** Applies one pushed HMA signal; an unknown key changes nothing. */
     fun with(key: String, intValue: Int, doubleValue: Double): HmaReading {
-        val i = SentinelDecoder.decodeInt(intValue)
-        val d = number(intValue, doubleValue)
-        return when (key) {
-            HmaSignals.HMA_STATE -> copy(hmaState = i)
-            HmaSignals.HMA_STATE_HAL -> copy(hmaStateHal = i)
-            HmaSignals.HMA_GRAY -> copy(gray = i)
-            HmaSignals.HMA_PRESENT -> copy(present = i)
-            HmaSignals.HMA_CLUSTER_FAULT -> copy(clusterFault = i)
-            HmaSignals.HEADLIGHT_KNOB -> copy(knob = i)
-            HmaSignals.HIGH_BEAM_INDICATOR -> copy(indicator = i)
-            HmaSignals.LIGHT_INTENSITY -> copy(lightIntensity = d)
-            HmaSignals.RAIN_FALL -> copy(rainFall = d)
-            HmaSignals.RAIN_ERROR -> copy(rainError = i)
-            HmaSignals.ILLUMINANCE_ERROR -> copy(illuminanceError = i)
-            HmaSignals.MIST_ERROR -> copy(mistError = i)
-            HmaSignals.GLASS_HUMIDITY -> copy(glassHumidity = d)
-            HmaSignals.GLASS_TEMP -> copy(glassTemp = d)
-            HmaSignals.WIPER_LEVEL -> copy(wiperLevel = i)
-            HIGH_BEAM_FIELD -> copy(highBeam = i)
-            else -> this
-        }
+        INT_SETTERS[key]?.let { return it(this, SentinelDecoder.decodeInt(intValue)) }
+        NUMBER_SETTERS[key]?.let { return it(this, number(intValue, doubleValue)) }
+        return this
     }
 
     /** Sensor error flags that are raised (non-zero), by journal name; empty when none is. */
@@ -93,6 +75,30 @@ data class HmaReading(
     companion object {
         /** The FidMap field of the high beam lamp: pushed too, so a flash is not lost between polls. */
         const val HIGH_BEAM_FIELD = "lightHigh"
+
+        /** Two-state and enum signals: the int, sentinels dropped. */
+        private val INT_SETTERS: Map<String, (HmaReading, Int?) -> HmaReading> = mapOf(
+            HmaSignals.HMA_STATE to { r, v -> r.copy(hmaState = v) },
+            HmaSignals.HMA_STATE_HAL to { r, v -> r.copy(hmaStateHal = v) },
+            HmaSignals.HMA_GRAY to { r, v -> r.copy(gray = v) },
+            HmaSignals.HMA_PRESENT to { r, v -> r.copy(present = v) },
+            HmaSignals.HMA_CLUSTER_FAULT to { r, v -> r.copy(clusterFault = v) },
+            HmaSignals.HEADLIGHT_KNOB to { r, v -> r.copy(knob = v) },
+            HmaSignals.HIGH_BEAM_INDICATOR to { r, v -> r.copy(indicator = v) },
+            HmaSignals.RAIN_ERROR to { r, v -> r.copy(rainError = v) },
+            HmaSignals.ILLUMINANCE_ERROR to { r, v -> r.copy(illuminanceError = v) },
+            HmaSignals.MIST_ERROR to { r, v -> r.copy(mistError = v) },
+            HmaSignals.WIPER_LEVEL to { r, v -> r.copy(wiperLevel = v) },
+            HIGH_BEAM_FIELD to { r, v -> r.copy(highBeam = v) },
+        )
+
+        /** Analogue sensors: see [number]. */
+        private val NUMBER_SETTERS: Map<String, (HmaReading, Double?) -> HmaReading> = mapOf(
+            HmaSignals.LIGHT_INTENSITY to { r, v -> r.copy(lightIntensity = v) },
+            HmaSignals.RAIN_FALL to { r, v -> r.copy(rainFall = v) },
+            HmaSignals.GLASS_HUMIDITY to { r, v -> r.copy(glassHumidity = v) },
+            HmaSignals.GLASS_TEMP to { r, v -> r.copy(glassTemp = v) },
+        )
 
         /**
          * A pushed value as a number: the double when the event carries one, else the int

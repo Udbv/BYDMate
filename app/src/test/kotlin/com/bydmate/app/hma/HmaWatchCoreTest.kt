@@ -9,15 +9,13 @@ class HmaWatchCoreTest {
 
     private val core = HmaWatchCore(gate = HmaWarningGate(holdMs = 10_000, gapMs = 5_000))
 
-    private fun tick(
-        now: Long,
-        carOn: Boolean = true,
-        trip: Long? = 1L,
-        speed: Int? = 60,
-        light: Int? = 1,
-        beam: Int? = 0,
-        warn: Boolean = true,
-    ) = core.onTick(carOn, trip, beam, light, 0, 1, speed, warn, now)
+    /** Driving at night, trip 1, wipers idle on auto; arguments override that. */
+    private val driving = HmaTick(
+        carOn = true, trip = 1L, highBeam = 0, lightLevel = 1, wiperRelay = 0, autoWipers = 1, speedKph = 60,
+    )
+
+    private fun tick(now: Long, carOn: Boolean = true, trip: Long? = 1L, beam: Int? = 0, warn: Boolean = true) =
+        core.onTick(driving.copy(carOn = carOn, trip = trip, highBeam = beam), warn, now)
 
     @Test fun `a state change is one journal line, a repeat is none`() {
         tick(0)

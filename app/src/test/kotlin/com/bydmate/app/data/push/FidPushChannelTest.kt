@@ -61,7 +61,7 @@ class FidPushChannelTest {
         assertEquals(com.bydmate.app.hma.HmaSignals.ALL.map { FidPushSub(it.fid, it.device) }, tail)
         assertTrue(captured.captured.size <= com.bydmate.app.helper.push.MAX_PUSH_FIDS)
         val state = com.bydmate.app.hma.HmaSignals.ALL.first()
-        assertEquals(state, channel.hmaSignalFor(state.fid))
+        assertEquals(state, channel.hmaByFid[state.fid])
         assertEquals(null, channel.fieldFor(state.fid))
         assertTrue(channel.diagnosticsSnapshot().any { it.startsWith("hma-state ${state.fid} dev=1038") })
     }
@@ -73,7 +73,7 @@ class FidPushChannelTest {
         channel.resubscribe("binder accepted") { null }
 
         assertEquals(FidPushApplier.PUSH_FIELDS.size, captured.captured.size)
-        com.bydmate.app.hma.HmaSignals.ALL.forEach { assertEquals(null, channel.hmaSignalFor(it.fid)) }
+        com.bydmate.app.hma.HmaSignals.ALL.forEach { assertEquals(null, channel.hmaByFid[it.fid]) }
     }
 
     @Test fun `every acceptance of a daemon reinstalls the subscription`() = runTest {

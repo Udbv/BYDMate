@@ -67,13 +67,10 @@ object HmaSignals {
      */
     fun confirmed(fidOf: (String) -> Int?, taken: Set<Int>, room: Int): List<HmaSubscription> {
         val used = taken.toMutableSet()
-        val out = mutableListOf<HmaSubscription>()
-        for (signal in ALL) {
-            if (out.size >= room) break
-            val fid = fidOf(signal.symbol) ?: continue
-            if (!used.add(fid)) continue
-            out += HmaSubscription(signal, fid)
-        }
-        return out
+        return ALL.asSequence()
+            .mapNotNull { signal -> fidOf(signal.symbol)?.let { HmaSubscription(signal, it) } }
+            .filter { used.add(it.fid) }
+            .take(room.coerceAtLeast(0))
+            .toList()
     }
 }

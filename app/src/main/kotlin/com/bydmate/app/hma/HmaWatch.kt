@@ -16,6 +16,17 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** One poll tick as the HMA watch sees it: car power, the trip id and the context fields. */
+data class HmaTick(
+    val carOn: Boolean,
+    val trip: Long?,
+    val highBeam: Int? = null,
+    val lightLevel: Int? = null,
+    val wiperRelay: Int? = null,
+    val autoWipers: Int? = null,
+    val speedKph: Int? = null,
+)
+
 /**
  * The decisions of the HMA watch without Android: which journal lines a change earns and which
  * warnings are due. [HmaWatch] feeds it and does the logging and the showing.
@@ -47,32 +58,26 @@ class HmaWatchCore(
      * check when [warnEnabled]. A new [trip] (or the car coming on without one) forgets the
      * warnings already shown.
      */
-    fun onTick(
-        carOn: Boolean,
-        trip: Long?,
-        highBeam: Int?,
-        lightLevel: Int?,
-        wiperRelay: Int?,
-        autoWipers: Int?,
-        speedKph: Int?,
-        warnEnabled: Boolean,
-        nowMs: Long,
-    ): Output {
-        if ((trip != null && trip != tripKey) || (carOn && !carWasOn && trip == null)) gate.newTrip()
-        if (trip != null) tripKey = trip
-        carWasOn = carOn
+    fun onTick(tick: HmaTick, warnEnabled: Boolean, nowMs: Long): Output {
+        if (startsTrip(tick.carOn, tick.trip)) gate.newTrip()
+        if (tick.trip != null) tripKey = tick.trip
+        carWasOn = tick.carOn
         val next = reading.copy(
-            highBeam = highBeam ?: reading.highBeam,
-            lightLevel = lightLevel ?: reading.lightLevel,
-            wiperRelay = wiperRelay ?: reading.wiperRelay,
-            autoWipers = autoWipers ?: reading.autoWipers,
-            speedKph = speedKph,
+            highBeam = tick.highBeam ?: reading.highBeam,
+            lightLevel = tick.lightLevel ?: reading.lightLevel,
+            wiperRelay = tick.wiperRelay ?: reading.wiperRelay,
+            autoWipers = tick.autoWipers ?: reading.autoWipers,
+            speedKph = tick.speedKph,
         )
         val journal = advance(next, nowMs)
-        if (!carOn || !warnEnabled) return journal
+        if (!tick.carOn || !warnEnabled) return journal
         val due = gate.update(HmaWarningRule.reasons(reading), nowMs)
         return journal.copy(warn = due)
     }
+
+    /** A trip id we have not seen, or the car coming on when there is no id at all. */
+    private fun startsTrip(carOn: Boolean, trip: Long?): Boolean =
+        if (trip != null) trip != tripKey else carOn && !carWasOn
 
     private fun advance(next: HmaReading, nowMs: Long): Output {
         val events = HmaJournal.changes(reading, next)
@@ -126,7 +131,7 @@ class HmaWatch @Inject constructor(
     fun start(scope: CoroutineScope) {
         scope.launch {
             fidPush.events.collect { event ->
-                val key = fidPush.hmaSignalFor(event.fid)?.key
+                val key = fidPush.hmaByFid[event.fid]?.key
                     ?: fidPush.fieldFor(event.fid)?.takeIf { it == HmaReading.HIGH_BEAM_FIELD }
                     ?: return@collect
                 val out = synchronized(core) {
@@ -139,19 +144,17 @@ class HmaWatch @Inject constructor(
 
     fun onTick(carOn: Boolean, data: DiParsData?, trip: Long?, nowMs: Long = System.currentTimeMillis()) {
         if (data == null) return
-        val out = synchronized(core) {
-            core.onTick(
-                carOn = carOn,
-                trip = trip,
-                highBeam = data.lightHigh,
-                lightLevel = data.lightLevel,
-                wiperRelay = data.wiperRelay,
-                autoWipers = data.autoWipers,
-                speedKph = data.speed,
-                warnEnabled = isEnabled(context),
-                nowMs = nowMs,
-            )
-        }
+        val tick = HmaTick(
+            carOn = carOn,
+            trip = trip,
+            highBeam = data.lightHigh,
+            lightLevel = data.lightLevel,
+            wiperRelay = data.wiperRelay,
+            autoWipers = data.autoWipers,
+            speedKph = data.speed,
+        )
+        val warn = isEnabled(context)
+        val out = synchronized(core) { core.onTick(tick, warn, nowMs) }
         emit(out)
     }
 

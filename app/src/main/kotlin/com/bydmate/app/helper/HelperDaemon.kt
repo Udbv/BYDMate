@@ -985,6 +985,8 @@ fun main(args: Array<String>) {
                 HelperBinderProtocol.TX_DTC_SCAN_START,
                 HelperBinderProtocol.TX_DTC_SCAN_STATUS -> handleDtcScanTransact(code, data, reply, svc, autoIface)
 
+                HelperBinderProtocol.TX_KEEP_APPS_DISABLED -> handleKeepAppsDisabled(data, reply)
+
                 else -> super.onTransact(code, data, reply, flags)
             }
         }
@@ -3265,6 +3267,39 @@ private fun handleOffReportTransact(code: Int, data: Parcel, reply: Parcel?): Bo
         android.util.Log.w("OffReport", "offreport: tx=$code failed: ${e.javaClass.simpleName}")
         reply?.setDataSize(0)
         reply?.writeInt(-1)
+    }
+    return true
+}
+
+/**
+ * Keeps the stock multimedia apps the driver chose disabled (KeptDisabledApps): one worker thread,
+ * built on first use, runs `pm` under the shell uid. The masks are the only input.
+ */
+private val keepAppsRunner: KeepAppsDisabledRunner by lazy {
+    val worker = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "keep-apps-disabled").apply { isDaemon = true }
+    }
+    KeepAppsDisabledRunner(
+        shell = { script, args ->
+            (if (args.isEmpty()) shExec(script) else shExec(script, args[0])).let { it.code to it.stdout }
+        },
+        executor = worker,
+        nowMs = { android.os.SystemClock.elapsedRealtime() },
+        log = { android.util.Log.i(KeptDisabledApps.TAG, it) },
+    )
+}
+
+private fun handleKeepAppsDisabled(data: Parcel, reply: Parcel?): Boolean {
+    runCatching {
+        val keep = data.readInt()
+        val restore = data.readInt()
+        val status = keepAppsRunner.request(keep, restore)
+        android.util.Log.i(KeptDisabledApps.TAG, "request keep=$keep restore=$restore reply=$status")
+        reply?.writeInt(status)
+    }.onFailure { e ->
+        android.util.Log.w(KeptDisabledApps.TAG, "request failed: ${e.javaClass.simpleName}")
+        reply?.setDataSize(0)
+        reply?.writeInt(KeptDisabledApps.STATUS_REFUSED)
     }
     return true
 }
