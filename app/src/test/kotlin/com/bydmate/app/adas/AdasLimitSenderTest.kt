@@ -63,6 +63,18 @@ class AdasLimitSenderTest {
         assertTrue(gateway.unbound)
     }
 
+    @Test fun `an implausible position clears once, with its reason, and sends no camera`() = runTest {
+        val gateway = FakeGateway()
+        val lines = mutableListOf<String>()
+        val session = AdasLimitSender.Session(gateway) { lines += it }
+        session.send(AdasLimitSender.framesFor(snap(90, camera = 1200)))
+        session.send(null, AdasLimitSender.WHY_GNSS)
+        assertEquals("ADAS live clear: ${AdasLimitSender.WHY_GNSS}", lines.last())
+        val afterClear = gateway.fired.size
+        session.send(null, AdasLimitSender.WHY_GNSS)
+        assertEquals("cleared only once", afterClear, gateway.fired.size)
+    }
+
     @Test fun `no gateway, nothing sent and nothing to clear`() = runTest {
         val gateway = FakeGateway(binds = false)
         val session = AdasLimitSender.Session(gateway) {}

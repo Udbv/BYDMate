@@ -6,6 +6,7 @@ import com.bydmate.app.data.remote.DiParsData
 import com.bydmate.app.data.vehicle.BatchReadItem
 import com.bydmate.app.data.vehicle.HelperClient
 import com.bydmate.app.diagnostics.TripDebugLog
+import com.bydmate.app.gnss.GnssGuard
 import com.bydmate.app.navdata.NavGuidanceHub
 import com.bydmate.app.voice.VoiceAutomationActions
 import com.bydmate.app.voice.VoiceController
@@ -48,7 +49,8 @@ class CruiseAdvisor @Inject constructor(
         }
         if ((data.speed ?: 0) <= 0 || nowMs - lastTickMs < TICK_MS) return
         lastTickMs = nowMs
-        val waze = NavGuidanceHub.snapshot(nowMs).speedLimit.takeIf { it > 0 } ?: return
+        // No advice from a limit read at an implausible position (GPS jamming or spoofing).
+        val waze = GnssGuard.withheld(NavGuidanceHub.snapshot(nowMs)).speedLimit.takeIf { it > 0 } ?: return
         val car = helper.readBatch(ITEMS)?.let(::decode) ?: return
         val busy = speakJob?.isActive == true || voiceController.get().sessionActive()
         val advice = rule.decide(nowMs, car, waze, busy) ?: return

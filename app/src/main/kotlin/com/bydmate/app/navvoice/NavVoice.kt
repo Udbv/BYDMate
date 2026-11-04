@@ -7,6 +7,7 @@ import com.bydmate.app.diagnostics.TripDebugLog
 import com.bydmate.app.diagnostics.audio.AndroidAudioChannelIo
 import com.bydmate.app.diagnostics.audio.AudioChannel
 import com.bydmate.app.diagnostics.audio.AudioChannelIo
+import com.bydmate.app.gnss.GnssGuard
 import com.bydmate.app.navdata.NavGuidanceHub
 import com.bydmate.app.voice.TtsEngine
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -28,6 +29,10 @@ import javax.inject.Singleton
  * the owner picks and with or without a may-duck focus request: which pair ducks the music on
  * this car is what the audio channel test measures. Every [PERIOD_MS] while the car is on and the
  * switch is on; [NavVoicePlanner] decides when. Nothing is written to the car.
+ *
+ * While [GnssGuard] finds the position implausible (GPS jamming or spoofing) Waze's maneuvers are
+ * for a wrong place: nothing is said. The planner still runs, so a prompt that fell due during
+ * the pause is not said late; the pause and the phrases it withheld are logged once per episode.
  */
 @Singleton
 class NavVoice @Inject constructor(
@@ -40,6 +45,8 @@ class NavVoice @Inject constructor(
     private val speaking = AtomicBoolean(false)
     private var job: Job? = null
     private var noVoiceLogged = false
+    private var gnssPaused = false
+    private var withheld = 0
 
     internal var io: AudioChannelIo? = null
 
@@ -58,8 +65,12 @@ class NavVoice @Inject constructor(
             planner.lang = selectedVoiceLang()
             val snap = NavGuidanceHub.snapshot()
             val input = NavVoiceInput(snap.active, snap.maneuverGaode, snap.distanceMeters, snap.road, snap.exitNumber)
-            planner.next(input, System.currentTimeMillis())?.let { phrase ->
-                if (speaking.compareAndSet(false, true)) scope.launch { speak(phrase) } else note("busy, dropped: $phrase")
+            val phrase = planner.next(input, System.currentTimeMillis())
+            when {
+                gnssPaused() -> if (phrase != null) withheld++
+                phrase == null -> Unit
+                speaking.compareAndSet(false, true) -> scope.launch { speak(phrase) }
+                else -> note("busy, dropped: $phrase")
             }
             delay(PERIOD_MS)
         }
@@ -84,6 +95,16 @@ class NavVoice @Inject constructor(
         } finally {
             speaking.set(false)
         }
+    }
+
+    /** Whether the position is implausible now; the start and end of a pause are logged once. */
+    private fun gnssPaused(): Boolean {
+        val paused = GnssGuard.suspect
+        if (paused == gnssPaused) return paused
+        gnssPaused = paused
+        note(if (paused) "paused: position implausible (GNSS), nothing is said" else "resumed: position plausible, $withheld phrases withheld")
+        withheld = 0
+        return paused
     }
 
     /** The language of the voice chosen in the voice settings (prefs "voice"/"tts_voice"). */

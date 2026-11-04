@@ -1558,6 +1558,9 @@ class TrackingService : Service(), LocationListener {
         lastLocationFix = LocationFix(location, isLive = true)
         _lastLocation.value = location
         com.bydmate.app.hud.HudVehicleState.update(location)
+        // The jamming/spoofing guard: withholds Waze's limit and camera while the fix is implausible.
+        runCatching { com.bydmate.app.gnss.GnssGuard.onLocation(location) }
+            .onFailure { Log.w(TAG, "GnssGuard.onLocation failed", it) }
         recentTrack.add(TrackPoint(android.os.SystemClock.elapsedRealtime(), location.latitude, location.longitude,
             if (location.hasSpeed()) location.speed * 3.6 else null))
         // AC-06: never log raw coordinates in release — logcat is readable on DiLink
@@ -1821,6 +1824,7 @@ class TrackingService : Service(), LocationListener {
                     runCatching { bumpRecording.onTick(data.powerState?.let { it >= 1 } == true) }
                         .onFailure { Log.w(TAG, "BumpRecording.onTick failed", it) }
                     tripMinuteRecorder.onTick(data.powerState?.let { it >= 1 } == true, data)
+                    com.bydmate.app.gnss.GnssGuard.onCarSpeed(data.speed)
                     runCatching { adasShadow.onTick(data.powerState?.let { it >= 1 } == true, data) }
                         .onFailure { Log.w(TAG, "AdasShadow.onTick failed", it) }
                     runCatching { adasLimitSender.onTick(data.powerState?.let { it >= 1 } == true) }

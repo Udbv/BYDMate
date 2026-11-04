@@ -298,6 +298,7 @@ object NavGuidanceHub {
             it.kind == WazeReportsReader.Kind.CAMERA && it.distanceMeters > 0
         } ?: return false
         val prev = current
+        com.bydmate.app.gnss.GnssGuard.onWazeCamera(camera.distanceMeters)
         val changed = prev.cameraAlert != camera.typeText ||
             prev.cameraDistanceMeters != camera.distanceMeters
         current = prev.copy(
@@ -386,6 +387,7 @@ object NavGuidanceHub {
         }
         if (source == Source.A11Y) stats.a11yGuidance++
         countRead(prev, data.maneuverGaode, data.distanceMeters)
+        if (data.totalDistMeters > 0) com.bydmate.app.gnss.GnssGuard.onWazeTotal(data.totalDistMeters, newRoute = !prev.active)
         current = prev.copy(
             active = true,
             maneuverGaode = if (data.maneuverGaode > 0) data.maneuverGaode else prev.maneuverGaode,
@@ -456,6 +458,9 @@ object NavGuidanceHub {
             }
         }
         maneuverExpiryArmed = !arrowOnly && (a11yFresh || rich.maneuverGaode <= 0)
+        if (!a11yFresh && rich.totalDistMeters > 0) {
+            com.bydmate.app.gnss.GnssGuard.onWazeTotal(rich.totalDistMeters, newRoute = !prev.active)
+        }
         val base = guidanceFields(prev, rich, a11yFresh, arrowOnly, nowMs)
         current = base.copy(
             active = true,

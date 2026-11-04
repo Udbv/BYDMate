@@ -3,6 +3,7 @@ package com.bydmate.app.adas
 import android.content.Context
 import android.util.Log
 import com.bydmate.app.diagnostics.TripDebugLog
+import com.bydmate.app.gnss.GnssGuard
 import com.bydmate.app.hud.HudSomeIpBridge
 import com.bydmate.app.navdata.NavGuidanceHub
 import com.bydmate.app.navdata.WazeReportsReader
@@ -32,6 +33,10 @@ import javax.inject.Singleton
  * limit (none on the road, or its reading is older than [NavGuidanceHub.SPEED_LIMIT_TIMEOUT_MS]),
  * the switch goes off or the car goes off, the "stopped" status and empty frames go out once and
  * the car is back on its own camera. Every change of what is sent goes to the trip log.
+ *
+ * While [GnssGuard] finds the position implausible (GPS jamming or spoofing threw it, and Waze's
+ * limit and camera distance with it) the same goes as without a Waze limit: one clear, then
+ * nothing, and no camera distance at all, until the position is plausible again.
  */
 @Singleton
 class AdasLimitSender @Inject constructor(
@@ -44,6 +49,7 @@ class AdasLimitSender @Inject constructor(
     internal var gatewayFactory: (Context) -> AdasGateway = { BridgeGateway(HudSomeIpBridge(it)) }
     internal var snapshot: () -> NavGuidanceHub.Snapshot = { NavGuidanceHub.snapshot() }
     internal var enabled: () -> Boolean = { isEnabled(context) }
+    internal var gnssSuspect: () -> Boolean = { GnssGuard.suspect }
 
     /** From the tracking service's tick: runs the sending loop while the car is on. */
     fun onTick(carOn: Boolean) {
@@ -60,7 +66,8 @@ class AdasLimitSender @Inject constructor(
         val session = Session(gatewayFactory(context))
         try {
             while (scope.isActive && enabled() && !parkedTest.status.value.running) {
-                session.send(framesFor(snapshot()))
+                val paused = gnssSuspect()
+                session.send(if (paused) null else framesFor(snapshot()), if (paused) WHY_GNSS else WHY_NO_LIMIT)
                 delay(PERIOD_MS)
             }
         } finally {
@@ -75,9 +82,10 @@ class AdasLimitSender @Inject constructor(
         private var started = false
         private var sending: List<ShadowFrame>? = null
 
-        suspend fun send(frames: List<ShadowFrame>?) {
+        /** [frames] null: nothing to send, for [whyNone]; what was going out is cleared once. */
+        suspend fun send(frames: List<ShadowFrame>?, whyNone: String = WHY_NO_LIMIT) {
             if (frames == null) {
-                if (sending != null) clear("no Waze limit")
+                if (sending != null) clear(whyNone)
                 return
             }
             if (!bind()) return
@@ -132,6 +140,8 @@ class AdasLimitSender @Inject constructor(
         const val PERIOD_MS = 500L
         private const val CLEAR_REPEATS = 3
         private const val REBIND_MS = 30_000L
+        internal const val WHY_NO_LIMIT = "no Waze limit"
+        internal const val WHY_GNSS = "position implausible (GNSS)"
 
         private const val PREFS = "adas_limit_sender"
         private const val KEY_ENABLED = "enabled"
