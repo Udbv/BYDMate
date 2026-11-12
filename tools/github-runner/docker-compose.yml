@@ -1,0 +1,31 @@
+# Self-hosted GitHub Actions runner for Udbv/BYDMate on a Raspberry Pi (arm64).
+# Started by systemd (bydmate-runner.service); see README.md in this folder.
+services:
+  runner:
+    # Official runner image from github.com/actions/runner (linux/amd64 + linux/arm64). The systemd
+    # unit pulls it before every start, so a new runner release arrives with a restart.
+    image: ghcr.io/actions/actions-runner:latest
+    container_name: bydmate-runner
+    restart: unless-stopped
+    entrypoint: ["bash", "/start.sh"]
+    init: true
+    environment:
+      REPO: Udbv/BYDMate
+      RUNNER_NAME: bydmate-pi
+      # A workflow targets this runner with `runs-on: [self-hosted, bydmate-pi]`.
+      RUNNER_LABELS: bydmate-pi,arm64
+    volumes:
+      - ./start.sh:/start.sh:ro
+      # The runner's credentials from the one-off registration (see start.sh).
+      - runner-state:/home/runner/state
+    # No /var/run/docker.sock on purpose: a job must not get root on the Pi through the host's
+    # Docker daemon.
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  runner-state:
