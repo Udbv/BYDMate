@@ -44,6 +44,8 @@ class HistoryImporter @Inject @Suppress("LongParameterList") constructor( // Hil
     private val counterSnapshotDao: CounterSnapshotDao,
     private val counterSnapshotWriter: CounterSnapshotWriter,
     private val lastStateDao: LastStateDao,
+    /** Passive-mode shadow trips (2026-11-14): resolved after every import attempt. */
+    private val shadowTrips: com.bydmate.app.data.trips.ShadowTripResolver? = null,
 ) {
     companion object {
         private const val TAG = "HistoryImporter"
@@ -150,6 +152,8 @@ class HistoryImporter @Inject @Suppress("LongParameterList") constructor( // Hil
             }
             if (!healed && !energyDataReader.peekSourceChanged(context)) {
                 Log.d(TAG, "syncFromEnergyData: source unchanged, skipping")
+                // Unchanged since the last good import: BYD wrote no record for a newer drive.
+                resolveShadows(importOk = true)
                 return ImportResult(trips = 0, details = "Без изменений")
             }
             skippedFutureRow = false
@@ -158,15 +162,41 @@ class HistoryImporter @Inject @Suppress("LongParameterList") constructor( // Hil
             // watermark untouched so the next event retries this file. A skipped future row
             // (#348) leaves it unmarked too: the next sync re-reads the file once the clock is right.
             if (!result.isError && !skippedFutureRow) energyDataReader.markSourceProcessed(context)
+            resolveShadows(importOk = !result.isError)
             result
         } catch (e: EnergyDataException) {
-            Log.w(TAG, "syncFromEnergyData failed: ${e.message}", e)
+            // One line with the class and the path in the message: the stack lines are often not
+            // in the log capture (2026-11-14: only `open failed: ENOENT` reached the dump).
+            Log.w(TAG, "import failed: ${e.javaClass.simpleName} (${e.cause?.javaClass?.simpleName ?: "-"}): ${e.message}", e)
+            resolveShadows(importOk = false)
             ImportResult(trips = 0, error = e.message)
         } catch (e: Exception) {
-            Log.e(TAG, "syncFromEnergyData unexpected error", e)
+            Log.e(TAG, "import failed: ${e.javaClass.simpleName}: ${e.message}", e)
+            resolveShadows(importOk = false)
             ImportResult(trips = 0, error = e.message ?: e.toString())
         } finally {
             syncMutex.unlock()
+        }
+    }
+
+    /** Passive-mode shadow trips after an import attempt; a failure here never fails the import. */
+    private suspend fun resolveShadows(importOk: Boolean) {
+        val resolver = shadowTrips ?: return
+        runCatching { resolver.resolve(importOk, clock()) }
+            .onFailure { Log.w(TAG, "shadow trips: resolve failed ${it.javaClass.simpleName}", it) }
+    }
+
+    /**
+     * The app's own trip (native, shadow or recovered) for a driving record that starts too far
+     * from it for [TripDao.getSameTripByTime]: the record then takes it over instead of becoming a
+     * second trip of the same drive (2026-11-14).
+     */
+    private suspend fun overlappingOwnTrip(byd: BydTripRecord): TripEntity? {
+        if (byd.tripKm <= 0.0) return null
+        val id = tripDao.getOverlappingOwnTripId(byd.startTimestamp * 1000L, byd.endTimestamp * 1000L)
+            ?.takeIf { it > 0L } ?: return null
+        return tripDao.getById(id)?.takeIf { it.id == id }?.also {
+            Log.i(TAG, "energydata id=${byd.id} overlaps own trip=${it.id} src=${it.source} -> linked, not a duplicate")
         }
     }
 
@@ -260,6 +290,7 @@ class HistoryImporter @Inject @Suppress("LongParameterList") constructor( // Hil
 
             // Check duplicate by time overlap (catches v1.x live trips without byd_id)
             val existingByTime = tripDao.getSameTripByTime(startTsMs, DEDUP_WINDOW_MS)
+                ?: overlappingOwnTrip(byd)
             if (existingByTime != null) {
                 // Update existing trip with byd_id so future syncs skip it instantly.
                 // The copy keeps its odometer: the km changes, the readings do not.

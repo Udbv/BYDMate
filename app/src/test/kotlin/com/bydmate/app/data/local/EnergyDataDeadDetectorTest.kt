@@ -1,7 +1,9 @@
 package com.bydmate.app.data.local
 
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -33,12 +35,28 @@ class EnergyDataDeadDetectorTest {
     private var nowMs = 0L
     private val store = FakeStore()
 
+    /** What the heal check reads from the file, and the drives the app saw (odometer marks). */
+    private var probeRows: List<BydTripRecord>? = emptyList()
+    private var drives: List<DriveWindow> = emptyList()
+    private var probeReads = 0
+
     private fun detector(clock: () -> Long = { nowMs }): EnergyDataDeadDetector {
         val reader = mockk<EnergyDataReader> {
             every { sourceFingerprint() } answers { fileFp }
             every { sourceLastModifiedMs() } answers { fileMtime }
+            coEvery { readTripsForProbe(any()) } answers { probeReads++; probeRows }
         }
-        return EnergyDataDeadDetector(reader, store, clock)
+        return EnergyDataDeadDetector(reader, store, clock, observedDrives = { drives })
+    }
+
+    /** Three spaced frozen sessions and the evaluating ignition-on: the device is dead-marked. */
+    private fun EnergyDataDeadDetector.markDead() {
+        session(1000.0, 1010.0); nowMs += hour
+        session(1010.0, 1020.0); nowMs += hour
+        session(1020.0, 1030.0); nowMs += hour
+        onTick(true, 1030.0)
+        assertTrue(isDead())
+        onTick(false, 1040.0)
     }
 
     /** One full driving session: ignition on at [startKm], off at [endKm]. */
@@ -129,23 +147,92 @@ class EnergyDataDeadDetectorTest {
         assertFalse(d.isDead())
     }
 
-    // Auto-heal: a revived file on a dead-marked device flips back to passive so
-    // HistoryImporter and TripRecorder can never run in parallel on a live file.
+    // 2026-11-14: an overnight charge touched the dead file (mtime/size changed, no drive row);
+    // the old rule healed on that alone and every drive of the morning was lost.
     @Test
-    fun `file change on dead-marked device heals back to alive`() {
+    fun `a bare file change on a dead-marked device keeps the verdict`() = runTest {
+        nowMs = 1_800_000_000_000L
         val d = detector()
-        d.session(1000.0, 1010.0); nowMs += hour
-        d.session(1010.0, 1020.0); nowMs += hour
-        d.session(1020.0, 1030.0); nowMs += hour
-        d.onTick(true, 1030.0)
-        assertTrue(d.isDead())
-        d.onTick(false, 1040.0)
-        fileFp = 999L to 8192L                     // firmware service revived energydata
+        d.markDead()
+        fileFp = 999L to 8192L                     // touched by the charge, no new row
+        probeRows = listOf(row(id = 7, endMs = nowMs - 2 * day, km = 0.0))  // idle/charging row only
+        drives = listOf(DriveWindow(nowMs - 3 * hour, nowMs - 2 * hour, 20.0))
         nowMs += hour
         d.onTick(true, 1040.0)
+        assertTrue("the fingerprint change alone must not heal", d.isDead())
+        d.checkHealIfDue()
+        assertTrue(d.isDead())
+        assertEquals(999L to 8192L, store.fp)      // the change is taken: the next one is checked again
+        assertEquals(1, probeReads)
+        d.checkHealIfDue()                          // nothing due any more
+        assertEquals(1, probeReads)
+    }
+
+    @Test
+    fun `a drive row outside every observed drive keeps the verdict`() = runTest {
+        nowMs = 1_800_000_000_000L
+        val d = detector()
+        d.markDead()
+        fileFp = 999L to 8192L
+        drives = listOf(DriveWindow(nowMs - 3 * hour, nowMs - 2 * hour, 20.0))
+        probeRows = listOf(row(id = 8, endMs = nowMs - 30 * hour, km = 12.0))   // an old drive the app never saw
+        nowMs += hour
+        d.onTick(true, 1040.0)
+        d.checkHealIfDue()
+        assertTrue(d.isDead())
+    }
+
+    // The file really gained the drive the app recorded: energydata is alive again.
+    @Test
+    fun `a new drive row ending inside an observed drive heals back to passive`() = runTest {
+        nowMs = 1_800_000_000_000L
+        val d = detector()
+        d.markDead()
+        fileFp = 999L to 8192L
+        val driveEnd = nowMs - 10 * 60_000L
+        drives = listOf(DriveWindow(driveEnd - hour, driveEnd, 25.0))
+        probeRows = listOf(row(id = 9, endMs = driveEnd + 60_000L, km = 24.8))
+        nowMs += hour
+        d.onTick(true, 1040.0)
+        assertTrue(d.isDead())
+        d.checkHealIfDue()
         assertFalse(d.isDead())
         assertEquals(0, store.streakV)
+        assertEquals(999L to 8192L, store.fp)
     }
+
+    @Test
+    fun `a failed read keeps the verdict and is retried at the next ignition, not every tick`() = runTest {
+        nowMs = 1_800_000_000_000L
+        var reads = 0
+        val reader = mockk<EnergyDataReader> {
+            every { sourceFingerprint() } answers { fileFp }
+            every { sourceLastModifiedMs() } answers { fileMtime }
+            coEvery { readTripsForProbe(any()) } answers { reads++; throw java.io.IOException("ENOENT") }
+        }
+        val d = EnergyDataDeadDetector(reader, store, { nowMs }, observedDrives = { drives })
+        d.markDead()
+        val stored = store.fp
+        fileFp = 999L to 8192L
+        nowMs += hour
+        d.onTick(true, 1040.0)
+        d.checkHealIfDue()
+        d.checkHealIfDue()                          // the next tick: no second read
+        assertEquals(1, reads)
+        assertTrue(d.isDead())
+        assertEquals("not taken while unread", stored, store.fp)
+        d.onTick(false, 1050.0)
+        nowMs += hour
+        d.onTick(true, 1050.0)                      // next ignition-on sees the change again
+        d.checkHealIfDue()
+        assertEquals(2, reads)
+        assertTrue(d.isDead())
+    }
+
+    private fun row(id: Long, endMs: Long, km: Double) = BydTripRecord(
+        id = id, startTimestamp = endMs / 1000L - 1800L, endTimestamp = endMs / 1000L,
+        duration = 1800L, tripKm = km, electricityKwh = km * 0.15,
+    )
 
     @Test
     fun `reset clears verdict and cached value`() {

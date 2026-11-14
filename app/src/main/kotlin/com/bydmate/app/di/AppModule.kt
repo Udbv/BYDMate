@@ -620,13 +620,56 @@ object AppModule {
     fun provideEnergyDataDeadDetector(
         @ApplicationContext ctx: Context,
         energyDataReader: EnergyDataReader,
+        odometerMarks: com.bydmate.app.data.repository.OdometerMarks,
     ): com.bydmate.app.data.local.EnergyDataDeadDetector =
         com.bydmate.app.data.local.EnergyDataDeadDetector(
             reader = energyDataReader,
             store = com.bydmate.app.data.local.EnergyDataLivenessStorePrefs(
                 ctx.getSharedPreferences("energydata_liveness", Context.MODE_PRIVATE)
             ),
+            // A dead verdict heals only on a drive row that ends inside a drive the app saw itself.
+            observedDrives = { com.bydmate.app.data.local.EnergyDataHealRule.drivesFromMarks(odometerMarks.snapshot()) },
         )
+
+    @Provides
+    @Singleton
+    fun provideShadowTripResolver(
+        @ApplicationContext ctx: Context,
+        tripDao: TripDao,
+        tripPointDao: TripPointDao,
+    ): com.bydmate.app.data.trips.ShadowTripResolver = com.bydmate.app.data.trips.ShadowTripResolver(
+        store = com.bydmate.app.data.trips.PendingTripStorePrefs(
+            ctx.getSharedPreferences(com.bydmate.app.data.trips.PendingTripStorePrefs.PREFS_NAME, Context.MODE_PRIVATE)
+        ),
+        tripDao = tripDao,
+        tripPointDao = tripPointDao,
+    )
+
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList") // one parameter per injected dependency
+    fun provideTripAnomalyDetector(
+        @ApplicationContext ctx: Context,
+        db: AppDatabase,
+        odometerMarks: com.bydmate.app.data.repository.OdometerMarks,
+        shadows: com.bydmate.app.data.trips.ShadowTripResolver,
+        notes: com.bydmate.app.data.trips.RecoveredTripNotes,
+        settingsRepository: SettingsRepository,
+        vehicleKindMonitor: com.bydmate.app.data.nativestack.VehicleKindMonitor,
+    ): com.bydmate.app.data.trips.TripAnomalyDetector = com.bydmate.app.data.trips.TripAnomalyDetector(
+        marks = { odometerMarks.snapshot() },
+        tripDao = db.tripDao(),
+        tripPointDao = db.tripPointDao(),
+        tripMinuteDao = db.tripMinuteDao(),
+        lastStateDao = db.lastStateDao(),
+        shadows = { shadows.pending() },
+        checkpoint = com.bydmate.app.data.trips.AnomalyCheckpointPrefs(
+            ctx.getSharedPreferences(com.bydmate.app.data.trips.AnomalyCheckpointPrefs.PREFS_NAME, Context.MODE_PRIVATE)
+        ),
+        notes = notes,
+        capacityKwh = { settingsRepository.getBatteryCapacity() },
+        hybrid = { vehicleKindMonitor.kind.value == com.bydmate.app.data.nativestack.VehicleKind.HYBRID },
+    )
 
     @Provides
     @Singleton
@@ -638,6 +681,7 @@ object AppModule {
         deadDetector: com.bydmate.app.data.local.EnergyDataDeadDetector,
         settingsRepository: SettingsRepository,
         vehicleKindMonitor: com.bydmate.app.data.nativestack.VehicleKindMonitor,
+        shadowTrips: com.bydmate.app.data.trips.ShadowTripResolver,
     ): TripRecorder = TripRecorder(
         tripDao = tripDao,
         lastStateDao = lastStateDao,
@@ -645,6 +689,8 @@ object AppModule {
         deadDetector = deadDetector,
         batteryCapacityKwh = { settingsRepository.getBatteryCapacity() },
         kind = { vehicleKindMonitor.kind.value },
+        // Passive mode: the trip waits as a shadow for the next import (2026-11-14 missing trips).
+        shadowSink = { shadowTrips.add(it) },
     )
 
     @Provides

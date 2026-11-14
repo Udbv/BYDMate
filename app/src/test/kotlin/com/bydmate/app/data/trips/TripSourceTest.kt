@@ -13,6 +13,6 @@ class TripSourceTest {
 
     @Test
     fun `all returns full set in stable order`() {
-        assertEquals(listOf("live", "energydata", "native_polling"), TripSource.all)
+        assertEquals(listOf("live", "energydata", "native_polling", "native_fallback", "recovered"), TripSource.all)
     }
 }

@@ -43,6 +43,8 @@ open class EnergyDataReader @Inject constructor(
         private const val TAG = "EnergyDataReader"
         private const val ENERGY_DIR_PATH = "/storage/emulated/0/energydata"
         private const val LOCAL_DB_NAME = "vehicle_ec.db"
+        /** The heal check's own copy (EnergyDataDeadDetector), apart from the import's. */
+        private const val PROBE_DB_NAME = "vehicle_ec_probe.db"
         // Known BYD energy database filenames
         private val KNOWN_DB_NAMES = listOf(
             "EC_database.db",
@@ -353,20 +355,55 @@ open class EnergyDataReader @Inject constructor(
             .firstOrNull { it.exists() && it.length() > 0 }
     }
 
-    internal fun copyToLocal(source: File): File {
-        val extDir = context.getExternalFilesDir(null)
-            ?: throw EnergyDataException("ExternalFilesDir не доступен")
-        val localFile = File(extDir, LOCAL_DB_NAME)
+    /**
+     * Copies BYD's DB (and its -wal/-shm sidecars) into the app's own storage under [localName].
+     * The external files dir is the usual home; right after boot it can be missing (2026-11-14:
+     * `vehicle_ec.db: open failed: ENOENT` at 11:00:10, the import of the morning failed), so the
+     * folder is created first and, when that or the copy fails, the copy goes to internal storage.
+     * A failure of both is one [EnergyDataException] naming the exception class and the path.
+     */
+    internal fun copyToLocal(source: File, localName: String = LOCAL_DB_NAME): File {
+        val external = context.getExternalFilesDir(null)
+        val first = external?.let { dir -> runCatching { copyInto(source, dir, localName) } }
+        first?.getOrNull()?.let { return it }
+        val reason = first?.exceptionOrNull()?.let { "${it.javaClass.simpleName} in ${external.path}" }
+            ?: "external files dir unavailable"
+        val internal = context.filesDir
+        Log.w(TAG, "copy: $reason -> falling back to internal storage ${internal?.path}")
+        if (internal == null) throw EnergyDataException("copy failed: $reason, no internal files dir")
+        return runCatching { copyInto(source, internal, localName) }.getOrElse { e ->
+            Log.w(TAG, "copy: ${e.javaClass.simpleName} in ${internal.path} (${e.message})")
+            throw EnergyDataException("copy failed: ${e.javaClass.simpleName} in ${internal.path}: ${e.message}", e)
+        }
+    }
+
+    private fun copyInto(source: File, dir: File, localName: String): File {
+        if (!dir.isDirectory && !dir.mkdirs() && !dir.isDirectory) {
+            throw java.io.IOException("cannot create ${dir.path}")
+        }
+        val localFile = File(dir, localName)
         copyFile(source, localFile)
         // WAL may hold committed trips the main file does not have yet (AC-04):
         // copy the sidecars (or drop stale local ones) so SQLite replays them.
         // A torn -wal copy is safe: replay stops at the first bad frame checksum.
         for (suffix in listOf("-wal", "-shm")) {
             val sidecar = File(source.parentFile, source.name + suffix)
-            val localSidecar = File(extDir, LOCAL_DB_NAME + suffix)
+            val localSidecar = File(dir, localName + suffix)
             if (sidecar.exists()) copyFile(sidecar, localSidecar) else localSidecar.delete()
         }
         return localFile
+    }
+
+    /**
+     * Rows of BYD's DB that ended at or after [sinceSec], read from a private copy of its own
+     * ([PROBE_DB_NAME]) so the dead-file heal check never races an import over the same copy.
+     * Null when there is no DB; a read failure is thrown to the caller.
+     */
+    suspend fun readTripsForProbe(sinceSec: Long): List<BydTripRecord>? = withContext(Dispatchers.IO) {
+        val dir = energyDataDir()
+        if (!dir.exists()) return@withContext null
+        val sourceDb = findDbViaListFiles(dir) ?: findDbViaKnownNames(dir) ?: return@withContext null
+        readTripsFromDb(copyToLocal(sourceDb, PROBE_DB_NAME)).filter { it.endTimestamp >= sinceSec }
     }
 
     private fun copyFile(from: File, to: File) {

@@ -108,6 +108,28 @@ interface TripDao {
     @Query("SELECT * FROM trips ORDER BY start_ts")
     suspend fun getAllSnapshot(): List<TripEntity>
 
+    /** Trips starting inside [from]..[to], oldest first (shadow-trip resolution, anomaly detector). */
+    @Query("SELECT * FROM trips WHERE start_ts >= :from AND start_ts <= :to ORDER BY start_ts")
+    suspend fun getStartingBetween(from: Long, to: Long): List<TripEntity>
+
+    /**
+     * A trip the app wrote itself (native, shadow, recovered; no byd id yet) for the drive of the
+     * energydata record [startTs]..[endTs]: the two windows overlap by at least half of the shorter
+     * one, greatest overlap first. 0 or null: none. Checked after [getSameTripByTime], so a BYD
+     * record that starts earlier than the app's trip (a warm-up, the trip started at the first
+     * odometer movement) still becomes that trip instead of a duplicate (2026-11-14).
+     */
+    @Query("""
+        SELECT id FROM trips
+        WHERE byd_id IS NULL AND source IN ('native_polling', 'native_fallback', 'recovered')
+          AND COALESCE(distance_km, 0.0) > 0.0 AND end_ts IS NOT NULL
+          AND MIN(end_ts, :endTs) > MAX(start_ts, :startTs)
+          AND (MIN(end_ts, :endTs) - MAX(start_ts, :startTs)) * 2 >= MIN(end_ts - start_ts, :endTs - :startTs)
+        ORDER BY (MIN(end_ts, :endTs) - MAX(start_ts, :startTs)) DESC
+        LIMIT 1
+    """)
+    suspend fun getOverlappingOwnTripId(startTs: Long, endTs: Long): Long?
+
     /** Recalculation input: trips inside the range that carry kWh or (DM-i) litres to price. */
     @Query("""
         SELECT * FROM trips
