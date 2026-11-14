@@ -16,7 +16,7 @@ Privacy: no coordinates, no top speeds, no bot token or chat id are written here
 - Index: `python3 -I -B tools/tg-logs/index.py <ARCHIVE_DIR> <OUT_DIR>` writes `INDEX.md` + `index.json`
   (file, kind, version, time span, per-category counts, parked-test table, sample lines). Read the index
   first, then grep only the right file for the category regex.
-- `docs/logs/FILES.md` is the machine-made file table from the last index run (144 files indexed; zips skipped when a same-named .txt exists). This file (`INDEX.md`) is the human reading of it.
+- `docs/logs/FILES.md` is the machine-made file table from the last index run (262 files indexed on 2026-11-14, 308 in the archive; zips skipped when a same-named .txt exists). Files after 11-04 22:00 (dev.20-dev.22) are in FILES.md but not in the table of section 2; 3.12 covers 11-13/11-14. This file (`INDEX.md`) is the human reading of it.
 - Where the raw files were: `/tmp/claude-0/-home-user-BYDMate/13bace2c-94d2-5318-a86b-71357b91e275/scratchpad/log-archive`
   (session scratchpad, will vanish).
 - File kinds: `bydmate_logs_*` = 20-minute parts of the automatic logcat trip log (car local time, UTC+2;
@@ -390,6 +390,73 @@ Not testable from these logs: whether the view froze during or after the test, a
 
 **Other facts in the new files:** `FidPush: subscribed=143 ok=123 failed=20` as before; `AutoBackup telegram rc=ok` (no Telegram failures); automation rules 2/7/8 ran at car on (Waze, Spotify at 20:37:37-42; a Waze start and a Spotify play); 0 hits for NAVVOICE / TextToSpeech; no bump offer except one `BUMP bump? pp=22.1 v=28 not offered: late` at 20:37:40 (trip-20261104-203735).
 
+### 3.12 Missing trip on 2026-11-14 (warm-up, then ~1 h of driving not in the trip list)
+
+Files (all 4.2.0-dev.22 (554), fetched 11-14 ~12:13 car time): trip-20261114-085840 / -094103 / -102110; logs_20261114_085843, _091843, _093846
+(pid 16494), _094107, _100107 (pid 1634), _102135 (pid 31547), _110010, _112011, _114011 (pid 27017, to 12:00:11); fidrec zips for each part.
+The night before: trip-20261113-225700 + logs_20261113_225709 (pid 4912). Nothing is missing from Telegram for the morning: every part from 08:58 to 12:00
+was sent (`to telegram: sent`), the gaps between parts are times the head unit was off. The trip log of the 11:00 process is not sent yet (sent at its end).
+Capture caveat: each process's first ~1-2 s is often not in the logcat part (the buffer is full of boot lines), so lines logged at process start
+(`trip open:`, `driving session over a frozen energydata file (n/3)`, the start-up `Sync:` at 09:41 and 10:21) can be missing; the trip debug log (`trip-*.log`) does cover the start.
+
+**Timeline (car time, odometer km / SoC % from TrackingService and TechPanel lines)**
+
+| time | pid | event |
+|---|---|---|
+| 11-13 22:57:11 | 4912 | `driving session over a frozen energydata file (3/3)` -> `energydata marked DEAD for this device - native trip recording ON`; `TripRecorder trip open` (odo 35178.7, SoC 94) |
+| 11-13 23:14 | 4912 | last line; car off. Overnight AC charging (session created at unplug: 89 -> 99 %) |
+| 08:58:40 | 16494 | car on for the **warm-up**, plugged in (`gun=2 plugged=true`, `STILL_CHARGING`), powerState=3. Trip log: `TRIP open trip at restart: gap=35086s km=14.7 -> closed (gap over 5 min)` = last night's trip written at cold start (correct). `Sync: Без изменений` |
+| 09:00:48-51 | 16494 | powerState 3 -> 2 (`push powerState -> evaluate`): first ignition edge of the day. 09:00:51.128 **`EnergyDataReader: dead-marked energydata changed on disk - healing back to passive`** |
+| 09:00-09:38 | 16494 | standing, odo 35193.4, SoC 100 -> 99, powerState 2 |
+| 09:38:41 | 16494 | unplugged: `SESSION_CREATED id=43 ... AC socStart=89 socEnd=99` |
+| 09:40:50 | 16494 | last line (reverse camera up); process gone, no crash line |
+| 09:41:03 | 1634 | new process (`reason: service start`, head unit restart). Trip log has **no** `open trip at restart` line |
+| 09:50-10:19:57 | 1634 | **drive 1**: odo 35193.4 -> 35222.6 (29.2 km), SoC 99 -> 88 (`remain` 96.4 -> 86.4); TripTracker `flushPoints` ~1680 GPS points; no TripRecorder line |
+| 10:19:57-10:21:10 | - | head unit off/on (stop, odo unchanged) |
+| 10:21:10 | 31547 | new process; trip log again has **no** `open trip at restart` line |
+| 10:21-10:37:18 | 31547 | **drive 2**: odo 35222.6 -> 35249.6 (27.0 km), SoC 87 -> 77 (`remain` 85.4 -> 75.0); ~900 GPS points; part ends 10:37:18 (car off) |
+| 11:00:08 | 27017 | new process: `Widget session START (powerOn=true, mileageStart=35249.6, totalElecStart=9440.2)`, `marks: entry opened km=35249.6`; 11:00:10.737 **`Sync: .../files/vehicle_ec.db: open failed: ENOENT`** |
+| 11:00-12:00:11 | 27017 | **drive 3** (still going at the end of the files): odo 35249.6 -> 35345.9, SoC 77 -> 42; ~3500 GPS points; no TripRecorder line; 11:38:56 the owner opened the app |
+
+No FATAL / ANR / `has died` / DeadObject in any of these files. All process changes are head-unit restarts (the old pid's log just stops, the new one starts with `service start`).
+
+**Root cause (evidence).** `TripRecorder.consume()` writes a trip only when it is *active*: `!energyDataReader.isAvailable() || deadDetector.isDead()`.
+On this car `/storage/emulated/0/energydata/EC_database.db` exists (45056 B, constant size since 10-24) but does not record the drives: on 11-13 three driving
+sessions (17:07, 19:14, 22:57) left its fingerprint unchanged, so it was marked dead and the 22:57 trip was recorded natively. `EnergyDataDeadDetector.evaluate()`
+heals the verdict on **any** fingerprint change (mtime+size of db+wal). Between 23:14 and the 09:00:51 ignition edge the file was touched (the car was charging);
+the detector healed, TripRecorder became passive, and from then on no trip was opened (proof: the 09:41 and 10:21 trip logs would show `open trip at restart ... continued`
+if the previous process had an open trip; `reconcileColdStart()` logs that line whenever last_state holds one). In passive mode the only trip source is
+`HistoryImporter` (energydata import). The only captured import attempt, 11:00:10, failed copying the DB to the app's private copy (`ENOENT` on
+`Android/data/com.bydmate.app.waze/files/vehicle_ec.db`); the attempts at 09:41/10:21 are not in the capture. No `import odo` line (one per imported trip) exists in any of the 262 files,
+so there is no evidence that an energydata import ever produced a trip on this car. Result: drives 1 and 2 (09:41-10:37, 56.2 km, SoC 99 -> 77) are not in the list, and drive 3 (from 11:00) will be missing too.
+Not the cause: thresholds (56 km), a crash, the process being dead (the service ran and logged the whole drive), a DB write failure (no TripRecorder write was attempted), the cold-start reconciliation (it ran correctly at 08:58).
+
+**Pattern (strong correlation, not proven):** the streak was reset (`1/3` again, or a heal) after charging sessions: 10-31 15:40 DC -> 16:10 1/3; 10-31 17:03-17:28 -> 11-01 1/3; 11-03 22:07 DC -> 22:14 1/3;
+11-12 08:44 AC -> 20:37 1/3; 11-13 13:52 AC -> 17:07 1/3; 11-14 overnight AC -> heal 09:00. Exceptions: 11-03 19:08 DC -> 19:45 2/3 (no reset), 11-03 15:29 -> 17:52 reset with no charge seen.
+The 10-24/25 dumps show the same file size 45056 B with the mtime moving (10-25 11:23, 13:54, 14:24). So after (some) charges the app goes passive and every drive is lost until three
+frozen driving sessions (>= 1 km, >= 30 min apart) mark it dead again: the 11-11 18:15 heal -> 11-13 22:57 dead window (about 9 drives) is probably affected the same way (check the trip list for 11-11..11-13).
+
+**Guess, not evidence:** the warm-up itself is not the cause; it only supplied the first ignition edge after the charge. Had the detector stayed dead, TripRecorder would have opened
+a trip at 09:00:51 (powerState 2 during the warm-up) and resumed it across the 09:41 and 10:21 restarts (gaps < 5 min), closing it at the 11:00 cold start: one trip 09:00-10:37 with the 40-min warm-up merged in.
+Why the 11:00 copy failed (ENOENT on the app's external files dir right after boot, or a race between the two `runSync()` calls at process start) is unknown; the error and stack lines of `HistoryImporter`/`EnergyDataReader` are not in the capture.
+
+**Data to recover the trip (all on the head unit, none sent to Telegram):** `odometer_marks` prefs (one entry per process: first/last km and time; entries for pids 1634, 31547, 27017),
+`trip_points` with `trip_id = 0` for 09:50-10:37 (unattached GPS points, thinned only after 7 days), `trip_minutes` (per-minute kWh and SoC), the last-session SoC bookmarks.
+From the logs alone: drive 1 09:41:03-10:19:57, 35193.4 -> 35222.6 km, SoC 99 -> 88, ~10.0 kWh by `remain`; drive 2 10:21:10-10:37:18, 35222.6 -> 35249.6 km, SoC 87 -> 77, ~10.4 kWh.
+Inserting trips with these start/end times lets `HistoryImporter.attachGpsPoints()` attach the route by itself (it matches `trip_id = 0` points by time). The trip can be recovered.
+
+**Proposed fix (not implemented):**
+1. Heal only on evidence of drives: on a fingerprint change, read the EnergyConsumption rows and heal only if a row with `trip > 0` ends inside a drive the app saw (odometer marks), not on any mtime/size change.
+2. Safety net in passive mode: TripRecorder keeps a shadow open trip (persisted like the active one) even when passive; when it closes (or at the next cold start) it checks for an energydata row covering it,
+   and inserts the native trip if none appears by the next successful sync (source `native_fallback`, dedup by time as `getSameTripByTime` already does).
+3. Start the trip at the first odometer movement, not at powerState 2, so a warm-up is not merged into the drive.
+4. `copyToLocal()`: create the external files dir (`mkdirs()`), fall back to `filesDir`, and log the import error with its tag.
+
+**Proposed anomaly detector:** at every cold start (and at the power-off edge when seen) compare the odometer marks and last_state since the last recorded trip end with the trips table:
+for each process entry with `lastKm - firstKm > 1 km`, and for each gap between entries where `firstKm(next) - lastKm(prev) > 1 km` (car driven while the app was not running),
+sum the trip distances overlapping that window; if the uncovered distance is > 1 km or the SoC/totalElec fell by > 3 % without a trip, log `TRIP anomaly window=... odo=a->b soc=x->y covered=c km`,
+insert a recovered trip (source `recovered`, from odometer marks, SoC/totalElec, trip_minutes; GPS points attach by time) and add a line to the Telegram power-off report. Today it would have fired at 10:21 (drive 1) and at 11:00 (drive 2).
+
 ## 4. Open questions the logs have not answered
 
 0. What freezes the head unit's ADAS view (3.11 evening and 11-04 after run 6)? See 3.11: the route frames left behind by the parked test are the main suspect, unproven.
@@ -406,3 +473,5 @@ Not testable from these logs: whether the view froze during or after the test, a
 8. Telegram: why `FileNotFoundException` on files the app itself just wrote (rotation race?) and why `HTTP:400` once?
 9. 45 zips (duplicates of same-named .txt) were not indexed; the 2026-10-24/25 logs lack a version line. The parts between 2026-10-25 20:53 and 10-27 08:24
    and 11-01 (11:23-14:15) have no logs; unknown whether the car was off or files were lost.
+10. Missing trip 11-14 (3.12): what writes EC_database.db on this car (charging, time sync, something else), and does it ever hold drive rows? An energydata diagnose dump from Settings
+    (mtime, size, row count, newest row) right after a drive and right after a charge would answer it. Are the trips of 11-11 18:15 .. 11-13 22:57 in the list? Why did the 11:00 copy fail with ENOENT?
