@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import com.bydmate.app.R
 import com.bydmate.app.data.local.entity.TripEntity
 import com.bydmate.app.data.remote.DiParsData
+import com.bydmate.app.data.trips.RecoveredTripNotes
 import com.bydmate.app.data.trips.TripCounterUi
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -35,6 +36,8 @@ data class ReportInputs(
     /** Price of a kWh for the trip under way (`CostCalculator.tripRateAt`); null or 0 = no cost line. */
     val tripTariff: Double? = null,
     val currencySymbol: String = "",
+    /** Trips the missing-trip detector recovered in this process (power-off report only): one ♻️ line. */
+    val recovered: List<RecoveredTripNotes.Note> = emptyList(),
 )
 
 /** Litres the recorded trips of a counter burned, over the kilometers of those trips. */
@@ -169,6 +172,7 @@ object TelegramReportBuilder {
             trip?.html,
             found[ReportField.TRIP1]?.html,
             found[ReportField.TRIP2]?.html,
+            recoveredLine(inputs.recovered, strings),
             openings?.takeIf { it.alert }?.html,
             found[ReportField.LOCATION]?.html,
         )
@@ -244,6 +248,20 @@ object TelegramReportBuilder {
             fuel != null -> markup(strings, R.string.tg_report_range_hybrid_fuel, fuel)
             else -> null
         }
+    }
+
+    /**
+     * «♻️ Восстановлена пропущенная поездка 09:50–10:19, 29.2 км» for one recovered trip, the count
+     * and the km for several; null for none.
+     */
+    private fun recoveredLine(notes: List<RecoveredTripNotes.Note>, strings: ReportStrings): String? {
+        val one = notes.singleOrNull()
+        val text = when {
+            notes.isEmpty() -> return null
+            one != null -> text(strings, R.string.tg_report_trip_recovered, formatTime(one.startTs), formatTime(one.endTs), one.km)
+            else -> text(strings, R.string.tg_report_trips_recovered, notes.size, notes.sumOf { it.km })
+        }
+        return "♻️ ${escape(text)}"
     }
 
     /** «🧭 Пробег 23 456 км»: whole kilometers cut like the car's own odometer, grouped by the language. */

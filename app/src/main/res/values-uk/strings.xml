@@ -2421,6 +2421,8 @@
     <string name="tg_report_field_trip_kwh">Енергія поїздки</string>
     <string name="tg_report_field_trip_cost">Вартість поїздки</string>
     <string name="tg_report_trip_time">Час з %1$s до %2$s</string>
+    <string name="tg_report_trip_recovered">Відновлено пропущену поїздку %1$s–%2$s, %3$.1f км</string>
+    <string name="tg_report_trips_recovered">Відновлено пропущених поїздок: %1$d (%2$.1f км)</string>
     <string name="tg_report_trip_energy">Енергія %1$.1f кВт·год</string>
     <string name="tg_report_trip_cost">Вартість %1$.2f %2$s</string>
     <string name="tg_report_field_trip_time_desc">О котрій почалася й закінчилася</string>

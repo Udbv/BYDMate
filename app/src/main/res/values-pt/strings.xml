@@ -1998,6 +1998,8 @@
     <string name="tg_report_odometer">Hodômetro %1$,d km</string>
     <string name="tg_report_trip_consumption">Consumo %1$.1f kWh/100 km</string>
     <string name="tg_report_trip_time">Horário das %1$s às %2$s</string>
+    <string name="tg_report_trip_recovered">Viagem perdida recuperada %1$s–%2$s, %3$.1f km</string>
+    <string name="tg_report_trips_recovered">Viagens perdidas recuperadas: %1$d (%2$.1f km)</string>
     <string name="tg_report_trip_energy">Energia %1$.1f kWh</string>
     <string name="tg_report_trip_cost">Custo %1$.2f %2$s</string>
     <string name="tg_report_temp_outside">lado de fora %1$+d°</string>

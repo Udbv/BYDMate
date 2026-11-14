@@ -2155,6 +2155,8 @@
     <string name="tg_report_odometer">Прабег %1$,d км</string>
     <string name="tg_report_trip_consumption">Расход %1$.1f кВт·г/100 км</string>
     <string name="tg_report_trip_time">Час з %1$s да %2$s</string>
+    <string name="tg_report_trip_recovered">Адноўлена прапушчаная паездка %1$s–%2$s, %3$.1f км</string>
+    <string name="tg_report_trips_recovered">Адноўлена прапушчаных паездак: %1$d (%2$.1f км)</string>
     <string name="tg_report_trip_energy">Энергія %1$.1f кВт·г</string>
     <string name="tg_report_trip_cost">Кошт %1$.2f %2$s</string>
     <string name="tg_report_temp_outside">звонку %1$+d°</string>

@@ -78,6 +78,8 @@ class TelegramReporter @Inject constructor(
     private val offState: PowerOffArmState,
     private val costCalculator: CostCalculator,
     private val vehicleKindMonitor: VehicleKindMonitor? = null,
+    /** Trips recovered by the missing-trip detector in this process: one line in the power-off report. */
+    private val recoveredTripNotes: com.bydmate.app.data.trips.RecoveredTripNotes? = null,
 ) {
     companion object {
         private const val TAG = "TgReport"
@@ -150,7 +152,7 @@ class TelegramReporter @Inject constructor(
         val header = TelegramReportBuilder.powerOffHeader(strings)
         val fields = settings.getTgReportOffFields()
         val report = TelegramReportBuilder.build(
-            header, "", fields, inputs(), language(), strings, clock(),
+            header, "", fields, inputs().copy(recovered = recoveredTripNotes?.all().orEmpty()), language(), strings, clock(),
             tripEndLabel = TelegramReportBuilder.TIME_PLACEHOLDER,
         )
         previous?.takeIf { it.token == config.token && it.chatId == chatId && it.text == report.text }

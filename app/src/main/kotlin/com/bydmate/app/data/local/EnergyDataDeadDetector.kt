@@ -10,7 +10,9 @@ import android.util.Log
  * its fingerprint changes between sessions and the streak below keeps resetting — by
  * construction the detector can never fire there. On a dead leftover the fingerprint is
  * frozen forever, the streak reaches [DEAD_STREAK_THRESHOLD] and the device is switched
- * to native trip recording until reset (Settings button) or auto-heal (file changes).
+ * to native trip recording until reset (Settings button) or auto-heal: the file gains a drive row
+ * that ends inside a drive the app saw itself. A bare change of mtime/size is not enough
+ * ([checkHealIfDue], 2026-11-14).
  *
  * A file frozen for months (#148: energydata stuck since Nov 2025 on a driving car) does not need
  * the full [DEAD_STREAK_THRESHOLD] to be judged: a driving session over a DB older than
@@ -36,7 +38,16 @@ class EnergyDataDeadDetector(
     private val reader: EnergyDataReader,
     private val store: EnergyDataLivenessStore,
     private val now: () -> Long = { System.currentTimeMillis() },
+    /** Drives the app saw itself (odometer marks): the only evidence a dead verdict is healed on. */
+    private val observedDrives: () -> List<DriveWindow> = { emptyList() },
 ) {
+
+    /**
+     * Fingerprint of a dead-marked file seen changing at the last ignition-on: the heal check reads
+     * its rows ([checkHealIfDue]) before anything changes. Null when no check is due.
+     */
+    @Volatile
+    private var healCandidate: Pair<Long, Long>? = null
 
     private var sessionRunning = false
     private var sessionStartMileage: Double? = null
@@ -90,10 +101,41 @@ class EnergyDataDeadDetector(
         }
     }
 
+    /**
+     * Heals a dead verdict only on evidence (2026-11-14): after the file of a dead-marked device
+     * changed, its rows are read and the verdict goes only when one with a distance ends inside a
+     * drive the app observed itself ([EnergyDataHealRule]). Otherwise it stays and the new
+     * fingerprint is taken, so the next change is checked again. Every decision is one log line
+     * with its reason. A read failure leaves the change unchecked: the next ignition-on retries it.
+     */
+    @Suppress("TooGenericExceptionCaught") // a failed read must never stop the poll loop
+    suspend fun checkHealIfDue() {
+        val fp = healCandidate ?: return
+        val sinceSec = (now() - HEAL_LOOKBACK_MS) / 1000L
+        healCandidate = null
+        val records = try {
+            reader.readTripsForProbe(sinceSec)
+        } catch (e: Exception) {
+            // The fingerprint stays untaken: the next ignition-on sees the change again and retries.
+            Log.w(TAG, "dead verdict heal check: read failed ${e.javaClass.simpleName}, retried next ignition")
+            return
+        }
+        val verdict = EnergyDataHealRule.decide(records.orEmpty(), observedDrives())
+        if (verdict.heal) {
+            Log.i(TAG, "dead-marked energydata gained a drive row — healing back to passive: ${verdict.reason}")
+            store.reset()
+            cachedDead = false
+        } else {
+            Log.i(TAG, "dead-marked energydata changed but gained no drive — verdict kept: ${verdict.reason}")
+        }
+        store.setFingerprint(fp.first, fp.second)
+    }
+
     /** Settings button: forget the verdict, re-detect from scratch. */
     fun reset() {
         store.reset()
         cachedDead = null
+        healCandidate = null
         sessionRunning = false
         sessionStartMileage = null
         sessionPendingMarked = false
@@ -112,13 +154,16 @@ class EnergyDataDeadDetector(
                 store.setFingerprint(fpNow.first, fpNow.second)
                 store.setPendingDriving(false)
             }
+            fpNow != stored && store.isDead() -> {
+                // 2026-11-14: a bare mtime/size change is no proof the file records drives (an
+                // overnight charge touched it, the app went passive, the morning's drives were
+                // lost). The verdict stays until checkHealIfDue() finds a real drive row.
+                Log.i(TAG, "dead-marked energydata changed on disk (fp $stored -> $fpNow) — " +
+                    "checking its rows before healing")
+                healCandidate = fpNow
+            }
             fpNow != stored -> {
-                // The car is appending to the file — energydata is alive. Also heals a
-                // false "dead" verdict so HistoryImporter and TripRecorder can never run
-                // in parallel on a live file (that would duplicate trips).
-                if (store.isDead()) {
-                    Log.i(TAG, "dead-marked energydata changed on disk — healing back to passive")
-                }
+                // The car is appending to the file — energydata is alive: the streak restarts.
                 store.reset()
                 store.setFingerprint(fpNow.first, fpNow.second)
                 cachedDead = false
@@ -157,5 +202,7 @@ class EnergyDataDeadDetector(
         internal const val MIN_SESSION_KM = 1.0
         internal const val MIN_INCREMENT_SPACING_MS = 30 * 60_000L
         internal const val STALE_FILE_AGE_MS = 30L * 24 * 60 * 60_000L
+        /** Rows read by the heal check; the odometer marks it is compared with live 14 days. */
+        internal const val HEAL_LOOKBACK_MS = 14L * 24 * 60 * 60_000L
     }
 }

@@ -2155,6 +2155,8 @@
     <string name="tg_report_odometer">Przebieg %1$,d km</string>
     <string name="tg_report_trip_consumption">Zużycie %1$.1f kWh/100 km</string>
     <string name="tg_report_trip_time">Czas od %1$s do %2$s</string>
+    <string name="tg_report_trip_recovered">Odtworzono pominiętą podróż %1$s–%2$s, %3$.1f km</string>
+    <string name="tg_report_trips_recovered">Odtworzono pominięte podróże: %1$d (%2$.1f km)</string>
     <string name="tg_report_trip_energy">Energia %1$.1f kWh</string>
     <string name="tg_report_trip_cost">Koszt %1$.2f %2$s</string>
     <string name="tg_report_temp_outside">na zewnątrz %1$+d°</string>

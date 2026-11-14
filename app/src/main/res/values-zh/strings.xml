@@ -2114,6 +2114,8 @@
     <string name="tg_report_odometer">总里程 %1$,d 公里</string>
     <string name="tg_report_trip_consumption">能耗 %1$.1f kWh/100 公里</string>
     <string name="tg_report_trip_time">时间 %1$s 至 %2$s</string>
+    <string name="tg_report_trip_recovered">已恢复漏记的行程 %1$s–%2$s，%3$.1f 公里</string>
+    <string name="tg_report_trips_recovered">已恢复漏记的行程：%1$d 次（%2$.1f 公里）</string>
     <string name="tg_report_trip_energy">电量 %1$.1f kWh</string>
     <string name="tg_report_trip_cost">费用 %1$.2f %2$s</string>
     <string name="tg_report_temp_outside">车外 %1$+d°</string>

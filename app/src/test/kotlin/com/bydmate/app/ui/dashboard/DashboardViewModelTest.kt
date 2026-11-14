@@ -109,6 +109,8 @@ class DashboardViewModelTest {
         override suspend fun getLiveTrips(): List<TripEntity> = emptyList()
         override suspend fun getSameTripByTime(startTs: Long, windowMs: Long): TripEntity? = null
         override suspend fun getAllSnapshot(): List<TripEntity> = emptyList()
+        override suspend fun getStartingBetween(from: Long, to: Long): List<TripEntity> = emptyList()
+        override suspend fun getOverlappingOwnTripId(startTs: Long, endTs: Long): Long? = null
         override suspend fun unlinkBydId(id: Long, bydId: Long): Int = 0
         override suspend fun getWithEnergyInRange(from: Long, to: Long): List<com.bydmate.app.data.local.entity.TripEntity> = emptyList()
         override suspend fun deleteById(id: Long) {}

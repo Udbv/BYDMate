@@ -74,6 +74,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Named
@@ -123,6 +125,7 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var odometerMarks: com.bydmate.app.data.repository.OdometerMarks
     @Inject lateinit var sharedAdaptiveLoop: com.bydmate.app.data.loop.SharedAdaptiveLoop
     @Inject lateinit var tripRecorder: com.bydmate.app.data.trips.TripRecorder
+    @Inject lateinit var tripAnomalyDetector: com.bydmate.app.data.trips.TripAnomalyDetector
     @Inject lateinit var tripCounterResets: com.bydmate.app.data.trips.TripCounterResets
     @Inject lateinit var helperBootstrap: com.bydmate.app.data.vehicle.HelperBootstrap
     @Inject lateinit var fidCatalogManager: FidCatalogManager
@@ -365,6 +368,9 @@ class TrackingService : Service(), LocationListener {
         // ≈ 12 s of grace before giving up — enough for the fid cache to warm so
         // a real sleep-charge isn't lost to a transient cold read.
         private const val AUTOSERVICE_CATCHUP_MAX_RETRIES = 4
+        /** The service-start trip anomaly check waits this long for the first odometer reading. */
+        private const val ANOMALY_START_WAIT_MS = 120_000L
+        private const val ANOMALY_SETTLE_MS = 3_000L
         private const val AUTOSERVICE_CATCHUP_RETRY_DELAY_MS = 3_000L
         // Tick-driven catch-up retry while unresolved. 10 ticks ≈ 30 s at the
         // 3-s base interval — each retry costs ~8 Binder/ADB reads, so keep it
@@ -956,6 +962,15 @@ class TrackingService : Service(), LocationListener {
             } catch (e: Exception) {
                 Log.w(TAG, "Sync failed: ${e.message}")
             }
+            // Missing-trip check after the import (its shadow trips are resolved by then), once this
+            // process has read the odometer: the gap since the last process is only known with it.
+            runCatching {
+                withTimeoutOrNull(ANOMALY_START_WAIT_MS) {
+                    lastData.first { (it?.mileage ?: 0.0) >= 1.0 }
+                }
+                delay(ANOMALY_SETTLE_MS)  // the tick that set lastData writes the odometer mark after it
+                tripAnomalyDetector.check("service_start")
+            }.onFailure { Log.w(TAG, "Trip anomaly check failed: ${it.javaClass.simpleName}", it) }
         }
 
         // Automatic backup (#237): due check at ignition, the export itself runs in a worker.
@@ -1854,6 +1869,13 @@ class TrackingService : Service(), LocationListener {
                     // Native trip recorder (writes only when energydata absent — i.e. Song/Atto/non-Leopard3)
                     runCatching { tripRecorder.consume(data) }
                         .onFailure { Log.w(TAG, "TripRecorder.consume failed", it) }
+                    // End of a drive (after the recorder closed its trip): look for a missing one.
+                    if (tripAnomalyDetector.isDriveEndEdge(data.powerState, nowMs)) {
+                        serviceScope.launch {
+                            runCatching { tripAnomalyDetector.check("drive_end") }
+                                .onFailure { Log.w(TAG, "Trip anomaly check failed: ${it.javaClass.simpleName}", it) }
+                        }
+                    }
                     // DM-i counter snapshots for the energydata trips; no-op unless HYBRID.
                     runCatching { counterSnapshotWriter.onTick(data, vehicleKindMonitor.kind.value, nowMs) }
                         .onFailure { Log.w(TAG, "CounterSnapshotWriter.onTick failed", it) }
