@@ -93,7 +93,7 @@ class VoiceControllerSessionTest {
      *  CoroutineScope(SupervisorJob()) with no test-dispatcher seam, so true virtual-time control
      *  (runTest) is not available without changing the production constructor; this is the closest
      *  practical alternative. */
-    private fun awaitTrue(timeoutMs: Long = 2_000L, condition: () -> Boolean) {
+    private fun awaitTrue(timeoutMs: Long = 5_000L, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             if (condition()) return

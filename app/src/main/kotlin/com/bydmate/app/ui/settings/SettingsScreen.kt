@@ -2798,6 +2798,52 @@ internal fun LearnButtonDialog(
 private fun LearnUiState.isWaitingForKey(): Boolean =
     this is LearnUiState.Waiting || this is LearnUiState.Rejected || this is LearnUiState.Occupied
 
+/**
+ * Stock multimedia apps BYDMate keeps disabled (KeptDisabledApps): one switch per allowlisted app,
+ * with what the system says about it now. Off by default; the daemon does the `pm` work.
+ */
+@Composable
+private fun KeptDisabledAppsCard(viewModel: SettingsViewModel) {
+    val rows by viewModel.keptDisabledApps.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { viewModel.refreshKeptDisabledApps() }
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = CardSurfaceElevated),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp)) {
+            Text(
+                stringResource(R.string.settings_kept_disabled_apps_title),
+                color = TextPrimary, fontSize = 15.sp,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            SettingHint(stringResource(R.string.settings_kept_disabled_apps_desc))
+            rows.forEach { row ->
+                val stateText = stringResource(
+                    when (row.systemState) {
+                        com.bydmate.app.data.vehicle.KeptDisabledAppsSync.SystemState.ENABLED ->
+                            R.string.settings_kept_disabled_state_enabled
+                        com.bydmate.app.data.vehicle.KeptDisabledAppsSync.SystemState.DISABLED ->
+                            R.string.settings_kept_disabled_state_disabled
+                        com.bydmate.app.data.vehicle.KeptDisabledAppsSync.SystemState.MISSING ->
+                            R.string.settings_kept_disabled_state_missing
+                    }
+                )
+                SettingToggleRow(
+                    title = row.app.label,
+                    traceId = "keep_disabled_${row.app.id}",
+                    description = "${row.app.pkg} · $stateText",
+                    checked = row.checked,
+                    onCheckedChange = { viewModel.setKeepAppDisabled(row.app.id, it) },
+                    // An app missing on this car cannot be switched on; one switched on earlier
+                    // can still be switched off.
+                    enabled = row.checked ||
+                        row.systemState != com.bydmate.app.data.vehicle.KeptDisabledAppsSync.SystemState.MISSING,
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun ServiceSection(
@@ -2937,6 +2983,8 @@ private fun ServiceSection(
             )
         }
     }
+
+    KeptDisabledAppsCard(viewModel)
 
     // ADB restore (firmwares that close port 5555 on every reboot). The toggle is shown on
     // every car: where the port survives a reboot the status line simply says so.
@@ -3302,6 +3350,17 @@ private fun DiagnosticsRows(state: SettingsUiState, viewModel: SettingsViewModel
         onCheckedChange = {
             cruiseAdvice = it
             com.bydmate.app.adas.CruiseAdvisor.setEnabled(tripLogContext, it)
+        },
+    )
+    // Automatic high beam watch: one quiet overlay per reason and trip; reads the car only.
+    var hmaWarning by remember { mutableStateOf(com.bydmate.app.hma.HmaWatch.isEnabled(tripLogContext)) }
+    SettingToggleRow(
+        title = stringResource(R.string.settings_hma_warning_title),
+        description = stringResource(R.string.settings_hma_warning_desc),
+        checked = hmaWarning,
+        onCheckedChange = {
+            hmaWarning = it
+            com.bydmate.app.hma.HmaWatch.setEnabled(tripLogContext, it)
         },
     )
     // Trip debug log: the car keeps its own record because Wi-Fi is gone the moment it

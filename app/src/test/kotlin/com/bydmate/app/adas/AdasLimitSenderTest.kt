@@ -53,7 +53,7 @@ class AdasLimitSenderTest {
         val before = gateway.fired.size
         session.send(null)
         assertTrue(gateway.fired.size > before)
-        assertEquals(AdasShadowFrames.TOPIC_NAVI_STATUS, gateway.fired.last())
+        assertEquals(AdasParkedTest.clearingFrames(null).map { it.topic }, gateway.fired.takeLast(3))
         val afterClear = gateway.fired.size
         session.send(null)
         assertEquals("cleared only once", afterClear, gateway.fired.size)
@@ -82,5 +82,37 @@ class AdasLimitSenderTest {
         session.close()
         assertTrue(gateway.fired.isEmpty())
         assertTrue(!gateway.unbound)
+    }
+
+    @Test fun `the clear is the map's idle for three seconds, the car on no path at its position`() = runTest {
+        val gateway = FakeGateway()
+        val here = RoutePoint(50.0, 30.0)
+        val session = AdasLimitSender.Session(gateway, { here }) {}
+        session.send(AdasLimitSender.framesFor(snap(90)))
+        val before = gateway.fired.size
+        val start = testScheduler.currentTime
+        session.send(null)
+        val round = AdasParkedTest.clearingFrames(here).map { it.topic }
+        assertEquals(List(AdasParkedTest.CLEAR_ROUNDS) { round }.flatten(), gateway.fired.drop(before))
+        assertTrue(testScheduler.currentTime - start >= AdasParkedTest.CLEAR_MS)
+    }
+
+    @Test fun `an implausible position sends no location in the clear`() = runTest {
+        val gateway = FakeGateway()
+        val session = AdasLimitSender.Session(gateway, { RoutePoint(50.0, 30.0) }) {}
+        session.send(AdasLimitSender.framesFor(snap(90)))
+        val before = gateway.fired.size
+        session.send(null, AdasLimitSender.WHY_GNSS)
+        assertTrue(gateway.fired.drop(before).none { it == AdasRouteFrames.TOPIC_VEHICLE_LOCATION })
+    }
+
+    @Test fun `closing a session lets go of its lease only, the started services keep the binding`() = runTest {
+        val gateway = FakeGateway(rc = 11)
+        val shared = AdasSharedGateway { gateway }
+        val session = AdasLimitSender.Session(shared.lease()) {}
+        session.send(AdasLimitSender.framesFor(snap(90)))
+        session.close()
+        assertTrue(shared.isPinned)
+        assertTrue("the binding stays", !gateway.unbound)
     }
 }

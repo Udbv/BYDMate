@@ -36,6 +36,40 @@ The WSL user here has no passwordless sudo, so nothing below needs root and noth
 4. **`local.properties`** — `sdk.dir=/home/<user>/Android/Sdk`.
 5. `./gradlew :app:testWazeDebugUnitTest`
 
+## How `scripts/preflight.sh` uses it
+
+Once steps 1–2 are done, `scripts/preflight.sh` does steps 3–5 by itself on every run: it copies
+the checkout into `~/bydmate-preflight-<checkout dir>` (one copy per worktree; override with
+`WSL_DIR`), excluding `.git/`, `.claude/`, every `build/`, `.gradle/`, `local.properties` and
+`keystore.properties`, writes a Linux `local.properties`, and runs `scripts/preflight.sh
+--tests-only` there — the same watchdog and the same verdict, on Linux. Meanwhile Windows builds
+the release, runs detekt and lint and packages the emulator APK in one gradle run, and the
+emulator scenarios start as soon as that APK exists. With no usable WSL (or with
+`PREFLIGHT_TESTS=windows`) the unit tests run on Windows after the build instead.
+
+The test step runs with `-Pbydmate.noCoverage -Pbydmate.testForks=4` (`TEST_FORKS` overrides the
+worker count). Measured 4.11.2026 on this machine (12 threads, 64 GB; WSL gets 30 GB), the same
+one-line code change before every run, other agents' builds running beside it:
+
+| Unit-test task in WSL after a code change | time | sum of suite times |
+|---|---|---|
+| 1 worker, no coverage agent | 7m 48s | 399 s |
+| 4 workers, no coverage agent | 4m 03s | 722 s |
+| 6 workers, no coverage agent | 4m 30s | 1141 s |
+| 4 workers, coverage agent on | 5m 53s | 1055 s |
+
+| Whole preflight | before | after |
+|---|---|---|
+| warm, light load | 12m 11s, unit tests on Windows | 4m 28s – 5m 05s (3 runs), detekt and lint included |
+| first run in a fresh worktree, heavy load | 23m 29s | — |
+
+Before, the unit tests on Windows alone took 10 min, and Linux is what CI and the head unit run.
+(At the time of those measurements 15 tests also failed only on Windows; #76 fixed them, so
+`PREFLIGHT_TESTS=windows` gives the same verdict, only slower.)
+
+What is left on the critical path (`--profile` of the Windows gradle run): `lintAnalyzeWazeDebug`
+~235 s, R8 ~134 s beside it, detekt ~34 s; the WSL tests finish at about the same moment.
+
 ## The Windows-path trap
 
 `keystore.properties` holds a Windows path (`D:/BYD/keys/...`). Gradle's `file()` reads `D:` as a

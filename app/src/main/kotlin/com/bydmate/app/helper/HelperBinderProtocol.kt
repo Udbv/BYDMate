@@ -674,6 +674,18 @@ object HelperBinderProtocol {
      */
     val TX_DTC_SCAN_STATUS: Int = IBinder.FIRST_CALL_TRANSACTION + 62  // 63
 
+    /**
+     * Keep the stock multimedia apps the driver chose disabled (KeptDisabledApps). No package name
+     * crosses the wire: bit i of each mask is KeptDisabledApps.ALLOWLIST[i]. The daemon checks the
+     * state (`pm list packages -d`, `dumpsys package`) and runs `pm disable-user --user 0` /
+     * `pm enable --user 0` on its own thread; the same masks run at most once a minute.
+     *
+     * Request: [int keepMask (keep disabled), int restoreMask (enable again)]
+     * Reply:   [int status: 0 = pass started, 1 = throttled, -1 = refused (bits outside the allowlist)]
+     * An old daemon without this handler makes transact return false → the client returns -2.
+     */
+    val TX_KEEP_APPS_DISABLED: Int = IBinder.FIRST_CALL_TRANSACTION + 63  // 64
+
     /** TX_SET_AUTO_VOICE outcomes: called; no such method on this firmware; the audio service or
      *  the call threw. */
     const val AUTO_VOICE_APPLIED = 0

@@ -10,5 +10,5 @@ import javax.inject.Inject
 @HiltViewModel
 class AdasParkedTestViewModel @Inject constructor(val test: AdasParkedTest) : ViewModel() {
     fun start(limitKph: Int, cameraM: Int): String? = test.start(viewModelScope, limitKph, cameraM)
-    fun startChange(): String? = test.startChange(viewModelScope)
+    fun startChange(withRoute: Boolean = false): String? = test.startChange(viewModelScope, withRoute)
 }

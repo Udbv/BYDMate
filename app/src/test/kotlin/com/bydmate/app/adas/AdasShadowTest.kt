@@ -15,11 +15,11 @@ class AdasShadowTest {
         cameraKind = if (camera > 0) WazeReportsReader.Kind.CAMERA else WazeReportsReader.Kind.OTHER,
     )
 
-    @Test fun `no route offers only the stopped status`() {
+    @Test fun `no route offers only the idle status`() {
         val frames = AdasShadowFrames.of(NavGuidanceHub.Snapshot(active = false))
         assertEquals(1, frames.size)
-        // {1: {4: 9}}
-        assertEquals("0a022009", frames.single().hex)
+        // {1: {4: 100}}: the factory map's idle on the bus, not the broadcast enum's 9
+        assertEquals("0a022064", frames.single().hex)
     }
 
     @Test fun `traffic info carries Waze's limit, the camera and the destination as proto3`() {

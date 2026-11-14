@@ -48,6 +48,34 @@ class FidPushChannelTest {
         assertEquals(1, channel.resubscribes)
     }
 
+    @Test fun `the HMA signals ride after the wave at this car's catalog numbers, on their own devices`() = runTest {
+        val captured = slot<List<FidPushSub>>()
+        coEvery { helper.pushSubscribe(any(), capture(captured)) } answers { okTable(captured.captured) }
+        val catalog = com.bydmate.app.data.nativestack.FidCatalog(
+            com.bydmate.app.hma.HmaSignals.ALL.associate { it.symbol to it.fid }, emptyMap(),
+        )
+
+        channel.resubscribe("fid catalog resolved") { catalog }
+
+        val tail = captured.captured.drop(FidPushApplier.PUSH_FIELDS.size)
+        assertEquals(com.bydmate.app.hma.HmaSignals.ALL.map { FidPushSub(it.fid, it.device) }, tail)
+        assertTrue(captured.captured.size <= com.bydmate.app.helper.push.MAX_PUSH_FIDS)
+        val state = com.bydmate.app.hma.HmaSignals.ALL.first()
+        assertEquals(state, channel.hmaByFid[state.fid])
+        assertEquals(null, channel.fieldFor(state.fid))
+        assertTrue(channel.diagnosticsSnapshot().any { it.startsWith("hma-state ${state.fid} dev=1038") })
+    }
+
+    @Test fun `without a catalog no HMA signal is subscribed`() = runTest {
+        val captured = slot<List<FidPushSub>>()
+        coEvery { helper.pushSubscribe(any(), capture(captured)) } answers { okTable(captured.captured) }
+
+        channel.resubscribe("binder accepted") { null }
+
+        assertEquals(FidPushApplier.PUSH_FIELDS.size, captured.captured.size)
+        com.bydmate.app.hma.HmaSignals.ALL.forEach { assertEquals(null, channel.hmaByFid[it.fid]) }
+    }
+
     @Test fun `every acceptance of a daemon reinstalls the subscription`() = runTest {
         val captured = slot<List<FidPushSub>>()
         coEvery { helper.pushSubscribe(any(), capture(captured)) } answers { okTable(captured.captured) }

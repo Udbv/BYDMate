@@ -4,9 +4,9 @@ import android.content.Context
 import android.util.Log
 import com.bydmate.app.diagnostics.TripDebugLog
 import com.bydmate.app.gnss.GnssGuard
-import com.bydmate.app.hud.HudSomeIpBridge
 import com.bydmate.app.navdata.NavGuidanceHub
 import com.bydmate.app.navdata.WazeReportsReader
+import com.bydmate.app.service.TrackingService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +31,7 @@ import javax.inject.Singleton
  * Every [PERIOD_MS] while the car is on and the switch is on: when Waze shows a limit, the frames
  * "navigating", the limit (and the camera ahead, when Waze shows one) go out. When Waze has no
  * limit (none on the road, or its reading is older than [NavGuidanceHub.SPEED_LIMIT_TIMEOUT_MS]),
- * the switch goes off or the car goes off, the "stopped" status and empty frames go out once and
+ * the switch goes off or the car goes off, the factory map's idle (status 100, no path, no limit or camera) goes out once, for 3 s, and
  * the car is back on its own camera. Every change of what is sent goes to the trip log.
  *
  * While [GnssGuard] finds the position implausible (GPS jamming or spoofing threw it, and Waze's
@@ -46,10 +46,13 @@ class AdasLimitSender @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
 
-    internal var gatewayFactory: (Context) -> AdasGateway = { BridgeGateway(HudSomeIpBridge(it)) }
+    internal var gatewayFactory: (Context) -> AdasGateway = { AdasSharedGateway.process(it).lease() }
     internal var snapshot: () -> NavGuidanceHub.Snapshot = { NavGuidanceHub.snapshot() }
     internal var enabled: () -> Boolean = { isEnabled(context) }
     internal var gnssSuspect: () -> Boolean = { GnssGuard.suspect }
+    internal var position: () -> RoutePoint? = {
+        TrackingService.lastLocation.value?.let { RoutePoint(it.latitude, it.longitude) }
+    }
 
     /** From the tracking service's tick: runs the sending loop while the car is on. */
     fun onTick(carOn: Boolean) {
@@ -63,7 +66,7 @@ class AdasLimitSender @Inject constructor(
     }
 
     private suspend fun loop() {
-        val session = Session(gatewayFactory(context))
+        val session = Session(gatewayFactory(context), position)
         try {
             while (scope.isActive && enabled() && !parkedTest.status.value.running) {
                 val paused = gnssSuspect()
@@ -75,8 +78,15 @@ class AdasLimitSender @Inject constructor(
         }
     }
 
-    /** One stretch of sending: bound lazily, services started only when a frame needs them. */
-    internal class Session(private val gateway: AdasGateway, private val log: (String) -> Unit = ::note) {
+    /**
+     * One stretch of sending: bound lazily (a lease of the process's [AdasSharedGateway]), services
+     * started only when a frame needs them. [position]: the car's, for the idle location of a clear.
+     */
+    internal class Session(
+        private val gateway: AdasGateway,
+        private val position: () -> RoutePoint? = { null },
+        private val log: (String) -> Unit = ::note,
+    ) {
         private var bound = false
         private var nextBindMs = 0L
         private var started = false
@@ -96,10 +106,11 @@ class AdasLimitSender @Inject constructor(
         }
 
         /**
-         * Ends sending with "stopped" and empty frames. The gateway services stay up: stopping
+         * Ends sending with the factory map's idle. The gateway services stay up: stopping
          * and restarting them (dev.10-15: on every new limit and at the end) left the head unit's
          * ADAS view frozen on 3.11 (the car parked, no lanes or traffic) until the multimedia was
-         * restarted. Once started they stay for the multimedia session, as the factory map's do.
+         * restarted. Once started they stay for the multimedia session, as the factory map's do:
+         * the unbind lets go of this session's lease only, the shared binding stays.
          */
         suspend fun close() {
             if (sending != null) clear("stopped")
@@ -126,10 +137,15 @@ class AdasLimitSender @Inject constructor(
             log("ADAS live first frames rc=$rcs, services started rc=$rc")
         }
 
+        /**
+         * The idle of [AdasParkedTest.clearingFrames] for [AdasParkedTest.CLEAR_MS], the position
+         * read each round (the car may be moving); none while the position is implausible.
+         */
         private suspend fun clear(why: String) {
-            repeat(CLEAR_REPEATS) {
-                AdasParkedTest.clearingFrames().forEach { gateway.fireEvent(it.topic, it.bytes) }
-                delay(PERIOD_MS)
+            repeat(AdasParkedTest.CLEAR_ROUNDS) {
+                val here = if (why == WHY_GNSS) null else position()
+                AdasParkedTest.clearingFrames(here).forEach { gateway.fireEvent(it.topic, it.bytes) }
+                delay(AdasParkedTest.CLEAR_PERIOD_MS)
             }
             sending = null
             log("ADAS live clear: $why")
@@ -138,7 +154,6 @@ class AdasLimitSender @Inject constructor(
 
     companion object {
         const val PERIOD_MS = 500L
-        private const val CLEAR_REPEATS = 3
         private const val REBIND_MS = 30_000L
         internal const val WHY_NO_LIMIT = "no Waze limit"
         internal const val WHY_GNSS = "position implausible (GNSS)"

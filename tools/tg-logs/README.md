@@ -32,8 +32,10 @@ python3 -I -B tools/tg-logs/index.py --selftest
   per-category list of which files contain it, and a "Parked test runs" table (test, start/end,
   `fires`, car before/after, refusals, changes of the car's sign/sla).
 - `index.json`: the same as records, with up to 12 sample lines per category.
-- Categories: ADAS parked/live/shadow, audio test, nav voice, bump, lanes, Telegram failures,
-  errors, voice (count only). Fid recorder dumps get metadata and `#`/bump notes only.
+- Categories: ADAS parked/live/shadow, audio test, nav voice, bump, lanes, `hma` (the auto high
+  beam journal, tag `HmaWatch`), Telegram failures, errors, voice (count only). Fid recorder dumps
+  get metadata, `#`/bump notes (`fid_notes`) and the «Світло/HMA» value lines (`fid_hma`: HMA
+  state, gray, cluster fault, high beam, headlight knob, sensor errors).
 - Samples are scrubbed: coordinates become `<geo>`, speeds above 130 become `<fast>`. A `.zip`
   is skipped when a `.txt` of the same name is at least as large. Run the index before the
   archive is used for answers, and keep `OUT_DIR` outside the repository unless it was reviewed.

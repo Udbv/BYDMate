@@ -31,17 +31,16 @@ android {
         // on DiLink Android 12 (requestLegacyExternalStorage works).
         // targetSdk 30+ would break listFiles() on /storage/emulated/0/energydata/
         targetSdk = 29
-        versionCode = 552
-        versionName = "4.2.0-dev.20"   // development pre-release; stable X.Y.Z only after a real-car test
+        versionCode = 554
+        versionName = "4.2.0-dev.22"   // development pre-release; stable X.Y.Z only after a real-car test
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // DiLink is arm64-only; single ABI keeps sherpa-onnx native libs small. The AAOS
-        // emulator testbed (dilink5-sim) is x86_64: `-Pbydmate.emulatorAbi=true` adds it for
-        // emulator-only builds (never for releases; the APK grows by ~25 MB).
+        // emulator testbed (dilink5-sim) is x86_64: `-Pbydmate.emulatorAbi=true` adds it to
+        // debug builds (see buildTypes; never to releases, the APK grows by ~25 MB).
         ndk {
             abiFilters += listOf("arm64-v8a")
-            if (project.findProperty("bydmate.emulatorAbi") == "true") abiFilters += "x86_64"
         }
     }
 
@@ -108,6 +107,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            // Debug only, so scripts/preflight.sh can build the emulator APK and the release in
+            // one gradle run without the release picking up the emulator ABI.
+            if (project.findProperty("bydmate.emulatorAbi") == "true") ndk { abiFilters += "x86_64" }
         }
     }
 

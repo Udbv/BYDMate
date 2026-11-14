@@ -53,6 +53,7 @@ import com.bydmate.app.data.repository.ChargeRepository
 import com.bydmate.app.data.repository.PlaceRepository
 import com.bydmate.app.data.repository.SettingsRepository
 import com.bydmate.app.data.repository.TripRepository
+import com.bydmate.app.data.vehicle.KeptDisabledAppsSync
 import com.bydmate.app.service.TrackingService
 import com.bydmate.app.service.UpdateChecker
 import com.bydmate.app.util.applyAppLanguage
@@ -754,6 +755,30 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
     fun toggleDisableNativeAssistant(checked: Boolean) {
         if (checked) _uiState.update { it.copy(showDisableNativeAssistantDialog = true) }
         else setDisableNativeAssistant(false)
+    }
+
+    /** Stock multimedia apps kept disabled ("Отключённые мультимедиа-приложения"): own flow, loaded on demand. */
+    private val _keptDisabledApps = MutableStateFlow<List<KeptDisabledAppsSync.Row>>(emptyList())
+    val keptDisabledApps: StateFlow<List<KeptDisabledAppsSync.Row>> = _keptDisabledApps.asStateFlow()
+
+    fun refreshKeptDisabledApps() {
+        viewModelScope.launch {
+            _keptDisabledApps.value = KeptDisabledAppsSync.rows(
+                KeptDisabledAppsSync.choices(settingsRepository),
+                KeptDisabledAppsSync.enabledSettingReader(appContext.packageManager),
+            )
+        }
+    }
+
+    /** On = keep the app disabled through the daemon, off = enable it again. Reversible. */
+    fun setKeepAppDisabled(id: String, keepDisabled: Boolean) {
+        _keptDisabledApps.update { rows -> rows.map { if (it.app.id == id) it.copy(checked = keepDisabled) else it } }
+        viewModelScope.launch {
+            KeptDisabledAppsSync.setChoice(helperClient, settingsRepository, id, keepDisabled)
+            // The daemon works on its own thread: read the system state back after a beat.
+            delay(KEPT_DISABLED_REFRESH_DELAY_MS)
+            refreshKeptDisabledApps()
+        }
     }
 
     fun confirmDisableNativeAssistant() {
@@ -1770,6 +1795,8 @@ class SettingsViewModel @Inject @Suppress("LongParameterList") constructor( // H
 
     companion object {
         private const val TAG = "SettingsViewModel"
+        /** Time the daemon gets to run `pm` before the multimedia-apps rows are read back. */
+        private const val KEPT_DISABLED_REFRESH_DELAY_MS = 3_000L
         /** Default for new users only (decision Andy 2026-09-25): the Lite tier, cheapest and
          *  fastest of the current line, which is what the voice path is tuned for. */
         internal const val DEFAULT_OPENROUTER_MODEL = "google/gemini-3.5-flash-lite"

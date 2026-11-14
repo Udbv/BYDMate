@@ -72,6 +72,21 @@ class BackupManagerRestoreTest {
         return file.readBytes().also { BackupDatabaseFiles.deleteWithSideFiles(file) }
     }
 
+    /**
+     * The archive database, page for page. A full restore writes to it once before the swap
+     * (`last_triggered_at = NULL`), and whether that write bumps the header's bookkeeping depends
+     * on the SQLite engine, not on the restore: in rollback-journal mode (Robolectric's LEGACY
+     * SQLite, the default on Windows) every commit increments the file change counter (offset 24)
+     * and stamps version-valid-for and the writer's library version (offsets 92-99); the NATIVE
+     * engine used on Linux leaves them. Those 12 bytes are masked, every other byte must match.
+     */
+    private fun assertSameDatabase(expected: ByteArray, actual: ByteArray) {
+        assertEquals(expected.size, actual.size)
+        val bookkeeping = (24..27) + (92..99)
+        fun masked(bytes: ByteArray) = bytes.copyOf().also { b -> bookkeeping.forEach { b[it] = 0 } }
+        assertArrayEquals(masked(expected), masked(actual))
+    }
+
     private val liveBytes = "live database".toByteArray()
 
     /** The file a refused restore must leave as it was. */
@@ -125,7 +140,7 @@ class BackupManagerRestoreTest {
 
         BackupManager(context, appDatabase, AppStrings(context), listOf("automation")).restore(zip)
 
-        assertArrayEquals(dbBytes, context.getDatabasePath("bydmate.db").readBytes())
+        assertSameDatabase(dbBytes, context.getDatabasePath("bydmate.db").readBytes())
         assertEquals("yes", prefs.getString("restored_key", null))
         assertTrue(!prefs.contains("stale_key"))
     }
@@ -168,7 +183,7 @@ class BackupManagerRestoreTest {
         b.join(5_000)
 
         assertEquals(emptyMap<String, Throwable>(), errors.toMap())
-        assertArrayEquals(secondBytes, context.getDatabasePath("bydmate.db").readBytes())
+        assertSameDatabase(secondBytes, context.getDatabasePath("bydmate.db").readBytes())
     }
 
     private fun prefs(name: String) = context.getSharedPreferences(name, Context.MODE_PRIVATE)

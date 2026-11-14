@@ -101,6 +101,7 @@ class TrackingService : Service(), LocationListener {
     @Inject lateinit var adasLimitSender: com.bydmate.app.adas.AdasLimitSender
     @Inject lateinit var navVoice: com.bydmate.app.navvoice.NavVoice
     @Inject lateinit var cruiseAdvisor: com.bydmate.app.adas.CruiseAdvisor
+    @Inject lateinit var hmaWatch: com.bydmate.app.hma.HmaWatch
     @Inject lateinit var networkAvailableMonitor: com.bydmate.app.data.automation.NetworkAvailableMonitor
     @Inject lateinit var alicePollingManager: AlicePollingManager
     @Inject lateinit var odometerBuffer: OdometerConsumptionBuffer
@@ -787,6 +788,12 @@ class TrackingService : Service(), LocationListener {
                         com.bydmate.app.data.vehicle.NativeAssistant.setDisabled(
                             helperClient, packageManager, pref == "true")
                     }
+                    // Stock multimedia apps the driver keeps disabled: an OTA can switch them
+                    // back on. Every service start (boot, quickboot wake) re-checks them.
+                    runCatching {
+                        com.bydmate.app.data.vehicle.KeptDisabledAppsSync.apply(
+                            helperClient, settingsRepository, "start")
+                    }.onFailure { Log.w(TAG, "keep-apps-disabled on start failed: ${it.message}") }
                 }
                 // Power down a cluster compositor left "on" by a car shutdown mid-projection —
                 // otherwise the cluster boots black (projection mode, nobody drawing). Runs even
@@ -911,6 +918,9 @@ class TrackingService : Service(), LocationListener {
         // Blind-spot pipeline: idle until the poll below reports the car near the speed
         // threshold, and only when the feature is switched on (default off).
         blindSpotController.start(serviceScope)
+        // Automatic high beam watch: journal of its states, one quiet warning per reason and trip.
+        // Reads the car only.
+        hmaWatch.start(serviceScope)
         // Cluster music card: mirrors Yandex music the stock controller leaves blank.
         clusterMusicBridge.start(serviceScope) { reason -> notificationListenerGrant.ensure(reason) }
         instance = this
@@ -1833,6 +1843,8 @@ class TrackingService : Service(), LocationListener {
                         .onFailure { Log.w(TAG, "NavVoice.onTick failed", it) }
                     runCatching { cruiseAdvisor.onTick(data.powerState?.let { it >= 1 } == true, data) }
                         .onFailure { Log.w(TAG, "CruiseAdvisor.onTick failed", it) }
+                    runCatching { hmaWatch.onTick(data.powerState?.let { it >= 1 } == true, data, sessionId) }
+                        .onFailure { Log.w(TAG, "HmaWatch.onTick failed", it) }
                     updateNotification(data)
                     maybeLogSessionSummary(nowMs, data, sessionId)
                     maybeSendIternioTelemetry(data, nowMs)
@@ -2116,6 +2128,12 @@ class TrackingService : Service(), LocationListener {
         override fun onReceive(context: Context?, intent: Intent?) {
             serviceScope.launch { ensureStarServiceRunning("wake:${intent?.action}") }
             serviceScope.launch { notificationListenerGrant.ensure("wake:${intent?.action}") }
+            serviceScope.launch {
+                runCatching {
+                    com.bydmate.app.data.vehicle.KeptDisabledAppsSync.apply(
+                        helperClient, settingsRepository, "wake")
+                }.onFailure { Log.w(TAG, "keep-apps-disabled on wake failed: ${it.message}") }
+            }
             // Trigger 4: the wireless-debugging dialog can only be confirmed on an awake screen,
             // so a wake is the cheapest moment to re-check whether it was. The manager gates itself.
             val trigger = if (intent?.action == Intent.ACTION_USER_PRESENT) "user_present" else "screen_on"

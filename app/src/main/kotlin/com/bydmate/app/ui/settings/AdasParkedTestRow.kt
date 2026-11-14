@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,9 +52,13 @@ fun AdasParkedTestRow(viewModel: AdasParkedTestViewModel = hiltViewModel()) {
                 enabled = !status.running,
             ) { Text(stringResource(R.string.settings_adas_test_start)) }
         }
-        // #23: the limit changed inside one session, four ways; leave this screen open meanwhile.
+        // #23: the limit changed inside one session, without a route; leave this screen open meanwhile.
         Button(onClick = { refusal = viewModel.startChange() }, enabled = !status.running) {
             Text(stringResource(R.string.settings_adas_change_test_start))
+        }
+        // The route variant only on purpose: both ADAS view freezes followed a run whose route reached the car.
+        OutlinedButton(onClick = { refusal = viewModel.startChange(withRoute = true) }, enabled = !status.running) {
+            Text(stringResource(R.string.settings_adas_change_route_test_start), fontSize = 12.sp)
         }
         val car = status.car?.let {
             stringResource(R.string.settings_adas_test_car, it.signKph?.toString() ?: "-", it.slaKph?.toString() ?: "-")

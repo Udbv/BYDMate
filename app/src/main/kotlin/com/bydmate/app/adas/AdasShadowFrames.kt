@@ -21,8 +21,10 @@ data class ShadowFrame(val topic: Long, val name: String, val fields: String, va
 
 /**
  * The map -> ADAS messages a Waze source could fill, from the guidance snapshot:
- * - 0x0007/0x8001 `NavigationStatus_LinkInfoNotify`: navigating (8) or stopped (9), the map's
- *   own "map state" values (uncertain, §3);
+ * - 0x0007/0x8001 `NavigationStatus_LinkInfoNotify`: navigating (101) or idle (100), the values
+ *   the factory map puts on the bus (`GaoDeSignalManager.setMapState`: 100 at start and on
+ *   navigation stop, 101 on navigation start; the HUD channel's 101 is the same). The 8 and 9
+ *   sent until 4.2.0-dev.20 were the map's Android broadcast enum, never seen on SOME/IP;
  * - 0x0007/0x8003 `TrafficInfoNotify`: the road's speed limit, the camera ahead and the distance
  *   and time to the destination; Waze names no camera speed, so that field stays 0;
  * - 0x8202/0x800B `naviActionAndCamera`: the next manoeuvre (AutoNavi icon code, distance) and
@@ -35,9 +37,17 @@ object AdasShadowFrames {
     const val TOPIC_TRAFFIC_INFO = 0x0004000700078003L
     const val TOPIC_ACTION_CAMERA = 0x000482028202800BL
 
-    const val NAVI_ACTIVE = 8
-    const val NAVI_STOPPED = 9
+    /** `onNavStart` on the bus (`GaoDeSignalManager:228-231`); `HudLauncherMapCnFrames` sends it too. */
+    const val NAVI_ACTIVE = 101
+    /** The map's idle: at start and `onNavStop` (`GaoDeSignalManager:101,237-241`), the end of all of ours. */
+    const val NAVI_STOPPED = 100
     private const val CAMERA_PLACEHOLDER_TYPE = 1
+
+    /**
+     * A `uint32` the factory map sets to -1 ("none"): Java's protobuf writes it as 0xFFFFFFFF, a
+     * five-byte varint, and so does [Proto.varint] with this value.
+     */
+    const val U32_NONE = 0xFFFFFFFFL
 
     fun of(snap: NavGuidanceHub.Snapshot): List<ShadowFrame> {
         val camera = snap.cameraKind == WazeReportsReader.Kind.CAMERA && snap.cameraDistanceMeters > 0
@@ -68,6 +78,18 @@ object AdasShadowFrames {
                 .varint(19, roadClass.toLong())
                 .bytes(),
         ),
+    )
+
+    /**
+     * `TrafficInfo` as the factory map sends it with no route (`SomeIPMatrixManager` log of
+     * 4.11 21:04, `toDist:-1 … toDst:0 time:0 roadClass:-1`): everything 0 but the distance to the
+     * start of a jam (field 2) and the road class (field 19), both -1 as uint32. An all-zero
+     * `TrafficInfo` is not what the map sends: proto3 drops every field and leaves an empty struct.
+     */
+    fun idleTrafficInfo() = ShadowFrame(
+        TOPIC_TRAFFIC_INFO, "TrafficInfoNotify",
+        "idle DistToStartTrafficJam=-1 SpdLmtSpeedValue=0 SpdLmtEleEyeDist=0 DistToDsttn=0 TimeToDsttn=0 RoadClass=-1",
+        wrap(Proto().varint(2, U32_NONE).varint(19, U32_NONE).bytes()),
     )
 
     /** [cameraDist] > 0 puts a camera there ([CAMERA_PLACEHOLDER_TYPE]); 0 means none. */

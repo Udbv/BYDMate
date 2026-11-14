@@ -54,6 +54,20 @@ class AdasRouteFramesTest {
         assertArrayEquals(byteArrayOf(0x0A, 0x02, 0x18, 0x09), frames[1].bytes)
     }
 
+    @Test fun `the retraction is path 0 and a route detail with no route`() {
+        val frames = AdasRouteFrames.retraction(1_000L)
+        assertEquals(listOf(AdasRouteFrames.TOPIC_PATH_SELECT, AdasRouteFrames.TOPIC_SD_ROUTE), frames.map { it.topic })
+        assertArrayEquals(byteArrayOf(0x0A, 0x00), frames[0].bytes)
+        val json = frames[1].bytes.toString(Charsets.UTF_8).let { it.substring(it.indexOf('{')) }
+        val detail = JSONObject(json)
+        assertEquals(0, detail.getInt("pathCount"))
+        assertEquals(0, JSONObject(detail.getString("payload")).getJSONArray("data").length())
+    }
+
+    @Test fun `only the route and the path select are sent once`() {
+        assertEquals(setOf(AdasRouteFrames.TOPIC_SD_ROUTE, AdasRouteFrames.TOPIC_PATH_SELECT), AdasRouteFrames.ONCE_TOPICS)
+    }
+
     @Test fun `proto doubles are little-endian fixed64 and strings are length-delimited utf-8`() {
         assertArrayEquals(
             byteArrayOf(0x09, 0, 0, 0, 0, 0, 0, 0xF0.toByte(), 0x3F),

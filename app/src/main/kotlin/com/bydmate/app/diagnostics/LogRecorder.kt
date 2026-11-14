@@ -235,7 +235,7 @@ class LogRecorder internal constructor(
                     "=== LOG RESUMED after app restart at $stamp " +
                         "(uptime ${SystemClock.elapsedRealtime() / 1000}s) ==="
                 )
-                writer.newLine()
+                writer.write(LF)
             }
             proc = exec(LOGCAT_ARGS)
             publishSession(proc, target, startedAtMs, autoStopMs - elapsed)
@@ -328,8 +328,8 @@ class LogRecorder internal constructor(
         try {
             FileOutputStream(current.file, /* append = */ true).bufferedWriter().use { writer ->
                 writer.write("--- end snapshot ---")
-                writer.newLine()
-                lines.forEach { writer.write(it); writer.newLine() }
+                writer.write(LF)
+                lines.forEach { writer.write(it); writer.write(LF) }
             }
         } catch (_: Exception) {}
     }
@@ -381,13 +381,13 @@ class LogRecorder internal constructor(
                                 current.endedByLimit = true
                                 synchronized(lock) {
                                     writer.write("--- LOG STOPPED: file size limit reached (50 MB) ---")
-                                    writer.newLine()
+                                    writer.write(LF)
                                 }
                                 break
                             }
                             synchronized(lock) {
                                 writer.write(line)
-                                writer.newLine()
+                                writer.write(LF)
                                 size += line.length + 1
                                 if (policy.onLine(System.currentTimeMillis())) {
                                     writer.flush()
@@ -414,6 +414,9 @@ class LogRecorder internal constructor(
         private const val LOG_MAX_SIZE_BYTES = 50 * 1024 * 1024L // 50 MB max
         private const val PROCESS_EXIT_TIMEOUT_MS = 500L // grace period before destroyForcibly
         private const val PIPE_CLOSE_TIMEOUT_MS = 2_000L
+        // The file is LF-only on every host (the size count adds 1 per line). BufferedWriter.newLine()
+        // writes the host separator: CRLF on Windows, so the same code wrote a different file there.
+        private const val LF = "\n"
         // The end section reads a few journals and in-memory counters; it must not hold the
         // recorder lock (and the next start) for long.
         private const val END_SNAPSHOT_BUDGET_MS = 3_000L
@@ -473,6 +476,8 @@ class LogRecorder internal constructor(
             "FidRec:*",
             // Manual fault-code scan: the daemon's requests, frames and outcomes (app and daemon share the tag).
             "DtcScan:*",
+            // Stock multimedia apps kept disabled: every pass, action and refusal (app and daemon share the tag).
+            "KeepDisabled:*",
             // Split-screen wave: session/watchdog decisions, pill+picker overlay, widget tap.
             "SplitSessionMgr:*", "SplitOverlayCtrl:*", "SplitPillView:*",
             "WidgetController:*",

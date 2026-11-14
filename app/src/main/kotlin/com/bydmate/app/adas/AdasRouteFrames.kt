@@ -36,6 +36,14 @@ object AdasRouteFrames {
     private const val LANES = 2
     private const val OWNERSHIP = 1
     private const val CODE_OK = 200
+    private const val NO_PATH = -1.0
+
+    /**
+     * Topics that carry the route itself: the factory map sends them once per route change
+     * (`SDRouteUtil n.a`), not with every position. The tests send them only when their bytes
+     * change, never at the frame rate (a route of up to 20 km five times a second over TCP).
+     */
+    val ONCE_TOPICS: Set<Long> = setOf(TOPIC_SD_ROUTE, TOPIC_PATH_SELECT)
 
     fun of(points: List<RoutePoint>, pathId: Long, nowMs: Long, here: RoutePoint): List<ShadowFrame> {
         val links = links(points)
@@ -68,6 +76,51 @@ object AdasRouteFrames {
                 .bytes(),
         ),
     )
+
+    /**
+     * `sdVehicleLocation` with no route, as the factory map sends it every second while idle
+     * (`SomeIPMatrixManager` log of 4.11 21:04: `pathId:-1 curSegIdx:-1 curLinkIdx:-1 segOffset:-1
+     * linkOffset:-1 … ownerShip:-1`): the position, `curSDRouteID` -1.0 and every index, offset
+     * and the road ownership -1 as uint32. "No route" on the bus is these explicit -1, not fields
+     * left out, so a position of ours on a path is overwritten by one on none.
+     */
+    fun idleLocation(here: RoutePoint) = ShadowFrame(
+        TOPIC_VEHICLE_LOCATION, "sdVehicleLocation", "idle pathID=-1 step=-1 link=-1 linkOffset=-1",
+        wrap(
+            Proto()
+                .double(1, here.lat).double(2, here.lon).double(3, here.lat).double(4, here.lon)
+                .double(7, NO_PATH)
+                .varint(9, AdasShadowFrames.U32_NONE).varint(10, AdasShadowFrames.U32_NONE)
+                .varint(11, AdasShadowFrames.U32_NONE).varint(12, AdasShadowFrames.U32_NONE)
+                .varint(13, AdasShadowFrames.U32_NONE)
+                .bytes(),
+        ),
+    )
+
+    /**
+     * Taking our route back (experimental): `NaviPathUserSelectStsNotify{pathID_Req=0}` (proto3
+     * leaves the 0 out, an empty struct) and `naviSDRouteNotify` with no route
+     * (`NaviDataDetail{pathCount:0, payload: MessageSend{data:[]}}`). Neither the contract nor the
+     * factory map does this: on navigation stop the map sends no route and no path select at all,
+     * it relies on the idle location and status 100 and on its next route replacing the old one.
+     * What the driving computer makes of these is untested, see [AdasParkedTest.retractRoute].
+     */
+    fun retraction(nowMs: Long): List<ShadowFrame> {
+        val payload = JSONObject()
+            .put("msg", "response").put("code", CODE_OK).put("data", JSONArray())
+            .put("routeType", 0).put("endPOIInfo", JSONObject()).put("mapProvider", "waze")
+        val json = JSONObject()
+            .put("time", nowMs).put("pathCount", 0).put("length", 1).put("currentIndex", 0)
+            .put("payload", payload.toString())
+            .toString()
+        return listOf(
+            ShadowFrame(TOPIC_PATH_SELECT, "NaviPathUserSelectStsNotify", "retract pathID_Req=0", wrap(byteArrayOf())),
+            ShadowFrame(
+                TOPIC_SD_ROUTE, "naviSDRouteNotify", "retract pathCount=0 json=${json.length}c",
+                wrap(Proto().varint(3, 1).string(4, json).bytes()),
+            ),
+        )
+    }
 
     /** A straight route of [lengthM] north of [from], points every 100 m: links of 200 m. */
     fun straight(from: RoutePoint, lengthM: Int): List<RoutePoint> {
